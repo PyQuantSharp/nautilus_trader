@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,10 +17,10 @@ import pytest
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEnumParser
 from nautilus_trader.adapters.bybit.common.enums import BybitOrderSide
-from nautilus_trader.adapters.bybit.common.enums import BybitOrderStatus
+from nautilus_trader.adapters.bybit.common.enums import BybitTriggerDirection
 from nautilus_trader.model.data import BarType
 from nautilus_trader.model.enums import OrderSide
-from nautilus_trader.model.enums import OrderStatus
+from nautilus_trader.model.enums import OrderType
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 
 
@@ -28,7 +28,7 @@ ETHUSDT_BYBIT = TestInstrumentProvider.ethusdt_binance()
 
 
 class TestBybitParsing:
-    def setup(self):
+    def setup(self) -> None:
         self._enum_parser = BybitEnumParser()
         self.instrument: str = "ETHUSDT.BINANCE"
 
@@ -50,12 +50,12 @@ class TestBybitParsing:
             ["ETHUSDT.BYBIT-1-MONTH-LAST-EXTERNAL", "M"],
         ],
     )
-    def test_parse_bybit_kline_correct(self, bar_type, bybit_kline_interval):
+    def test_parse_bybit_kline_correct(self, bar_type: str, bybit_kline_interval: str) -> None:
         bar_type = BarType.from_str(bar_type)
         result = self._enum_parser.parse_bybit_kline(bar_type)
         assert result.value == bybit_kline_interval
 
-    def test_parse_bybit_kline_incorrect(self):
+    def test_parse_bybit_kline_incorrect(self) -> None:
         # MINUTE
         with pytest.raises(ValueError):
             self._enum_parser.parse_bybit_kline(
@@ -90,7 +90,11 @@ class TestBybitParsing:
             [BybitOrderSide.SELL, OrderSide.SELL],
         ],
     )
-    def test_parse_bybit_order_side(self, bybit_order_side, order_side):
+    def test_parse_bybit_order_side(
+        self,
+        bybit_order_side: BybitOrderSide,
+        order_side: OrderSide,
+    ) -> None:
         result = self._enum_parser.parse_bybit_order_side(bybit_order_side)
         assert result == order_side
 
@@ -101,32 +105,104 @@ class TestBybitParsing:
             [OrderSide.SELL, BybitOrderSide.SELL],
         ],
     )
-    def test_parse_nautilus_order_side(self, order_side, bybit_order_side):
+    def test_parse_nautilus_order_side(
+        self,
+        order_side: OrderSide,
+        bybit_order_side: BybitOrderSide,
+    ) -> None:
         result = self._enum_parser.parse_nautilus_order_side(order_side)
         assert result == bybit_order_side
 
-    @pytest.mark.parametrize(
-        ("bybit_order_status", "order_status"),
-        [
-            [BybitOrderStatus.CREATED, OrderStatus.SUBMITTED],
-            [BybitOrderStatus.NEW, OrderStatus.ACCEPTED],
-            [BybitOrderStatus.FILLED, OrderStatus.FILLED],
-            [BybitOrderStatus.CANCELED, OrderStatus.CANCELED],
-        ],
-    )
-    def test_parse_bybit_order_status(self, bybit_order_status, order_status):
-        result = self._enum_parser.parse_bybit_order_status(bybit_order_status)
-        assert result == order_status
+    # WIP: Reimplementing
+    # @pytest.mark.parametrize(
+    #     ("bybit_order_status", "order_status"),
+    #     [
+    #         [BybitOrderStatus.CREATED, OrderStatus.SUBMITTED],
+    #         [BybitOrderStatus.NEW, OrderStatus.ACCEPTED],
+    #         [BybitOrderStatus.FILLED, OrderStatus.FILLED],
+    #         [BybitOrderStatus.CANCELED, OrderStatus.CANCELED],
+    #     ],
+    # )
+    # def test_parse_bybit_order_status(
+    #     self,
+    #     bybit_order_status: BybitOrderStatus,
+    #     order_status: OrderStatus,
+    # ) -> None:
+    #     result = self._enum_parser.parse_bybit_order_status(bybit_order_status)
+    #     assert result == order_status
+    #
+    # @pytest.mark.parametrize(
+    #     ("order_status", "bybit_order_status"),
+    #     [
+    #         [OrderStatus.SUBMITTED, BybitOrderStatus.CREATED],
+    #         [OrderStatus.ACCEPTED, BybitOrderStatus.NEW],
+    #         [OrderStatus.FILLED, BybitOrderStatus.FILLED],
+    #         [OrderStatus.CANCELED, BybitOrderStatus.CANCELED],
+    #     ],
+    # )
+    # def test_parse_nautilus_order_status(
+    #     self,
+    #     order_status: OrderStatus,
+    #     bybit_order_status: BybitOrderStatus,
+    # ) -> None:
+    #     result = self._enum_parser.parse_nautilus_order_status(order_status)
+    #     assert result == bybit_order_status
 
     @pytest.mark.parametrize(
-        ("order_status", "bybit_order_status"),
+        ("order_type", "expected_direction_buy"),
         [
-            [OrderStatus.SUBMITTED, BybitOrderStatus.CREATED],
-            [OrderStatus.ACCEPTED, BybitOrderStatus.NEW],
-            [OrderStatus.FILLED, BybitOrderStatus.FILLED],
-            [OrderStatus.CANCELED, BybitOrderStatus.CANCELED],
+            (OrderType.STOP_MARKET, BybitTriggerDirection.RISES_TO),
+            (OrderType.STOP_LIMIT, BybitTriggerDirection.RISES_TO),
+            (OrderType.MARKET_IF_TOUCHED, BybitTriggerDirection.RISES_TO),
+            (OrderType.TRAILING_STOP_MARKET, BybitTriggerDirection.RISES_TO),
+            (OrderType.LIMIT_IF_TOUCHED, BybitTriggerDirection.FALLS_TO),
+            (OrderType.MARKET, None),
+            (OrderType.LIMIT, None),
         ],
     )
-    def test_parse_nautilus_order_status(self, order_status, bybit_order_status):
-        result = self._enum_parser.parse_nautilus_order_status(order_status)
-        assert result == bybit_order_status
+    def test_parse_trigger_direction_buy_orders(self, order_type, expected_direction_buy):
+        # Arrange & Act
+        result = self._enum_parser.parse_trigger_direction(
+            order_type=order_type,
+            order_side=OrderSide.BUY,
+        )
+
+        # Assert
+        assert result == expected_direction_buy
+
+    @pytest.mark.parametrize(
+        ("order_type", "expected_direction_sell"),
+        [
+            (OrderType.STOP_MARKET, BybitTriggerDirection.FALLS_TO),
+            (OrderType.STOP_LIMIT, BybitTriggerDirection.FALLS_TO),
+            (OrderType.MARKET_IF_TOUCHED, BybitTriggerDirection.FALLS_TO),
+            (OrderType.TRAILING_STOP_MARKET, BybitTriggerDirection.FALLS_TO),
+            (OrderType.LIMIT_IF_TOUCHED, BybitTriggerDirection.RISES_TO),
+            (OrderType.MARKET, None),
+            (OrderType.LIMIT, None),
+        ],
+    )
+    def test_parse_trigger_direction_sell_orders(self, order_type, expected_direction_sell):
+        # Arrange & Act
+        result = self._enum_parser.parse_trigger_direction(
+            order_type=order_type,
+            order_side=OrderSide.SELL,
+        )
+
+        # Assert
+        assert result == expected_direction_sell
+
+    def test_parse_trigger_direction_unsupported_order_types(self):
+        # Arrange & Act
+        result_buy = self._enum_parser.parse_trigger_direction(
+            order_type=OrderType.MARKET,
+            order_side=OrderSide.BUY,
+        )
+        result_sell = self._enum_parser.parse_trigger_direction(
+            order_type=OrderType.MARKET,
+            order_side=OrderSide.SELL,
+        )
+
+        # Assert
+        assert result_buy is None
+        assert result_sell is None

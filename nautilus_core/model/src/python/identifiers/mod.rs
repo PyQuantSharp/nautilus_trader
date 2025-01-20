@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,11 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::str::FromStr;
+//! Identifiers for the trading domain model.
+
+pub mod instrument_id;
+pub mod symbol;
+pub mod trade_id;
 
 use nautilus_core::python::to_pyvalue_err;
 use pyo3::{
@@ -21,22 +25,17 @@ use pyo3::{
     pyclass::CompareOp,
     types::{PyString, PyTuple},
 };
-use ustr::Ustr;
 
 use crate::identifier_for_python;
 
-pub mod instrument_id;
-pub mod trade_id;
-
-identifier_for_python!(crate::identifiers::account_id::AccountId);
-identifier_for_python!(crate::identifiers::client_id::ClientId);
-identifier_for_python!(crate::identifiers::client_order_id::ClientOrderId);
-identifier_for_python!(crate::identifiers::component_id::ComponentId);
-identifier_for_python!(crate::identifiers::exec_algorithm_id::ExecAlgorithmId);
-identifier_for_python!(crate::identifiers::order_list_id::OrderListId);
-identifier_for_python!(crate::identifiers::position_id::PositionId);
-identifier_for_python!(crate::identifiers::strategy_id::StrategyId);
-identifier_for_python!(crate::identifiers::symbol::Symbol);
-identifier_for_python!(crate::identifiers::trader_id::TraderId);
-identifier_for_python!(crate::identifiers::venue::Venue);
-identifier_for_python!(crate::identifiers::venue_order_id::VenueOrderId);
+identifier_for_python!(crate::identifiers::AccountId);
+identifier_for_python!(crate::identifiers::ClientId);
+identifier_for_python!(crate::identifiers::ClientOrderId);
+identifier_for_python!(crate::identifiers::ComponentId);
+identifier_for_python!(crate::identifiers::ExecAlgorithmId);
+identifier_for_python!(crate::identifiers::OrderListId);
+identifier_for_python!(crate::identifiers::PositionId);
+identifier_for_python!(crate::identifiers::StrategyId);
+identifier_for_python!(crate::identifiers::TraderId);
+identifier_for_python!(crate::identifiers::Venue);
+identifier_for_python!(crate::identifiers::VenueOrderId);

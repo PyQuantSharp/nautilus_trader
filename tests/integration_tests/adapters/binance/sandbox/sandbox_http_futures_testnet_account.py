@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,8 +30,8 @@ async def test_binance_spot_account_http_client():
     client = get_cached_binance_http_client(
         clock=clock,
         account_type=BinanceAccountType.USDT_FUTURE,
-        key=os.getenv("BINANCE_FUTURES_TESTNET_API_KEY"),
-        secret=os.getenv("BINANCE_FUTURES_TESTNET_API_SECRET"),
+        api_key=os.getenv("BINANCE_FUTURES_TESTNET_API_KEY"),
+        api_secret=os.getenv("BINANCE_FUTURES_TESTNET_API_SECRET"),
         is_testnet=True,
     )
 

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,9 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::python::to_pyvalue_err;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 use pyo3::prelude::*;
@@ -28,19 +27,20 @@ use crate::{
 #[pymethods]
 impl AdaptiveMovingAverage {
     #[new]
+    #[pyo3(signature = (period_efficiency_ratio, period_fast, period_slow, price_type=None))]
+    #[must_use]
     pub fn py_new(
         period_efficiency_ratio: usize,
         period_fast: usize,
         period_slow: usize,
         price_type: Option<PriceType>,
-    ) -> PyResult<Self> {
+    ) -> Self {
         Self::new(
             period_efficiency_ratio,
             period_fast,
             period_slow,
             price_type,
         )
-        .map_err(to_pyvalue_err)
     }
 
     fn __repr__(&self) -> String {
@@ -61,7 +61,7 @@ impl AdaptiveMovingAverage {
 
     #[getter]
     #[pyo3(name = "count")]
-    fn py_count(&self) -> usize {
+    const fn py_count(&self) -> usize {
         self.count
     }
 
@@ -73,18 +73,18 @@ impl AdaptiveMovingAverage {
 
     #[getter]
     #[pyo3(name = "initialized")]
-    fn py_initialized(&self) -> bool {
+    const fn py_initialized(&self) -> bool {
         self.initialized
     }
 
     #[pyo3(name = "handle_quote_tick")]
-    fn py_handle_quote_tick(&mut self, tick: &QuoteTick) {
-        self.py_update_raw(tick.extract_price(self.price_type).into());
+    fn py_handle_quote_tick(&mut self, quote: &QuoteTick) {
+        self.py_update_raw(quote.extract_price(self.price_type).into());
     }
 
     #[pyo3(name = "handle_trade_tick")]
-    fn py_handle_trade_tick(&mut self, tick: &TradeTick) {
-        self.update_raw((&tick.price).into());
+    fn py_handle_trade_tick(&mut self, trade: &TradeTick) {
+        self.update_raw((&trade.price).into());
     }
 
     #[pyo3(name = "handle_bar")]

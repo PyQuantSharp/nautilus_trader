@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,6 +17,7 @@ from decimal import Decimal
 
 import pytest
 
+from nautilus_trader.core.rust.model import AggregationSource
 from nautilus_trader.model.currencies import AUD
 from nautilus_trader.model.currencies import JPY
 from nautilus_trader.model.currencies import USD
@@ -189,6 +190,20 @@ class TestCache:
         # Assert
         assert result == []
 
+    def test_instruments_with_underlying_returns_expected(self):
+        # Arrange
+        instrument1 = TestInstrumentProvider.future(symbol="ESZ24", underlying="ES")
+        instrument2 = TestInstrumentProvider.future(symbol="CLZ24", underlying="CL")
+
+        self.cache.add_instrument(instrument1)
+        self.cache.add_instrument(instrument2)
+
+        # Act
+        result = self.cache.instruments(underlying="ES")
+
+        # Assert
+        assert result == [instrument1]
+
     def test_synthetic_ids_when_one_synthetic_instrument_returns_expected_list(self):
         # Arrange
         synthetic = TestInstrumentProvider.synthetic_instrument()
@@ -225,7 +240,7 @@ class TestCache:
         # Assert
         assert result == [tick]
 
-    def test_add_quote_ticks_when_already_ticks_does_not_add(self):
+    def test_add_quote_ticks_when_identical_ticks_does_not_add(self):
         # Arrange
         tick = TestDataStubs.quote_tick()
 
@@ -237,6 +252,20 @@ class TestCache:
 
         # Assert
         assert result == [tick]
+
+    def test_add_quote_ticks_when_older_quotes(self):
+        # Arrange
+        tick1 = TestDataStubs.quote_tick()
+        self.cache.add_quote_tick(tick1)
+
+        tick2 = TestDataStubs.quote_tick(ts_event=1, ts_init=1)
+
+        # Act
+        self.cache.add_quote_ticks([tick2])
+        result = self.cache.quote_ticks(tick1.instrument_id)
+
+        # Assert
+        assert result == [tick2, tick1]
 
     def test_trade_ticks_when_one_tick_returns_expected_list(self):
         # Arrange
@@ -250,7 +279,7 @@ class TestCache:
         # Assert
         assert result == [tick]
 
-    def test_add_trade_ticks_when_already_ticks_does_not_add(self):
+    def test_add_trade_ticks_when_identical_ticks_does_not_add(self):
         # Arrange
         tick = TestDataStubs.trade_tick()
 
@@ -262,6 +291,21 @@ class TestCache:
 
         # Assert
         assert result == [tick]
+
+    def test_add_trade_ticks_when_older_trades(self):
+        # Arrange
+        tick1 = TestDataStubs.trade_tick()
+        self.cache.add_trade_tick(tick1)
+
+        tick2 = TestDataStubs.trade_tick(ts_event=1, ts_init=1)
+        self.cache.add_trade_tick(tick2)
+
+        # Act
+        self.cache.add_trade_ticks([tick1])
+        result = self.cache.trade_ticks(tick1.instrument_id)
+
+        # Assert
+        assert result == [tick2, tick1]
 
     def test_bars_when_one_bar_returns_expected_list(self):
         # Arrange
@@ -275,7 +319,7 @@ class TestCache:
         # Assert
         assert result == [bar]
 
-    def test_add_bars_when_already_bars_does_not_add(self):
+    def test_add_bars_when_already_identical_bar_does_not_add(self):
         # Arrange
         bar = TestDataStubs.bar_5decimal()
 
@@ -287,6 +331,21 @@ class TestCache:
 
         # Assert
         assert result == [bar]
+
+    def test_add_bars_when_older_cached_bars(self):
+        # Arrange
+        bar1 = TestDataStubs.bar_5decimal()
+        self.cache.add_bar(bar1)
+
+        bar2 = TestDataStubs.bar_5decimal(ts_event=1)
+        self.cache.add_bar(bar2)
+
+        # Act
+        self.cache.add_bars([bar2])
+        result = self.cache.bars(bar1.bar_type)
+
+        # Assert
+        assert result == [bar2, bar1]
 
     def test_instrument_when_no_instrument_returns_none(self):
         # Arrange, Act
@@ -386,6 +445,86 @@ class TestCache:
 
         # Assert
         assert result == expected
+
+    @pytest.mark.parametrize(
+        ("price_type", "expected"),
+        [[PriceType.BID, Price.from_str("1.00003")], [PriceType.LAST, None]],
+    )
+    def test_price_returned_with_external_bars(self, price_type, expected):
+        # Arrange
+        self.cache.add_bar(TestDataStubs.bar_5decimal())
+        self.cache.add_bar(TestDataStubs.bar_5decimal_5min_bid())
+        self.cache.add_bar(TestDataStubs.bar_3decimal())
+
+        # Act
+        result = self.cache.price(AUDUSD_SIM.id, price_type)
+
+        # Assert
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        ("instrument_id", "price_type", "aggregation_source", "expected"),
+        [
+            [
+                AUDUSD_SIM.id,
+                None,
+                None,
+                [
+                    TestDataStubs.bartype_audusd_1min_bid(),
+                    TestDataStubs.bartype_audusd_5min_bid(),
+                    BarType.from_str("AUD/USD.SIM-1-MONTH-MID-EXTERNAL"),
+                ],
+            ],
+            [
+                AUDUSD_SIM.id,
+                PriceType.BID,
+                None,
+                [TestDataStubs.bartype_audusd_1min_bid(), TestDataStubs.bartype_audusd_5min_bid()],
+            ],
+            [
+                AUDUSD_SIM.id,
+                PriceType.BID,
+                AggregationSource.EXTERNAL,
+                [TestDataStubs.bartype_audusd_1min_bid(), TestDataStubs.bartype_audusd_5min_bid()],
+            ],
+            [AUDUSD_SIM.id, PriceType.ASK, AggregationSource.EXTERNAL, []],
+            [ETHUSDT_BINANCE.id, PriceType.BID, AggregationSource.EXTERNAL, []],
+        ],
+    )
+    def test_retrieved_bar_types_match_expected(
+        self,
+        instrument_id,
+        price_type,
+        aggregation_source,
+        expected,
+    ):
+        # Arrange
+        self.cache.add_bar(TestDataStubs.bar_5decimal())
+        self.cache.add_bar(TestDataStubs.bar_5decimal_5min_bid())
+        self.cache.add_bar(TestDataStubs.bar_3decimal())
+        self.cache.add_bar(TestDataStubs.bar_month_mid())
+
+        # Act
+        result = self.cache.bar_types(
+            instrument_id=instrument_id,
+            price_type=price_type,
+            aggregation_source=aggregation_source,
+        )
+
+        # Assert
+        assert result == expected
+
+    def test_retrieved_all_bar_types_match_expected(self):
+        # Arrange
+        self.cache.add_bar(TestDataStubs.bar_5decimal())
+        self.cache.add_bar(TestDataStubs.bar_5decimal_5min_bid())
+        self.cache.add_bar(TestDataStubs.bar_3decimal())
+
+        # Act
+        result = self.cache.bar_types()
+
+        # Assert
+        assert len(result) == 3
 
     def test_quote_tick_when_index_out_of_range_returns_none(self):
         # Arrange

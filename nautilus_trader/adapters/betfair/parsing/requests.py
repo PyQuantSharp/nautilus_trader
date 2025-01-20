@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -88,7 +88,7 @@ def make_customer_order_ref(client_order_id: ClientOrderId) -> CustomerOrderRef:
     string is limited to 32 characters. If an empty string is provided it will be treated as null.
 
     """
-    return client_order_id.value
+    return client_order_id.value[:32]
 
 
 def nautilus_limit_to_place_instructions(
@@ -269,6 +269,26 @@ def order_update_to_replace_order_params(
     )
 
 
+def order_update_to_cancel_order_params(
+    command: CancelOrder,
+    instrument: BettingInstrument,
+    size_reduction,
+) -> CancelOrders:
+    """
+    Convert a CancelOrder command into the data required by BetfairClient.
+    """
+    return CancelOrders.with_params(
+        market_id=instrument.market_id,
+        instructions=[
+            CancelInstruction(
+                bet_id=BetId(command.venue_order_id.value),
+                size_reduction=size_reduction,
+            ),
+        ],
+        customer_ref=create_customer_ref(command),
+    )
+
+
 def order_cancel_to_cancel_order_params(
     command: CancelOrder,
     instrument: BettingInstrument,
@@ -331,12 +351,10 @@ def bet_to_fill_report(
     instrument_id: InstrumentId,
     venue_order_id: VenueOrderId,
     client_order_id: ClientOrderId,
+    base_currency: Currency,
     ts_init,
     report_id,
-) -> FillReport | None:
-    if order.size_matched == 0.0:
-        # No executions, skip
-        return None
+) -> FillReport:
     ts_event = pd.Timestamp(order.matched_date).value
     trade_id = current_order_summary_to_trade_id(order)
     return FillReport(
@@ -349,7 +367,7 @@ def bet_to_fill_report(
         trade_id=trade_id,
         last_qty=Quantity(order.size_matched, BETFAIR_QUANTITY_PRECISION),
         last_px=Price(order.price_size.price, BETFAIR_PRICE_PRECISION),
-        commission=None,  # Can be None
+        commission=Money(0.0, base_currency),
         liquidity_side=LiquiditySide.NO_LIQUIDITY_SIDE,
         report_id=report_id,
         ts_event=ts_event,

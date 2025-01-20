@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,22 +13,33 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
 from nautilus_trader.adapters.bybit.endpoints.endpoint import BybitHttpEndpoint
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentsInverseResponse
 from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentsLinearResponse
 from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentsOptionResponse
 from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentsSpotResponse
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 
-class BybitInstrumentsInfoGetParameters(msgspec.Struct, omit_defaults=True, frozen=False):
-    category: BybitInstrumentType | None = None
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+
+
+class BybitInstrumentsInfoGetParams(msgspec.Struct, omit_defaults=True, frozen=True):
+    category: BybitProductType | None = None
     symbol: str | None = None
     status: str | None = None
+    baseCoin: str | None = None
+    limit: int | None = None
+    cursor: str | None = None
 
 
 class BybitInstrumentsInfoEndpoint(BybitHttpEndpoint):
@@ -43,27 +54,35 @@ class BybitInstrumentsInfoEndpoint(BybitHttpEndpoint):
             endpoint_type=BybitEndpointType.MARKET,
             url_path=url_path,
         )
+        self._response_decoder_instrument_spot = msgspec.json.Decoder(BybitInstrumentsSpotResponse)
         self._response_decoder_instrument_linear = msgspec.json.Decoder(
             BybitInstrumentsLinearResponse,
         )
-        self._response_decoder_instrument_spot = msgspec.json.Decoder(BybitInstrumentsSpotResponse)
+        self._response_decoder_instrument_inverse = msgspec.json.Decoder(
+            BybitInstrumentsInverseResponse,
+        )
         self._response_decoder_instrument_option = msgspec.json.Decoder(
             BybitInstrumentsOptionResponse,
         )
 
     async def get(
         self,
-        parameters: BybitInstrumentsInfoGetParameters,
-    ) -> BybitInstrumentsLinearResponse | (
-        BybitInstrumentsSpotResponse | BybitInstrumentsOptionResponse
+        params: BybitInstrumentsInfoGetParams,
+    ) -> (
+        BybitInstrumentsSpotResponse
+        | BybitInstrumentsLinearResponse
+        | BybitInstrumentsInverseResponse
+        | BybitInstrumentsOptionResponse
     ):
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
-        if parameters.category == BybitInstrumentType.LINEAR:
-            return self._response_decoder_instrument_linear.decode(raw)
-        elif parameters.category == BybitInstrumentType.SPOT:
+        raw = await self._method(method_type, params)
+        if params.category == BybitProductType.SPOT:
             return self._response_decoder_instrument_spot.decode(raw)
-        elif parameters.category == BybitInstrumentType.OPTION:
+        elif params.category == BybitProductType.LINEAR:
+            return self._response_decoder_instrument_linear.decode(raw)
+        elif params.category == BybitProductType.INVERSE:
+            return self._response_decoder_instrument_inverse.decode(raw)
+        elif params.category == BybitProductType.OPTION:
             return self._response_decoder_instrument_option.decode(raw)
         else:
-            raise ValueError("Invalid account type")
+            raise ValueError(f"Invalid product type, was {params.category}")

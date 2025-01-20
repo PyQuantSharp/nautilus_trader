@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -66,7 +66,7 @@ class TestBacktestConfig:
             fs.rm(path, recursive=True)
 
     def test_backtest_config_pickle(self):
-        pickle.loads(pickle.dumps(self.backtest_config))  # noqa: S301
+        pickle.loads(pickle.dumps(self.backtest_config))  # noqa: S301 (pickle safe here)
 
     def test_backtest_data_config_load(self):
         # Arrange
@@ -213,7 +213,7 @@ class TestBacktestConfigParsing:
         )
         json = msgspec.json.encode(run_config)
         result = len(msgspec.json.encode(json))
-        assert result == 1022  # UNIX
+        assert result == 1146  # UNIX
 
     @pytest.mark.skipif(sys.platform == "win32", reason="redundant to also test Windows")
     def test_run_config_parse_obj(self) -> None:
@@ -234,7 +234,7 @@ class TestBacktestConfigParsing:
         assert isinstance(config, BacktestRunConfig)
         node = BacktestNode(configs=[config])
         assert isinstance(node, BacktestNode)
-        assert len(raw) == 765  # UNIX
+        assert len(raw) == 856  # UNIX
 
     @pytest.mark.skipif(sys.platform == "win32", reason="redundant to also test Windows")
     def test_backtest_data_config_to_dict(self) -> None:
@@ -255,7 +255,7 @@ class TestBacktestConfigParsing:
         )
         json = msgspec.json.encode(run_config)
         result = len(msgspec.json.encode(json))
-        assert result == 1822
+        assert result == 1894
 
     @pytest.mark.skipif(sys.platform == "win32", reason="redundant to also test Windows")
     def test_backtest_run_config_id(self) -> None:
@@ -263,7 +263,7 @@ class TestBacktestConfigParsing:
         print("token:", token)
         value: bytes = self.backtest_config.json()
         print("token_value:", value.decode())
-        assert token == "1d758e23defb5a69e2449ed03216ef7727c50e12c23730cc0309087ee7e71994"
+        assert token == "1401fab0644a974c8879852405102b4c94dba62e4a6a087cf42f9fc0a62805c4"
 
     @pytest.mark.skipif(sys.platform == "win32", reason="redundant to also test Windows")
     @pytest.mark.parametrize(
@@ -273,19 +273,19 @@ class TestBacktestConfigParsing:
                 TestConfigStubs.venue_config,
                 (),
                 {},
-                ("8c41b4ffb879421b580df2ae01ce5079f4b85e9e7fcdbd531342e7ca68537f93",),
+                ("71b17265090437aaef857215e9abda4d1e95e6c52d29434df9bb3a70c9c2523b",),
             ),
             (
                 TestConfigStubs.backtest_data_config,
                 ("catalog",),
                 {},
-                ("aad6794664f7690691f1ca3c9da8d8051b21a3bab7877fc9c594a78871cb76a8",),
+                ("949ef3abd03a447949d298f38a9aab669afc740720d747d4df2a9a121d78d110",),
             ),
             (
                 TestConfigStubs.backtest_engine_config,
                 ("catalog",),
                 {"persist": True},
-                ("fa93b3a2e7e7004b9d287227928371a90de574bf9e32c43d4dd60abbd7f292f9",),
+                ("29e293982dcd70958d480a5b7ed1c8586781e5c423d7670d522509c5c742fd2f",),
             ),
             (
                 TestConfigStubs.risk_engine_config,
@@ -297,13 +297,13 @@ class TestBacktestConfigParsing:
                 TestConfigStubs.exec_engine_config,
                 (),
                 {},
-                ("a6ca5c188b92707f81a9ba5d45700dcbc8aebe0443c1e7b13b10a86c045c6391",),
+                ("3c10dbf0e37728807d5b015505c1d978f1d6c1555318cdb040a2aa950a95f554",),
             ),
             (
                 TestConfigStubs.streaming_config,
                 ("catalog",),
                 {},
-                ("c287d8e433d931f014895daa4400171a67c30b8c61d94f51be60ad162bdef6cd",),
+                ("302b840b10cdd0cc2664ee5f3bb8623ada23d6a6c7ecb8f41117fddecc6bea9a",),
             ),
         ],
     )

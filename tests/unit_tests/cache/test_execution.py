@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -42,6 +42,7 @@ from nautilus_trader.model.identifiers import PositionId
 from nautilus_trader.model.identifiers import StrategyId
 from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.identifiers import Venue
+from nautilus_trader.model.identifiers import VenueOrderId
 from nautilus_trader.model.objects import Currency
 from nautilus_trader.model.objects import Money
 from nautilus_trader.model.objects import Price
@@ -903,7 +904,7 @@ class TestCache:
         order2.apply(TestEventStubs.order_submitted(order2))
         self.cache.update_order(order2)
 
-        order2.apply(TestEventStubs.order_accepted(order2))
+        order2.apply(TestEventStubs.order_accepted(order2, venue_order_id=VenueOrderId("2")))
         self.cache.update_order(order2)
         order2_filled = TestEventStubs.order_filled(
             order2,
@@ -981,7 +982,7 @@ class TestCache:
         order2.apply(TestEventStubs.order_submitted(order2))
         self.cache.update_order(order2)
 
-        order2.apply(TestEventStubs.order_accepted(order2))
+        order2.apply(TestEventStubs.order_accepted(order2, venue_order_id=VenueOrderId("2")))
         self.cache.update_order(order2)
         fill2 = TestEventStubs.order_filled(
             order2,
@@ -1063,7 +1064,7 @@ class TestCache:
         order2.apply(TestEventStubs.order_submitted(order2))
         self.cache.update_order(order2)
 
-        order2.apply(TestEventStubs.order_accepted(order2))
+        order2.apply(TestEventStubs.order_accepted(order2, venue_order_id=VenueOrderId("2")))
         self.cache.update_order(order2)
         fill2 = TestEventStubs.order_filled(
             order2,
@@ -1084,7 +1085,7 @@ class TestCache:
         order3.apply(TestEventStubs.order_submitted(order3))
         self.cache.update_order(order3)
 
-        order3.apply(TestEventStubs.order_accepted(order3))
+        order3.apply(TestEventStubs.order_accepted(order3, venue_order_id=VenueOrderId("3")))
         self.cache.update_order(order3)
         fill3 = TestEventStubs.order_filled(
             order3,
@@ -1192,7 +1193,7 @@ class TestCache:
         order2.apply(TestEventStubs.order_submitted(order2))
         self.cache.update_order(order2)
 
-        order2.apply(TestEventStubs.order_accepted(order2))
+        order2.apply(TestEventStubs.order_accepted(order2, venue_order_id=VenueOrderId("2")))
         self.cache.update_order(order2)
 
         # Act
@@ -1241,7 +1242,7 @@ class TestCache:
         order2.apply(TestEventStubs.order_submitted(order2))
         self.cache.update_order(order2)
 
-        order2.apply(TestEventStubs.order_accepted(order2))
+        order2.apply(TestEventStubs.order_accepted(order2, venue_order_id=VenueOrderId("2")))
         self.cache.update_order(order2)
 
         self.cache.update_order(order2)
@@ -1296,7 +1297,7 @@ class TestCache:
         order2.apply(TestEventStubs.order_submitted(order2))
         self.cache.update_order(order2)
 
-        order2.apply(TestEventStubs.order_accepted(order2))
+        order2.apply(TestEventStubs.order_accepted(order2, venue_order_id=VenueOrderId("2")))
         self.cache.update_order(order2)
 
         # Act
@@ -1316,7 +1317,7 @@ class TestExecutionCacheIntegrityCheck:
         )
         self.engine = BacktestEngine(config=config)
 
-        # Setup venue
+        # Set up venue
         self.engine.add_venue(
             venue=Venue("SIM"),
             oms_type=OmsType.HEDGING,
@@ -1328,7 +1329,7 @@ class TestExecutionCacheIntegrityCheck:
 
         self.usdjpy = TestInstrumentProvider.default_fx_ccy("USD/JPY")
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(self.usdjpy)
         provider = TestDataProvider()
         ticks = wrangler.process_bar_data(

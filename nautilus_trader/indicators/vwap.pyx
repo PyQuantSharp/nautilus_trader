@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -47,7 +47,11 @@ cdef class VolumeWeightedAveragePrice(Indicator):
         Condition.not_none(bar, "bar")
 
         self.update_raw(
-            bar.close.as_double(),
+            (
+                bar.close.as_double() +
+                bar.high.as_double() +
+                bar.low.as_double()
+            ) / 3.0,
             bar.volume.as_double(),
             pd.Timestamp(bar.ts_init, tz="UTC"),
         )

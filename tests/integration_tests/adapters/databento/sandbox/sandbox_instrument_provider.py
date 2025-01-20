@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -32,12 +32,12 @@ async def test_databento_instrument_provider():
         clock=clock,
     )
 
-    await provider.load_async(InstrumentId.from_str("ESH4.XCME"))
+    await provider.load_async(InstrumentId.from_str("ESH4.GLBX"))
 
     instrument_ids = [
         # InstrumentId.from_str("ESZ3.XCME"),
-        InstrumentId.from_str("ESH4.XCME"),
-        InstrumentId.from_str("ESM4.XCME"),
+        InstrumentId.from_str("ESH4.GLBX"),
+        InstrumentId.from_str("ESM4.GLBX"),
         # InstrumentId.from_str("AAPL.XNAS"),
     ]
     await provider.load_ids_async(instrument_ids)

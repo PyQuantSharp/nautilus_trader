@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -35,6 +35,12 @@ from nautilus_trader.trading.strategy import Strategy
 class SubscribeStrategyConfig(StrategyConfig, frozen=True):
     """
     Configuration for ``SubscribeStrategy`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+
     """
 
     instrument_id: InstrumentId
@@ -59,16 +65,15 @@ class SubscribeStrategy(Strategy):
 
     def __init__(self, config: SubscribeStrategyConfig) -> None:
         super().__init__(config)
-        self.instrument_id = self.config.instrument_id
         self.book: OrderBook | None = None
 
     def on_start(self) -> None:
         """
         Actions to be performed on strategy start.
         """
-        self.instrument = self.cache.instrument(self.instrument_id)
+        self.instrument = self.cache.instrument(self.config.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Could not find instrument for {self.instrument_id}")
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
             self.stop()
             return
 
@@ -78,25 +83,25 @@ class SubscribeStrategy(Strategy):
                 book_type=self.config.book_type,
             )
             if self.config.snapshots:
-                self.subscribe_order_book_snapshots(
-                    instrument_id=self.instrument_id,
+                self.subscribe_order_book_at_interval(
+                    instrument_id=self.config.instrument_id,
                     book_type=self.config.book_type,
                 )
             else:
                 self.subscribe_order_book_deltas(
-                    instrument_id=self.instrument_id,
+                    instrument_id=self.config.instrument_id,
                     book_type=self.config.book_type,
                 )
 
         if self.config.trade_ticks:
-            self.subscribe_trade_ticks(instrument_id=self.instrument_id)
+            self.subscribe_trade_ticks(instrument_id=self.config.instrument_id)
         if self.config.quote_ticks:
-            self.subscribe_quote_ticks(instrument_id=self.instrument_id)
+            self.subscribe_quote_ticks(instrument_id=self.config.instrument_id)
         if self.config.bars:
             bar_type: BarType = BarType(
-                instrument_id=self.instrument_id,
+                instrument_id=self.config.instrument_id,
                 bar_spec=BarSpecification(
-                    step=1,
+                    step=5,
                     aggregation=BarAggregation.SECOND,
                     price_type=PriceType.LAST,
                 ),
@@ -106,7 +111,7 @@ class SubscribeStrategy(Strategy):
 
     def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
         if not self.book:
-            self.log.error("No book being maintained.")
+            self.log.error("No book being maintained")
             return
 
         self.book.apply_deltas(deltas)

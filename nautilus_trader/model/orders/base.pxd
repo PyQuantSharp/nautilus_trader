@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -50,9 +50,9 @@ from nautilus_trader.model.objects cimport Price
 from nautilus_trader.model.objects cimport Quantity
 
 
-cdef set VALID_STOP_ORDER_TYPES
-cdef set VALID_LIMIT_ORDER_TYPES
-cdef set LOCAL_ACTIVE_ORDER_STATUS
+cdef set[OrderType] STOP_ORDER_TYPES
+cdef set[OrderType] LIMIT_ORDER_TYPES
+cdef set[OrderStatus] LOCAL_ACTIVE_ORDER_STATUS
 
 
 cdef class Order:
@@ -122,19 +122,20 @@ cdef class Order:
     """The execution algorithm parameters for the order.\n\n:returns: `dict[str, Any]` or ``None``"""
     cdef readonly ClientOrderId exec_spawn_id
     """The execution algorithm spawning client order ID.\n\n:returns: `ClientOrderId` or ``None``"""
-    cdef readonly str tags
-    """The order custom user tags.\n\n:returns: `str` or ``None``"""
+    cdef readonly list[str] tags
+    """The order custom user tags.\n\n:returns: `list[str]` or ``None``"""
     cdef readonly UUID4 init_id
     """The event ID of the `OrderInitialized` event.\n\n:returns: `UUID4`"""
     cdef readonly uint64_t ts_init
-    """The UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
     cdef readonly uint64_t ts_last
-    """The UNIX timestamp (nanoseconds) when the last event occurred.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the last event occurred.\n\n:returns: `uint64_t`"""
 
     cpdef str info(self)
     cpdef str status_string(self)
     cpdef str side_string(self)
     cpdef str type_string(self)
+    cpdef str tif_string(self)
     cpdef dict to_dict(self)
 
     cdef void set_triggered_price_c(self, Price triggered_price)

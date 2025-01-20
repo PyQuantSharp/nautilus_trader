@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,7 +15,7 @@
 
 import pytest
 
-from nautilus_trader.core.nautilus_pyo3 import convert_to_snake_case
+from nautilus_trader.core import nautilus_pyo3
 
 
 @pytest.mark.parametrize(
@@ -47,7 +47,7 @@ from nautilus_trader.core.nautilus_pyo3 import convert_to_snake_case
 )
 def test_convert_to_snake_case(input: str, expected: str) -> None:
     # Arrange, Act
-    result = convert_to_snake_case(input)
+    result = nautilus_pyo3.convert_to_snake_case(input)
 
     # Assert
     assert result == expected

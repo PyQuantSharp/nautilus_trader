@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -47,7 +47,7 @@ cdef class KlingerVolumeOscillator(Indicator):
     ):
         Condition.positive_int(fast_period, "fast_period")
         Condition.positive_int(slow_period, "slow_period")
-        Condition.true(slow_period > fast_period, "fast_period was >= slow_period")
+        Condition.is_true(slow_period > fast_period, "fast_period was >= slow_period")
         Condition.positive_int(signal_period, "signal_period")
         params = [
             fast_period,

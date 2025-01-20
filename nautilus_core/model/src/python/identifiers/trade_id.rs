@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,7 +17,6 @@ use std::{
     collections::hash_map::DefaultHasher,
     ffi::CString,
     hash::{Hash, Hasher},
-    str::FromStr,
 };
 
 use nautilus_core::python::to_pyvalue_err;
@@ -27,23 +26,24 @@ use pyo3::{
     types::{PyString, PyTuple},
 };
 
-use crate::identifiers::trade_id::TradeId;
+use crate::identifiers::trade_id::{TradeId, TRADE_ID_LEN};
 
 #[pymethods]
 impl TradeId {
     #[new]
     fn py_new(value: &str) -> PyResult<Self> {
-        Self::new(value).map_err(to_pyvalue_err)
+        Self::new_checked(value).map_err(to_pyvalue_err)
     }
 
-    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
-        let value: (&PyString,) = state.extract(py)?;
-        let value_str: String = value.0.extract()?;
+    fn __setstate__(&mut self, state: &Bound<'_, PyAny>) -> PyResult<()> {
+        let py_tuple: &Bound<'_, PyTuple> = state.downcast::<PyTuple>()?;
+        let binding = py_tuple.get_item(0)?;
+        let value_str = binding.downcast::<PyString>()?.extract::<&str>()?;
 
         // TODO: Extract this to single function
         let c_string = CString::new(value_str).expect("`CString` conversion failed");
         let bytes = c_string.as_bytes_with_nul();
-        let mut value = [0; 37];
+        let mut value = [0; TRADE_ID_LEN];
         value[..bytes.len()].copy_from_slice(bytes);
         self.value = value;
 
@@ -55,14 +55,14 @@ impl TradeId {
     }
 
     fn __reduce__(&self, py: Python) -> PyResult<PyObject> {
-        let safe_constructor = py.get_type::<Self>().getattr("_safe_constructor")?;
+        let safe_constructor = py.get_type_bound::<Self>().getattr("_safe_constructor")?;
         let state = self.__getstate__(py)?;
-        Ok((safe_constructor, PyTuple::empty(py), state).to_object(py))
+        Ok((safe_constructor, PyTuple::empty_bound(py), state).to_object(py))
     }
 
     #[staticmethod]
-    fn _safe_constructor() -> PyResult<Self> {
-        Ok(Self::from_str("NULL").unwrap()) // Safe default
+    fn _safe_constructor() -> Self {
+        Self::from("NULL")
     }
 
     fn __richcmp__(&self, other: PyObject, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
@@ -83,12 +83,12 @@ impl TradeId {
         h.finish() as isize
     }
 
-    fn __str__(&self) -> String {
-        self.to_string()
-    }
-
     fn __repr__(&self) -> String {
         format!("{}('{}')", stringify!(TradeId), self)
+    }
+
+    fn __str__(&self) -> String {
+        self.to_string()
     }
 
     #[getter]
@@ -99,7 +99,7 @@ impl TradeId {
     #[staticmethod]
     #[pyo3(name = "from_str")]
     fn py_from_str(value: &str) -> PyResult<Self> {
-        Self::new(value).map_err(to_pyvalue_err)
+        Self::new_checked(value).map_err(to_pyvalue_err)
     }
 }
 

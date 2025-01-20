@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,6 +20,7 @@ from nautilus_trader.adapters.binance.common.types import BinanceBar
 from nautilus_trader.adapters.binance.common.types import BinanceTicker
 
 from nautilus_trader.common.messages cimport ComponentStateChanged
+from nautilus_trader.common.messages cimport ShutdownSystem
 from nautilus_trader.common.messages cimport TradingStateChanged
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.execution.messages cimport CancelOrder
@@ -33,7 +34,6 @@ from nautilus_trader.model.data cimport OrderBookDelta
 from nautilus_trader.model.data cimport OrderBookDeltas
 from nautilus_trader.model.data cimport QuoteTick
 from nautilus_trader.model.data cimport TradeTick
-from nautilus_trader.model.data cimport VenueStatus
 from nautilus_trader.model.events.account cimport AccountState
 from nautilus_trader.model.events.order cimport OrderAccepted
 from nautilus_trader.model.events.order cimport OrderCanceled
@@ -56,12 +56,16 @@ from nautilus_trader.model.events.position cimport PositionClosed
 from nautilus_trader.model.events.position cimport PositionOpened
 from nautilus_trader.model.instruments.base cimport Instrument
 from nautilus_trader.model.instruments.betting cimport BettingInstrument
+from nautilus_trader.model.instruments.binary_option cimport BinaryOption
+from nautilus_trader.model.instruments.cfd cimport Cfd
 from nautilus_trader.model.instruments.crypto_future cimport CryptoFuture
 from nautilus_trader.model.instruments.crypto_perpetual cimport CryptoPerpetual
 from nautilus_trader.model.instruments.currency_pair cimport CurrencyPair
 from nautilus_trader.model.instruments.equity cimport Equity
 from nautilus_trader.model.instruments.futures_contract cimport FuturesContract
+from nautilus_trader.model.instruments.futures_spread cimport FuturesSpread
 from nautilus_trader.model.instruments.options_contract cimport OptionsContract
+from nautilus_trader.model.instruments.options_spread cimport OptionsSpread
 from nautilus_trader.model.instruments.synthetic cimport SyntheticInstrument
 
 
@@ -71,6 +75,7 @@ _OBJECT_TO_DICT_MAP: dict[str, Callable[[None], dict]] = {
     SubmitOrder.__name__: SubmitOrder.to_dict_c,
     SubmitOrderList.__name__: SubmitOrderList.to_dict_c,
     ModifyOrder.__name__: ModifyOrder.to_dict_c,
+    ShutdownSystem.__name__: ShutdownSystem.to_dict_c,
     ComponentStateChanged.__name__: ComponentStateChanged.to_dict_c,
     TradingStateChanged.__name__: TradingStateChanged.to_dict_c,
     AccountState.__name__: AccountState.to_dict_c,
@@ -96,9 +101,13 @@ _OBJECT_TO_DICT_MAP: dict[str, Callable[[None], dict]] = {
     Instrument.__name__: Instrument.base_to_dict_c,
     SyntheticInstrument.__name__: SyntheticInstrument.to_dict_c,
     BettingInstrument.__name__: BettingInstrument.to_dict_c,
+    BinaryOption.__name__: BinaryOption.to_dict_c,
     Equity.__name__: Equity.to_dict_c,
     FuturesContract.__name__: FuturesContract.to_dict_c,
+    FuturesSpread.__name__: FuturesSpread.to_dict_c,
     OptionsContract.__name__: OptionsContract.to_dict_c,
+    OptionsSpread.__name__: OptionsSpread.to_dict_c,
+    Cfd.__name__: Cfd.to_dict_c,
     CurrencyPair.__name__: CurrencyPair.to_dict_c,
     CryptoPerpetual.__name__: CryptoPerpetual.to_dict_c,
     CryptoFuture.__name__: CryptoFuture.to_dict_c,
@@ -108,7 +117,6 @@ _OBJECT_TO_DICT_MAP: dict[str, Callable[[None], dict]] = {
     QuoteTick.__name__: QuoteTick.to_dict_c,
     Bar.__name__: Bar.to_dict_c,
     InstrumentStatus.__name__: InstrumentStatus.to_dict_c,
-    VenueStatus.__name__: VenueStatus.to_dict_c,
     InstrumentClose.__name__: InstrumentClose.to_dict_c,
     BinanceBar.__name__: BinanceBar.to_dict,
     BinanceTicker.__name__: BinanceTicker.to_dict,
@@ -121,6 +129,7 @@ _OBJECT_FROM_DICT_MAP: dict[str, Callable[[dict], Any]] = {
     SubmitOrder.__name__: SubmitOrder.from_dict_c,
     SubmitOrderList.__name__: SubmitOrderList.from_dict_c,
     ModifyOrder.__name__: ModifyOrder.from_dict_c,
+    ShutdownSystem.__name__: ShutdownSystem.from_dict_c,
     ComponentStateChanged.__name__: ComponentStateChanged.from_dict_c,
     TradingStateChanged.__name__: TradingStateChanged.from_dict_c,
     AccountState.__name__: AccountState.from_dict_c,
@@ -146,9 +155,13 @@ _OBJECT_FROM_DICT_MAP: dict[str, Callable[[dict], Any]] = {
     Instrument.__name__: Instrument.base_from_dict_c,
     SyntheticInstrument.__name__: SyntheticInstrument.from_dict_c,
     BettingInstrument.__name__: BettingInstrument.from_dict_c,
+    BinaryOption.__name__: BinaryOption.from_dict_c,
     Equity.__name__: Equity.from_dict_c,
     FuturesContract.__name__: FuturesContract.from_dict_c,
+    FuturesSpread.__name__: FuturesSpread.from_dict_c,
     OptionsContract.__name__: OptionsContract.from_dict_c,
+    OptionsSpread.__name__: OptionsSpread.from_dict_c,
+    Cfd.__name__: Cfd.from_dict_c,
     CurrencyPair.__name__: CurrencyPair.from_dict_c,
     CryptoPerpetual.__name__: CryptoPerpetual.from_dict_c,
     CryptoFuture.__name__: CryptoFuture.from_dict_c,
@@ -158,7 +171,6 @@ _OBJECT_FROM_DICT_MAP: dict[str, Callable[[dict], Any]] = {
     QuoteTick.__name__: QuoteTick.from_dict_c,
     Bar.__name__: Bar.from_dict_c,
     InstrumentStatus.__name__: InstrumentStatus.from_dict_c,
-    VenueStatus.__name__: VenueStatus.from_dict_c,
     InstrumentClose.__name__: InstrumentClose.from_dict_c,
     BinanceBar.__name__: BinanceBar.from_dict,
     BinanceTicker.__name__: BinanceTicker.from_dict,
@@ -174,6 +186,7 @@ _EXTERNAL_PUBLISHABLE_TYPES = {
     SubmitOrderList,
     ModifyOrder,
     CancelOrder,
+    ShutdownSystem,
     ComponentStateChanged,
     TradingStateChanged,
     AccountState,
@@ -199,6 +212,7 @@ _EXTERNAL_PUBLISHABLE_TYPES = {
     Instrument,
     SyntheticInstrument,
     BettingInstrument,
+    BinaryOption,
     Equity,
     FuturesContract,
     OptionsContract,
@@ -211,20 +225,19 @@ _EXTERNAL_PUBLISHABLE_TYPES = {
     QuoteTick,
     Bar,
     InstrumentStatus,
-    VenueStatus,
     InstrumentClose,
     BinanceBar,
     BinanceTicker,
 }
 
 
-cpdef void register_serializable_object(
-    obj: type,
+cpdef void register_serializable_type(
+    cls: type,
     to_dict: Callable[[Any], dict[str, Any]],
     from_dict: Callable[[dict[str, Any]], Any],
 ):
     """
-    Register the given object with the global serialization object maps.
+    Register the given type with the global serialization type maps.
 
     The `type` will also be registered as an external publishable type and
     will be published externally on the message bus unless also added to
@@ -232,29 +245,29 @@ cpdef void register_serializable_object(
 
     Parameters
     ----------
-    obj : type
-        The object type to register.
+    cls : type
+        The type to register.
     to_dict : Callable[[Any], dict[str, Any]]
-        The delegate to instantiate a dict of primitive types from the object.
+        The delegate to instantiate a dict of primitive types from an object.
     from_dict : Callable[[dict[str, Any]], Any]
-        The delegate to instantiate the object from a dict of primitive types.
+        The delegate to instantiate an object from a dict of primitive types.
 
     Raises
     ------
     TypeError
         If `to_dict` or `from_dict` are not of type `Callable`.
     KeyError
-        If obj already registered with the global object maps.
+        If `type` already registered with the global type maps.
 
     """
     Condition.callable(to_dict, "to_dict")
     Condition.callable(from_dict, "from_dict")
-    Condition.not_in(obj.__name__, _OBJECT_TO_DICT_MAP, "obj.__name__", "_OBJECT_TO_DICT_MAP")
-    Condition.not_in(obj.__name__, _OBJECT_FROM_DICT_MAP, "obj.__name__", "_OBJECT_FROM_DICT_MAP")
+    Condition.not_in(cls.__name__, _OBJECT_TO_DICT_MAP, "cls.__name__", "_OBJECT_TO_DICT_MAP")
+    Condition.not_in(cls.__name__, _OBJECT_FROM_DICT_MAP, "cls.__name__", "_OBJECT_FROM_DICT_MAP")
 
-    _OBJECT_TO_DICT_MAP[obj.__name__] = to_dict
-    _OBJECT_FROM_DICT_MAP[obj.__name__] = from_dict
-    _EXTERNAL_PUBLISHABLE_TYPES.add(obj)
+    _OBJECT_TO_DICT_MAP[cls.__name__] = to_dict
+    _OBJECT_FROM_DICT_MAP[cls.__name__] = from_dict
+    _EXTERNAL_PUBLISHABLE_TYPES.add(cls)
 
 
 cdef class Serializer:

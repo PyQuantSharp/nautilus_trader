@@ -1,4 +1,4 @@
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -16,24 +16,21 @@ use rstest::fixture;
 
 use crate::{
     identifiers::stubs::instrument_id_btc_usdt,
-    types::{
-        balance::{AccountBalance, MarginBalance},
-        money::Money,
-    },
+    types::{AccountBalance, MarginBalance, Money},
 };
 
 #[fixture]
-pub fn account_balance_test() -> AccountBalance {
+pub fn stub_account_balance() -> AccountBalance {
     let total = Money::from("1525000 USD");
     let locked = Money::from("25000 USD");
     let free = Money::from("1500000 USD");
-    AccountBalance::new(total, locked, free).unwrap()
+    AccountBalance::new(total, locked, free)
 }
 
 #[fixture]
-pub fn margin_balance_test() -> MarginBalance {
+pub fn stub_margin_balance() -> MarginBalance {
     let initial = Money::from("5000 USD");
     let maintenance = Money::from("20000 USD");
     let instrument = instrument_id_btc_usdt();
-    MarginBalance::new(initial, maintenance, instrument).unwrap()
+    MarginBalance::new(initial, maintenance, instrument)
 }

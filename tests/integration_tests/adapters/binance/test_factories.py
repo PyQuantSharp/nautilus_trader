@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,12 +18,12 @@ import asyncio
 import pytest
 
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
+from nautilus_trader.adapters.binance.common.urls import get_http_base_url
+from nautilus_trader.adapters.binance.common.urls import get_ws_base_url
 from nautilus_trader.adapters.binance.config import BinanceDataClientConfig
 from nautilus_trader.adapters.binance.config import BinanceExecClientConfig
 from nautilus_trader.adapters.binance.factories import BinanceLiveDataClientFactory
 from nautilus_trader.adapters.binance.factories import BinanceLiveExecClientFactory
-from nautilus_trader.adapters.binance.factories import _get_http_base_url
-from nautilus_trader.adapters.binance.factories import _get_ws_base_url
 from nautilus_trader.adapters.binance.futures.data import BinanceFuturesDataClient
 from nautilus_trader.adapters.binance.futures.execution import BinanceFuturesExecutionClient
 from nautilus_trader.adapters.binance.spot.data import BinanceSpotDataClient
@@ -146,7 +146,7 @@ class TestBinanceFactories:
     )
     def test_get_http_base_url(self, account_type, is_testnet, is_us, expected):
         # Arrange, Act
-        base_url = _get_http_base_url(account_type, is_testnet, is_us)
+        base_url = get_http_base_url(account_type, is_testnet, is_us)
 
         # Assert
         assert base_url == expected
@@ -242,7 +242,7 @@ class TestBinanceFactories:
     )
     def test_get_ws_base_url(self, account_type, is_testnet, is_us, expected):
         # Arrange, Act
-        base_url = _get_ws_base_url(account_type, is_testnet, is_us)
+        base_url = get_ws_base_url(account_type, is_testnet, is_us)
 
         # Assert
         assert base_url == expected
@@ -252,7 +252,7 @@ class TestBinanceFactories:
         data_client = BinanceLiveDataClientFactory.create(
             loop=self.loop,
             name="BINANCE",
-            config=BinanceDataClientConfig(  # (S106 Possible hardcoded password)
+            config=BinanceDataClientConfig(  # (S106 Possible hard-coded password)
                 api_key="SOME_BINANCE_API_KEY",  # Do not remove or will fail in CI
                 api_secret="SOME_BINANCE_API_SECRET",  # Do not remove or will fail in CI
                 account_type=BinanceAccountType.SPOT,
@@ -269,7 +269,7 @@ class TestBinanceFactories:
         data_client = BinanceLiveDataClientFactory.create(
             loop=self.loop,
             name="BINANCE",
-            config=BinanceDataClientConfig(  # (S106 Possible hardcoded password)
+            config=BinanceDataClientConfig(  # (S106 Possible hard-coded password)
                 api_key="SOME_BINANCE_API_KEY",  # Do not remove or will fail in CI
                 api_secret="SOME_BINANCE_API_SECRET",  # Do not remove or will fail in CI
                 account_type=BinanceAccountType.USDT_FUTURE,
@@ -286,7 +286,7 @@ class TestBinanceFactories:
         exec_client = BinanceLiveExecClientFactory.create(
             loop=self.loop,
             name="BINANCE",
-            config=BinanceExecClientConfig(  # (S106 Possible hardcoded password)
+            config=BinanceExecClientConfig(  # (S106 Possible hard-coded password)
                 api_key="SOME_BINANCE_API_KEY",  # Do not remove or will fail in CI
                 api_secret="SOME_BINANCE_API_SECRET",  # Do not remove or will fail in CI
                 account_type=BinanceAccountType.SPOT,
@@ -303,7 +303,7 @@ class TestBinanceFactories:
         exec_client = BinanceLiveExecClientFactory.create(
             loop=self.loop,
             name="BINANCE",
-            config=BinanceExecClientConfig(  # (S106 Possible hardcoded password)
+            config=BinanceExecClientConfig(  # (S106 Possible hard-coded password)
                 api_key="SOME_BINANCE_API_KEY",
                 api_secret="SOME_BINANCE_API_SECRET",
                 account_type=BinanceAccountType.USDT_FUTURE,

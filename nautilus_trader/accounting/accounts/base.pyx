@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,6 +12,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
+
+from decimal import Decimal
 
 from nautilus_trader.accounting.error import AccountBalanceNegative
 
@@ -374,7 +376,7 @@ cdef class Account:
 
         if self.base_currency:
             # Single-currency account
-            Condition.true(len(event.balances) == 1, "single-currency account has multiple currency update")
+            Condition.is_true(len(event.balances) == 1, "single-currency account has multiple currency update")
             Condition.equal(event.balances[0].currency, self.base_currency, "event.balances[0].currency", "self.base_currency")
 
         self._events.append(event)
@@ -437,8 +439,8 @@ cdef class Account:
             return  # Nothing to update
 
         cdef Currency currency = commission.currency
-        cdef double total_commissions = self._commissions.get(currency, 0.0)
-        self._commissions[currency] = Money(total_commissions + commission.as_f64_c(), currency)
+        total_commissions = self._commissions.get(currency, Decimal(0))
+        self._commissions[currency] = Money(total_commissions + commission.as_decimal(), currency)
 
 # -- CALCULATIONS ---------------------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,75 +13,104 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid strategy ID.
+
 use std::fmt::{Debug, Display, Formatter};
 
-use anyhow::Result;
-use nautilus_core::correctness::{check_string_contains, check_valid_string};
+use nautilus_core::correctness::{check_string_contains, check_valid_string, FAILED};
 use ustr::Ustr;
 
+/// The identifier for all 'external' strategy IDs (not local to this system instance).
+const EXTERNAL_STRATEGY_ID: &str = "EXTERNAL";
+
 /// Represents a valid strategy ID.
-///
-/// Must be correctly formatted with two valid strings either side of a hyphen.
-/// It is expected a strategy ID is the class name of the strategy,
-/// with an order ID tag number separated by a hyphen.
-///
-/// Example: "EMACross-001".
-///
-/// The reason for the numerical component of the ID is so that order and position IDs
-/// do not collide with those from another strategy within the node instance.
 #[repr(C)]
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct StrategyId {
-    /// The strategy ID value.
-    pub value: Ustr,
-}
+pub struct StrategyId(Ustr);
 
 impl StrategyId {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`StrategyId` value")?;
-        if s != "EXTERNAL" {
-            check_string_contains(s, "-", "`StrategyId` value")?;
+    /// Creates a new [`StrategyId`] instance.
+    ///
+    /// Must be correctly formatted with two valid strings either side of a hyphen.
+    /// It is expected a strategy ID is the class name of the strategy,
+    /// with an order ID tag number separated by a hyphen.
+    ///
+    /// Example: "EMACross-001".
+    ///
+    /// The reason for the numerical component of the ID is so that order and position IDs
+    /// do not collide with those from another strategy within the node instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string, or does not contain a hyphen '-' separator.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        if value != EXTERNAL_STRATEGY_ID {
+            check_string_contains(value, "-", stringify!(value))?;
         }
+        Ok(Self(Ustr::from(value)))
+    }
 
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`StrategyId`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    #[must_use]
+    pub fn external() -> Self {
+        // SAFETY:: Constant value is safe
+        Self::new(EXTERNAL_STRATEGY_ID)
+    }
+
+    #[must_use]
+    pub fn is_external(&self) -> bool {
+        self.0 == EXTERNAL_STRATEGY_ID
     }
 
     #[must_use]
     pub fn get_tag(&self) -> &str {
         // SAFETY: Unwrap safe as value previously validated
-        self.value.split('-').last().unwrap()
-    }
-}
-
-impl Default for StrategyId {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("S-001"),
-        }
+        self.0.split('-').last().unwrap()
     }
 }
 
 impl Debug for StrategyId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for StrategyId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl From<&str> for StrategyId {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+        write!(f, "{}", self.0)
     }
 }
 
@@ -97,8 +126,18 @@ mod tests {
 
     #[rstest]
     fn test_string_reprs(strategy_id_ema_cross: StrategyId) {
-        assert_eq!(strategy_id_ema_cross.to_string(), "EMACross-001");
+        assert_eq!(strategy_id_ema_cross.as_str(), "EMACross-001");
         assert_eq!(format!("{strategy_id_ema_cross}"), "EMACross-001");
+    }
+
+    #[rstest]
+    fn test_get_external() {
+        assert_eq!(StrategyId::external().as_str(), "EXTERNAL");
+    }
+
+    #[rstest]
+    fn test_is_external() {
+        assert!(StrategyId::external().is_external());
     }
 
     #[rstest]

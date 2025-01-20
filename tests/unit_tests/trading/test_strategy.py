@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -26,6 +26,7 @@ from nautilus_trader.backtest.exchange import SimulatedExchange
 from nautilus_trader.backtest.execution_client import BacktestExecClient
 from nautilus_trader.backtest.models import FillModel
 from nautilus_trader.backtest.models import LatencyModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
 from nautilus_trader.common.enums import ComponentState
@@ -50,6 +51,7 @@ from nautilus_trader.model.enums import TriggerType
 from nautilus_trader.model.identifiers import ClientId
 from nautilus_trader.model.identifiers import StrategyId
 from nautilus_trader.model.identifiers import Venue
+from nautilus_trader.model.identifiers import VenueOrderId
 from nautilus_trader.model.objects import Money
 from nautilus_trader.model.objects import Price
 from nautilus_trader.model.objects import Quantity
@@ -122,14 +124,15 @@ class TestStrategy:
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
-            instruments=[_USDJPY_SIM],
             modules=[],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             clock=self.clock,
             latency_model=LatencyModel(0),
             support_contingent_orders=False,
             use_reduce_only=False,
         )
+        self.exchange.add_instrument(_USDJPY_SIM)
 
         self.data_client = BacktestMarketDataClient(
             client_id=ClientId("SIM"),
@@ -185,22 +188,25 @@ class TestStrategy:
         assert result.strategy_path == "nautilus_trader.trading.strategy:Strategy"
         assert result.config_path == "nautilus_trader.trading.config:StrategyConfig"
         assert result.config == {
-            "oms_type": None,
-            "order_id_tag": None,
             "strategy_id": None,
+            "order_id_tag": None,
+            "oms_type": None,
             "external_order_claims": None,
             "manage_contingent_orders": False,
             "manage_gtd_expiry": False,
+            "log_events": True,
+            "log_commands": True,
         }
 
     def test_strategy_to_importable_config(self) -> None:
         # Arrange
         config = StrategyConfig(
-            order_id_tag="001",
             strategy_id="ALPHA-01",
+            order_id_tag="001",
             external_order_claims=["ETHUSDT-PERP.DYDX"],
             manage_contingent_orders=True,
             manage_gtd_expiry=True,
+            log_events=False,
         )
 
         strategy = Strategy(config=config)
@@ -219,6 +225,8 @@ class TestStrategy:
             "external_order_claims": ["ETHUSDT-PERP.DYDX"],
             "manage_contingent_orders": True,
             "manage_gtd_expiry": True,
+            "log_events": False,
+            "log_commands": True,
         }
 
     def test_strategy_equality(self) -> None:
@@ -817,8 +825,8 @@ class TestStrategy:
         # Assert
         assert strategy.clock.timer_count == 2
         assert strategy.clock.timer_names == [
-            "GTD-EXPIRY:O-19700101-0000-000-None-1",
-            "GTD-EXPIRY:O-19700101-0000-000-None-2",
+            "GTD-EXPIRY:O-19700101-000000-000-None-1",
+            "GTD-EXPIRY:O-19700101-000000-000-None-2",
         ]
 
     def test_start_when_manage_gtd_and_order_past_expiration_then_cancels(self) -> None:
@@ -945,7 +953,7 @@ class TestStrategy:
 
         # Assert
         assert strategy.clock.timer_count == 1
-        assert strategy.clock.timer_names == ["GTD-EXPIRY:O-19700101-0000-000-None-1"]
+        assert strategy.clock.timer_names == ["GTD-EXPIRY:O-19700101-000000-000-None-1"]
 
     def test_submit_order_with_managed_gtd_when_immediately_filled_cancels_timer(self) -> None:
         # Arrange
@@ -1158,7 +1166,7 @@ class TestStrategy:
 
         # Assert
         assert strategy.clock.timer_count == 1
-        assert strategy.clock.timer_names == ["GTD-EXPIRY:O-19700101-0000-000-None-1"]
+        assert strategy.clock.timer_names == ["GTD-EXPIRY:O-19700101-000000-000-None-1"]
 
     def test_submit_order_list_with_managed_gtd_when_immediately_filled_cancels_timer(self) -> None:
         # Arrange
@@ -1599,7 +1607,7 @@ class TestStrategy:
         position = self.cache.positions_open()[0]
 
         # Act
-        strategy.close_position(position, tags="EXIT")
+        strategy.close_position(position, tags=["EXIT"])
         self.exchange.process(0)
 
         # Assert
@@ -1608,7 +1616,7 @@ class TestStrategy:
         orders = self.cache.orders(instrument_id=_USDJPY_SIM.id)
         for order in orders:
             if order.side == OrderSide.SELL:
-                assert order.tags == "EXIT"
+                assert order.tags == ["EXIT"]
 
     def test_close_all_positions(self) -> None:
         # Arrange
@@ -1640,7 +1648,7 @@ class TestStrategy:
         self.exchange.process(0)
 
         # Act
-        strategy.close_all_positions(_USDJPY_SIM.id, tags="EXIT")
+        strategy.close_all_positions(_USDJPY_SIM.id, tags=["EXIT"])
         self.exchange.process(0)
 
         # Assert
@@ -1650,7 +1658,7 @@ class TestStrategy:
         orders = self.cache.orders(instrument_id=_USDJPY_SIM.id)
         for order in orders:
             if order.side == OrderSide.SELL:
-                assert order.tags == "EXIT"
+                assert order.tags == ["EXIT"]
 
     @pytest.mark.parametrize(
         ("contingency_type"),
@@ -1659,7 +1667,7 @@ class TestStrategy:
             ContingencyType.OUO,
         ],
     )
-    def test_managed_contingenies_when_canceled_entry_then_cancels_oto_orders(
+    def test_managed_contingencies_when_canceled_entry_then_cancels_oto_orders(
         self,
         contingency_type: ContingencyType,
     ) -> None:
@@ -1708,7 +1716,7 @@ class TestStrategy:
             ContingencyType.OUO,
         ],
     )
-    def test_managed_contingenies_when_canceled_bracket_then_cancels_contingent_order(
+    def test_managed_contingencies_when_canceled_bracket_then_cancels_contingent_order(
         self,
         contingency_type: ContingencyType,
     ) -> None:
@@ -1749,7 +1757,7 @@ class TestStrategy:
         assert bracket.orders[1].status == OrderStatus.CANCELED
         assert bracket.orders[2].status == OrderStatus.PENDING_CANCEL
 
-    def test_managed_contingenies_when_modify_bracket_then_modifies_ouo_order(
+    def test_managed_contingencies_when_modify_bracket_then_modifies_ouo_order(
         self,
     ) -> None:
         # Arrange
@@ -1798,7 +1806,7 @@ class TestStrategy:
             ContingencyType.OUO,
         ],
     )
-    def test_managed_contingenies_when_filled_sl_then_cancels_contingent_order(
+    def test_managed_contingencies_when_filled_sl_then_cancels_contingent_order(
         self,
         contingency_type: ContingencyType,
     ) -> None:
@@ -1836,7 +1844,9 @@ class TestStrategy:
         strategy.submit_order_list(bracket)
 
         self.exec_engine.process(TestEventStubs.order_filled(entry_order, _USDJPY_SIM))
-        self.exec_engine.process(TestEventStubs.order_filled(sl_order, _USDJPY_SIM))
+        self.exec_engine.process(
+            TestEventStubs.order_filled(sl_order, _USDJPY_SIM, venue_order_id=VenueOrderId("2")),
+        )
         self.exchange.process(0)
 
         # Assert
@@ -1851,7 +1861,7 @@ class TestStrategy:
             ContingencyType.OUO,
         ],
     )
-    def test_managed_contingenies_when_filled_tp_then_cancels_contingent_order(
+    def test_managed_contingencies_when_filled_tp_then_cancels_contingent_order(
         self,
         contingency_type: ContingencyType,
     ) -> None:
@@ -1889,7 +1899,9 @@ class TestStrategy:
         strategy.submit_order_list(bracket)
 
         self.exec_engine.process(TestEventStubs.order_filled(entry_order, _USDJPY_SIM))
-        self.exec_engine.process(TestEventStubs.order_filled(tp_order, _USDJPY_SIM))
+        self.exec_engine.process(
+            TestEventStubs.order_filled(tp_order, _USDJPY_SIM, venue_order_id=VenueOrderId("2")),
+        )
         self.exchange.process(0)
 
         # Assert

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -68,7 +68,7 @@ class LiveExecEngineConfig(ExecEngineConfig, frozen=True):
     Configuration for ``LiveExecEngine`` instances.
 
     The purpose of the in-flight order check is for live reconciliation, events
-    emitted from the exchange may have been lost at some point - leaving an order
+    emitted from the venue may have been lost at some point - leaving an order
     in an intermediate state, the check can recover these events via status reports.
 
     Parameters
@@ -81,9 +81,12 @@ class LiveExecEngineConfig(ExecEngineConfig, frozen=True):
     filter_unclaimed_external_orders : bool, default False
         If unclaimed order events with an EXTERNAL strategy ID should be filtered/dropped.
     filter_position_reports : bool, default False
-        If `PositionStatusReport`s are filtered from reconciliation.
+        If position status reports are filtered from reconciliation.
         This may be applicable when other nodes are trading the same instrument(s), on the same
         account - which could cause conflicts in position status.
+    generate_missing_orders : bool, default True
+        If MARKET order events will be generated during reconciliation to align discrepancies
+        between internal and external positions.
     inflight_check_interval_ms : NonNegativeInt, default 2_000
         The interval (milliseconds) between checking whether in-flight orders
         have exceeded their time-in-flight threshold.
@@ -93,6 +96,13 @@ class LiveExecEngineConfig(ExecEngineConfig, frozen=True):
         is checked with the venue.
         As a rule of thumb, you shouldn't consider reducing this setting unless you
         are colocated with the venue (to avoid the potential for race conditions).
+    inflight_check_retries : NonNegativeInt, default 5
+        The number of retry attempts the engine will make to verify the status of an
+        in-flight order with the venue, should the initial attempt fail.
+    open_check_interval_secs : PositiveFloat, optional
+        The interval (seconds) between checks to confirm if Nautilus open orders remain open on the venue.
+        A recommended setting is between 5-10 seconds, consider API rate limits and the additional request
+        weights imposed by the necessary order status requests.
     qsize : PositiveInt, default 100_000
         The queue size for the engines internal queue buffers.
 
@@ -102,8 +112,11 @@ class LiveExecEngineConfig(ExecEngineConfig, frozen=True):
     reconciliation_lookback_mins: NonNegativeInt | None = None
     filter_unclaimed_external_orders: bool = False
     filter_position_reports: bool = False
+    generate_missing_orders: bool = True
     inflight_check_interval_ms: NonNegativeInt = 2_000
     inflight_check_threshold_ms: NonNegativeInt = 5_000
+    inflight_check_retries: NonNegativeInt = 5
+    open_check_interval_secs: PositiveFloat | None = None
     qsize: PositiveInt = 100_000
 
 
@@ -207,8 +220,6 @@ class TradingNodeConfig(NautilusKernelConfig, frozen=True):
         The data client configurations.
     exec_clients : dict[str, ImportableConfig | LiveExecClientConfig], optional
         The execution client configurations.
-    heartbeat_interval : PositiveFloat, optional
-        The heartbeat interval (seconds) to use for trading node health.
 
     """
 
@@ -219,4 +230,3 @@ class TradingNodeConfig(NautilusKernelConfig, frozen=True):
     exec_engine: LiveExecEngineConfig = LiveExecEngineConfig()
     data_clients: dict[str, LiveDataClientConfig] = {}
     exec_clients: dict[str, LiveExecClientConfig] = {}
-    heartbeat_interval: PositiveFloat | None = None

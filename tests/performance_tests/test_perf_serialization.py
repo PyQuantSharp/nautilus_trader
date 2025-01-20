@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -59,10 +59,4 @@ class TestSerializationPerformance:
         self.serializer = MsgSpecSerializer(encoding=msgspec.msgpack)
 
     def test_serialize_submit_order(self, benchmark):
-        benchmark.pedantic(
-            target=self.serializer.serialize,
-            args=(self.command,),
-            iterations=10_000,
-            rounds=1,
-        )
-        # ~0.0ms / ~4.1μs / 4105ns minimum of 10,000 runs @ 1 iteration each run.
+        benchmark(self.serializer.serialize, self.command)

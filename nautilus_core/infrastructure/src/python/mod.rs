@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,12 +13,23 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Python bindings from `pyo3`.
+
+#[cfg(feature = "redis")]
+pub mod redis;
+
+#[cfg(feature = "postgres")]
+pub mod sql;
+
 use pyo3::{prelude::*, pymodule};
 
-pub mod cache;
-
 #[pymodule]
-pub fn infrastructure(_: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_class::<crate::redis::RedisCacheDatabase>()?;
+pub fn infrastructure(_: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    #[cfg(feature = "redis")]
+    m.add_class::<crate::redis::cache::RedisCacheDatabase>()?;
+    #[cfg(feature = "redis")]
+    m.add_class::<crate::redis::msgbus::RedisMessageBusDatabase>()?;
+    #[cfg(feature = "postgres")]
+    m.add_class::<crate::sql::cache::PostgresCacheDatabase>()?;
     Ok(())
 }

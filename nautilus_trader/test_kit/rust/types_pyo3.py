@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,30 +22,6 @@ from nautilus_trader.test_kit.rust.identifiers_pyo3 import TestIdProviderPyo3
 
 
 class TestTypesProviderPyo3:
-    @staticmethod
-    def currency_btc() -> Currency:
-        return Currency.from_str("BTC")
-
-    @staticmethod
-    def currency_usdt() -> Currency:
-        return Currency.from_str("USDT")
-
-    @staticmethod
-    def currency_usd() -> Currency:
-        return Currency.from_str("USD")
-
-    @staticmethod
-    def currency_aud() -> Currency:
-        return Currency.from_str("AUD")
-
-    @staticmethod
-    def currency_gbp() -> Currency:
-        return Currency.from_str("GBP")
-
-    @staticmethod
-    def currency_eth() -> Currency:
-        return Currency.from_str("ETH")
-
     @staticmethod
     def account_balance(
         total: Money = Money.from_str("1525000 USD"),

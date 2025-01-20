@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -64,7 +64,8 @@ async def test_process_account_id(ib_client):
     ]
     with patch("ibapi.comm.read_msg", side_effect=[(None, msg, b"") for msg in test_messages]):
         # Act
-        ib_client._start_client_tasks_and_tws_api()
+        ib_client._start_tws_incoming_msg_reader()
+        ib_client._start_internal_msg_queue_processor()
 
         # Assert
         await eventually(lambda: "DU1234567" in ib_client.accounts())

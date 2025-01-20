@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -128,7 +128,7 @@ cdef class ExecAlgorithm(Actor):
         Quantity quantity,
         TimeInForce time_in_force=*,
         bint reduce_only=*,
-        str tags=*,
+        list[str] tags=*,
         bint reduce_primary=*,
     )
 
@@ -143,7 +143,7 @@ cdef class ExecAlgorithm(Actor):
         bint reduce_only=*,
         Quantity display_qty=*,
         TriggerType emulation_trigger=*,
-        str tags=*,
+        list[str] tags=*,
         bint reduce_primary=*,
     )
 
@@ -156,7 +156,7 @@ cdef class ExecAlgorithm(Actor):
         bint reduce_only=*,
         Quantity display_qty=*,
         TriggerType emulation_trigger=*,
-        str tags=*,
+        list[str] tags=*,
         bint reduce_primary=*,
     )
 

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -61,14 +61,14 @@ cdef class TrailingStopCalculator:
             Price temp_price
         if (
             order.trigger_type == TriggerType.DEFAULT
-            or order.trigger_type == TriggerType.LAST_TRADE
+            or order.trigger_type == TriggerType.LAST_PRICE
             or order.trigger_type == TriggerType.MARK_PRICE
         ):
             if last is None:
                 raise RuntimeError(  # pragma: no cover (design-time error)
                     f"cannot process trailing stop, "
                     f"no LAST price for {order.instrument_id} "
-                    f"(add trade ticks or use bars)",
+                    f"(add trades or use bars)",
                 )
             if order.side == OrderSide.BUY:
                 temp_trigger_price = TrailingStopCalculator.calculate_with_last(
@@ -115,13 +115,13 @@ cdef class TrailingStopCalculator:
                 raise RuntimeError(  # pragma: no cover (design-time error)
                     f"cannot process trailing stop, "
                     f"no BID price for {order.instrument_id} "
-                    f"(add quote ticks or use bars)",
+                    f"(add quotes or use bars)",
                 )
             if ask is None:
                 raise RuntimeError(  # pragma: no cover (design-time error)
                     f"cannot process trailing stop, "
                     f"no ASK price for {order.instrument_id} "
-                    f"(add quote ticks or use bars)",
+                    f"(add quotes or use bars)",
                 )
 
             if order.side == OrderSide.BUY:
@@ -173,19 +173,19 @@ cdef class TrailingStopCalculator:
                 raise RuntimeError(  # pragma: no cover (design-time error)
                     f"cannot process trailing stop, "
                     f"no LAST price for {order.instrument_id} "
-                    f"(add trade ticks or use bars)",
+                    f"(add trades or use bars)",
                 )
             if bid is None:
                 raise RuntimeError(  # pragma: no cover (design-time error)
                     f"cannot process trailing stop, "
                     f"no BID price for {order.instrument_id} "
-                    f"(add quote ticks or use bars)",
+                    f"(add quotes or use bars)",
                 )
             if ask is None:
                 raise RuntimeError(  # pragma: no cover (design-time error)
                     f"cannot process trailing stop, "
                     f"no ASK price for {order.instrument_id} "
-                    f"(add quote ticks or use bars)",
+                    f"(add quotes or use bars)",
                 )
 
             if order.side == OrderSide.BUY:

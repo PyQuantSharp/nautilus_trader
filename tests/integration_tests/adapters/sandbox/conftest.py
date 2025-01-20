@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,8 +13,10 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+
 import pytest
 
+from nautilus_trader.adapters.sandbox.config import SandboxExecutionClientConfig
 from nautilus_trader.adapters.sandbox.execution import SandboxExecutionClient
 from nautilus_trader.model.events import AccountState
 from nautilus_trader.model.identifiers import AccountId
@@ -38,16 +40,21 @@ def exec_client(
     clock,
     venue,
 ):
-    SandboxExecutionClient.INSTRUMENTS = [instrument]
+    cache.add_instrument(instrument)  # <-- This might be redundant now
+
+    config = SandboxExecutionClientConfig(
+        venue=venue.value,
+        starting_balances=["100_000 USD"],
+        base_currency="USD",
+        account_type="CASH",
+    )
     return SandboxExecutionClient(
         loop=event_loop,
         portfolio=portfolio,
         msgbus=msgbus,
         cache=cache,
         clock=clock,
-        venue=venue.value,
-        currency="USD",
-        balance=100_000,
+        config=config,
     )
 
 

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Provides macros for generating identifier functionality.
+
 macro_rules! impl_serialization_for_identifier {
     ($ty:ty) => {
         impl Serialize for $ty {
@@ -20,7 +22,7 @@ macro_rules! impl_serialization_for_identifier {
             where
                 S: Serializer,
             {
-                self.value.serialize(serializer)
+                self.inner().serialize(serializer)
             }
         }
 
@@ -30,7 +32,7 @@ macro_rules! impl_serialization_for_identifier {
                 D: Deserializer<'de>,
             {
                 let value_str: &str = Deserialize::deserialize(deserializer)?;
-                let value: $ty = FromStr::from_str(value_str).map_err(serde::de::Error::custom)?;
+                let value: $ty = value_str.into();
                 Ok(value)
             }
         }
@@ -39,11 +41,25 @@ macro_rules! impl_serialization_for_identifier {
 
 macro_rules! impl_from_str_for_identifier {
     ($ty:ty) => {
-        impl FromStr for $ty {
-            type Err = String;
+        impl From<&str> for $ty {
+            fn from(value: &str) -> Self {
+                Self::new(value)
+            }
+        }
 
-            fn from_str(input: &str) -> Result<Self, Self::Err> {
-                Self::new(input).map_err(|e| e.to_string())
+        impl From<String> for $ty {
+            fn from(value: String) -> Self {
+                Self::new(value)
+            }
+        }
+    };
+}
+
+macro_rules! impl_as_ref_for_identifier {
+    ($ty:ty) => {
+        impl AsRef<str> for $ty {
+            fn as_ref(&self) -> &str {
+                self.as_str()
             }
         }
     };

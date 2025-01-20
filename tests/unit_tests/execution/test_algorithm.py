@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,6 +21,7 @@ import pytest
 from nautilus_trader.backtest.exchange import SimulatedExchange
 from nautilus_trader.backtest.execution_client import BacktestExecClient
 from nautilus_trader.backtest.models import FillModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
@@ -129,14 +130,15 @@ class TestExecAlgorithm:
             starting_balances=[Money(200, ETH), Money(1_000_000, USDT)],
             default_leverage=Decimal(10),
             leverages={},
-            instruments=[ETHUSDT_PERP_BINANCE],
             modules=[],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
         )
+        self.exchange.add_instrument(ETHUSDT_PERP_BINANCE)
 
         self.exec_client = BacktestExecClient(
             exchange=self.exchange,
@@ -198,7 +200,11 @@ class TestExecAlgorithm:
         assert config.dict() == {
             "exec_algorithm_path": "nautilus_trader.examples.algorithms.twap:TWAPExecAlgorithm",
             "config_path": "nautilus_trader.examples.algorithms.twap:TWAPExecAlgorithmConfig",
-            "config": {"exec_algorithm_id": ExecAlgorithmId("TWAP")},
+            "config": {
+                "exec_algorithm_id": ExecAlgorithmId("TWAP"),
+                "log_events": True,
+                "log_commands": True,
+            },
         }
 
     def test_exec_algorithm_spawn_market_order_with_quantity_too_high(self) -> None:
@@ -232,7 +238,7 @@ class TestExecAlgorithm:
                 quantity=ETHUSDT_PERP_BINANCE.make_qty(Decimal("2")),  # <-- Greater than primary
                 time_in_force=TimeInForce.FOK,
                 reduce_only=True,
-                tags="EXIT",
+                tags=["EXIT"],
             )
 
     def test_exec_algorithm_spawn_market_order(self) -> None:
@@ -266,7 +272,7 @@ class TestExecAlgorithm:
             quantity=ETHUSDT_PERP_BINANCE.make_qty(spawned_qty),
             time_in_force=TimeInForce.FOK,
             reduce_only=True,
-            tags="EXIT",
+            tags=["EXIT"],
         )
 
         # Assert
@@ -278,7 +284,7 @@ class TestExecAlgorithm:
         assert spawned_order.quantity == spawned_qty
         assert spawned_order.time_in_force == TimeInForce.FOK
         assert spawned_order.is_reduce_only
-        assert spawned_order.tags == "EXIT"
+        assert spawned_order.tags == ["EXIT"]
 
     def test_exec_algorithm_spawn_limit_order(self) -> None:
         """
@@ -313,7 +319,7 @@ class TestExecAlgorithm:
             price=ETHUSDT_PERP_BINANCE.make_price(Decimal("5000.25")),
             time_in_force=TimeInForce.DAY,
             reduce_only=False,
-            tags="ENTRY",
+            tags=["ENTRY"],
         )
 
         # Assert
@@ -325,7 +331,7 @@ class TestExecAlgorithm:
         assert spawned_order.quantity == spawned_qty
         assert spawned_order.time_in_force == TimeInForce.DAY
         assert not spawned_order.is_reduce_only
-        assert spawned_order.tags == "ENTRY"
+        assert spawned_order.tags == ["ENTRY"]
         assert primary_order.is_primary
         assert not primary_order.is_spawned
         assert not spawned_order.is_primary
@@ -364,7 +370,7 @@ class TestExecAlgorithm:
             time_in_force=TimeInForce.GTD,
             expire_time=UNIX_EPOCH + timedelta(minutes=60),
             reduce_only=False,
-            tags="ENTRY",
+            tags=["ENTRY"],
         )
 
         # Assert
@@ -377,7 +383,7 @@ class TestExecAlgorithm:
         assert spawned_order.time_in_force == TimeInForce.GTD
         assert spawned_order.expire_time_ns == 3_600_000_000_000
         assert not spawned_order.is_reduce_only
-        assert spawned_order.tags == "ENTRY"
+        assert spawned_order.tags == ["ENTRY"]
 
     def test_exec_algorithm_modify_order_in_place(self) -> None:
         """
@@ -411,7 +417,7 @@ class TestExecAlgorithm:
             price=ETHUSDT_PERP_BINANCE.make_price(Decimal("5000.25")),
             time_in_force=TimeInForce.DAY,
             reduce_only=False,
-            tags="ENTRY",
+            tags=["ENTRY"],
         )
 
         new_price = ETHUSDT_PERP_BINANCE.make_price(Decimal("5001.0"))
@@ -529,13 +535,13 @@ class TestExecAlgorithm:
         assert self.exec_engine.command_count == 7
         assert len(spawned_orders) == 7
         assert [o.client_order_id.value for o in spawned_orders] == [
-            "O-19700101-0000-000-None-1",
-            "O-19700101-0000-000-None-1-E1",
-            "O-19700101-0000-000-None-1-E2",
-            "O-19700101-0000-000-None-1-E3",
-            "O-19700101-0000-000-None-1-E4",
-            "O-19700101-0000-000-None-1-E5",
-            "O-19700101-0000-000-None-1-E6",
+            "O-19700101-000000-000-None-1",
+            "O-19700101-000000-000-None-1-E1",
+            "O-19700101-000000-000-None-1-E2",
+            "O-19700101-000000-000-None-1-E3",
+            "O-19700101-000000-000-None-1-E4",
+            "O-19700101-000000-000-None-1-E5",
+            "O-19700101-000000-000-None-1-E6",
         ]
 
     def test_exec_algorithm_on_order_with_small_interval_and_size_precision_zero(self) -> None:
@@ -570,7 +576,7 @@ class TestExecAlgorithm:
         assert self.risk_engine.command_count == 1
         assert self.exec_engine.command_count == 1
         assert len(spawned_orders) == 1
-        assert [o.client_order_id.value for o in spawned_orders] == ["O-19700101-0000-000-None-1"]
+        assert [o.client_order_id.value for o in spawned_orders] == ["O-19700101-000000-000-None-1"]
 
     def test_exec_algorithm_on_order_list_emulated_with_entry_exec_algorithm(self) -> None:
         # Arrange
@@ -646,13 +652,13 @@ class TestExecAlgorithm:
         assert self.exec_engine.command_count == 7
         assert len(spawned_orders) == 7
         assert [o.client_order_id.value for o in spawned_orders] == [
-            "O-19700101-0000-000-None-1",
-            "O-19700101-0000-000-None-1-E1",
-            "O-19700101-0000-000-None-1-E2",
-            "O-19700101-0000-000-None-1-E3",
-            "O-19700101-0000-000-None-1-E4",
-            "O-19700101-0000-000-None-1-E5",
-            "O-19700101-0000-000-None-1-E6",
+            "O-19700101-000000-000-None-1",
+            "O-19700101-000000-000-None-1-E1",
+            "O-19700101-000000-000-None-1-E2",
+            "O-19700101-000000-000-None-1-E3",
+            "O-19700101-000000-000-None-1-E4",
+            "O-19700101-000000-000-None-1-E5",
+            "O-19700101-000000-000-None-1-E6",
         ]
         # Assert final scheduled order quantity
         assert transformed_entry_order.quantity == ETHUSDT_PERP_BINANCE.make_qty(0.004)
@@ -737,8 +743,8 @@ class TestExecAlgorithm:
         assert self.risk_engine.command_count == 1
         assert len(spawned_orders) == 2
         assert [o.client_order_id.value for o in spawned_orders] == [
-            "O-19700101-0000-000-None-1",
-            "O-19700101-0000-000-None-1-E1",
+            "O-19700101-000000-000-None-1",
+            "O-19700101-000000-000-None-1-E1",
         ]
         # Assert final scheduled order quantity
         assert sl_order.quantity == Quantity.from_str("0.250")
@@ -862,8 +868,8 @@ class TestExecAlgorithm:
         assert self.risk_engine.command_count == 1
         assert len(spawned_orders) == 2
         assert [o.client_order_id.value for o in spawned_orders] == [
-            "O-19700101-0000-000-None-2",
-            "O-19700101-0000-000-None-2-E1",
+            "O-19700101-000000-000-None-2",
+            "O-19700101-000000-000-None-2-E1",
         ]
         # Assert final scheduled order quantity
         assert sl_order.quantity == Quantity.from_str("0.750")

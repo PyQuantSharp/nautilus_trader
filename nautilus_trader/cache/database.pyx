@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -26,6 +26,7 @@ from libc.stdint cimport uint64_t
 from nautilus_trader.accounting.accounts.base cimport Account
 from nautilus_trader.accounting.factory cimport AccountFactory
 from nautilus_trader.cache.facade cimport CacheDatabaseFacade
+from nautilus_trader.common.config import msgspec_encoding_hook
 from nautilus_trader.common.actor cimport Actor
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.core.datetime cimport format_iso8601
@@ -132,7 +133,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         UUID4 instance_id not None,
         Serializer serializer not None,
         config: CacheConfig | None = None,
-    ):
+    ) -> None:
         if config is None:
             config = CacheConfig()
         Condition.type(config, CacheConfig, "config")
@@ -142,7 +143,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         if config.buffer_interval_ms and config.buffer_interval_ms > 1000:
             self._log.warning(
                 f"High `buffer_interval_ms` at {config.buffer_interval_ms}, "
-                "recommended range is [10, 1000] milliseconds.",
+                "recommended range is [10, 1000] milliseconds",
             )
 
         # Configuration
@@ -154,52 +155,33 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         self._log.info(f"{config.use_trader_prefix=}", LogColor.BLUE)
         self._log.info(f"{config.use_instance_id=}", LogColor.BLUE)
 
-        # Database keys
-        self._key_trader      = f"{_TRADER}-{trader_id}"              # noqa
-        self._key_general     = f"{self._key_trader}:{_GENERAL}:"     # noqa
-        self._key_currencies  = f"{self._key_trader}:{_CURRENCIES}:"  # noqa
-        self._key_instruments = f"{self._key_trader}:{_INSTRUMENTS}:" # noqa
-        self._key_synthetics  = f"{self._key_trader}:{_SYNTHETICS}:"  # noqa
-        self._key_accounts    = f"{self._key_trader}:{_ACCOUNTS}:"    # noqa
-        self._key_orders      = f"{self._key_trader}:{_ORDERS}:"      # noqa
-        self._key_positions   = f"{self._key_trader}:{_POSITIONS}:"   # noqa
-        self._key_actors      = f"{self._key_trader}:{_ACTORS}:"      # noqa
-        self._key_strategies  = f"{self._key_trader}:{_STRATEGIES}:"  # noqa
-
-        self._key_index_order_ids = f"{self._key_trader}:{_INDEX_ORDER_IDS}:"
-        self._key_index_order_position = f"{self._key_trader}:{_INDEX_ORDER_POSITION}:"
-        self._key_index_order_client = f"{self._key_trader}:{_INDEX_ORDER_CLIENT}:"
-        self._key_index_orders = f"{self._key_trader}:{_INDEX_ORDERS}"
-        self._key_index_orders_open = f"{self._key_trader}:{_INDEX_ORDERS_OPEN}"
-        self._key_index_orders_closed = f"{self._key_trader}:{_INDEX_ORDERS_CLOSED}"
-        self._key_index_orders_emulated = f"{self._key_trader}:{_INDEX_ORDERS_EMULATED}"
-        self._key_index_orders_inflight = f"{self._key_trader}:{_INDEX_ORDERS_INFLIGHT}"
-        self._key_index_positions = f"{self._key_trader}:{_INDEX_POSITIONS}"
-        self._key_index_positions_open = f"{self._key_trader}:{_INDEX_POSITIONS_OPEN}"
-        self._key_index_positions_closed = f"{self._key_trader}:{_INDEX_POSITIONS_CLOSED}"
-
-        self._key_snapshots_orders = f"{self._key_trader}:{_SNAPSHOTS_ORDERS}:"
-        self._key_snapshots_positions = f"{self._key_trader}:{_SNAPSHOTS_POSITIONS}:"
-        self._key_heartbeat = f"{self._key_trader}:{_HEARTBEAT}"
-
         self._serializer = serializer
 
         self._backing = nautilus_pyo3.RedisCacheDatabase(
             trader_id=nautilus_pyo3.TraderId(trader_id.value),
-            instance_id=nautilus_pyo3.UUID4(instance_id.value),
-            config_json=msgspec.json.encode(config),
+            instance_id=nautilus_pyo3.UUID4.from_str(instance_id.value),
+            config_json=msgspec.json.encode(config, enc_hook=msgspec_encoding_hook),
         )
 
 # -- COMMANDS -------------------------------------------------------------------------------------
+
+    cpdef void close(self):
+        """
+        Close the backing database adapter.
+
+        """
+        self._log.debug("Closing cache database adapter")
+        self._backing.close()
+        self._log.info("Closed cache database adapter")
 
     cpdef void flush(self):
         """
         Flush the database which clears all data.
 
         """
-        self._log.debug("Flushing database....")
+        self._log.debug("Flushing cache database")
         self._backing.flushdb()
-        self._log.info("Flushed database.", LogColor.BLUE)
+        self._log.info("Flushed cache database", LogColor.BLUE)
 
     cpdef list[str] keys(self, str pattern = "*"):
         """
@@ -242,7 +224,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict general = {}
 
-        cdef list general_keys = self._backing.keys(f"*:{_GENERAL}:*")
+        cdef list general_keys = self._backing.keys(f"{_GENERAL}:*")
         if not general_keys:
             return general
 
@@ -271,7 +253,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict currencies = {}
 
-        cdef list currency_keys = self._backing.keys(f"*:{_CURRENCIES}*")
+        cdef list currency_keys = self._backing.keys(f"{_CURRENCIES}*")
         if not currency_keys:
             return currencies
 
@@ -299,7 +281,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict instruments = {}
 
-        cdef list instrument_keys = self._backing.keys(f"*:{_INSTRUMENTS}*")
+        cdef list instrument_keys = self._backing.keys(f"{_INSTRUMENTS}*")
         if not instrument_keys:
             return instruments
 
@@ -327,7 +309,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict synthetics = {}
 
-        cdef list synthetic_keys = self._backing.keys(f"*:{_SYNTHETICS}*")
+        cdef list synthetic_keys = self._backing.keys(f"{_SYNTHETICS}*")
         if not synthetic_keys:
             return synthetics
 
@@ -355,7 +337,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict accounts = {}
 
-        cdef list account_keys = self._backing.keys(f"*:{_ACCOUNTS}*")
+        cdef list account_keys = self._backing.keys(f"{_ACCOUNTS}*")
         if not account_keys:
             return accounts
 
@@ -384,7 +366,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict orders = {}
 
-        cdef list order_keys = self._backing.keys(f"*:{_ORDERS}*")
+        cdef list order_keys = self._backing.keys(f"{_ORDERS}*")
         if not order_keys:
             return orders
 
@@ -412,7 +394,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         """
         cdef dict positions = {}
 
-        cdef list position_keys = self._backing.keys(f"*:{_POSITIONS}*")
+        cdef list position_keys = self._backing.keys(f"{_POSITIONS}*")
         if not position_keys:
             return positions
 
@@ -540,7 +522,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
 
         """
         Condition.not_none(instrument_id, "instrument_id")
-        Condition.true(instrument_id.is_synthetic(), "instrument_id was not for a synthetic instrument")
+        Condition.is_true(instrument_id.is_synthetic(), "instrument_id was not for a synthetic instrument")
 
         cdef str key = f"{_SYNTHETICS}:{instrument_id.to_str()}"
         cdef list result = self._backing.read(key)
@@ -719,7 +701,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef str key = f"{_ACTORS}:{component_id.to_str()}:state"
         self._backing.delete(key)
 
-        self._log.info(f"Deleted {repr(component_id)}.")
+        self._log.info(f"Deleted {repr(component_id)}")
 
     cpdef dict load_strategy(self, StrategyId strategy_id):
         """
@@ -759,7 +741,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef str key = f"{_STRATEGIES}:{strategy_id.to_str()}:state"
         self._backing.delete(key)
 
-        self._log.info(f"Deleted {repr(strategy_id)}.")
+        self._log.info(f"Deleted {repr(strategy_id)}")
 
     cpdef void add(self, str key, bytes value):
         """
@@ -777,7 +759,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         Condition.not_none(value, "value")
 
         self._backing.insert(f"{_GENERAL}:{key}", [value])
-        self._log.debug(f"Added general object {key}.")
+        self._log.debug(f"Added general object {key}")
 
     cpdef void add_currency(self, Currency currency):
         """
@@ -802,7 +784,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(currency_map)]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Added currency {currency.code}.")
+        self._log.debug(f"Added currency {currency.code}")
 
     cpdef void add_instrument(self, Instrument instrument):
         """
@@ -820,7 +802,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(instrument)]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Added instrument {instrument.id}.")
+        self._log.debug(f"Added instrument {instrument.id}")
 
     cpdef void add_synthetic(self, SyntheticInstrument synthetic):
         """
@@ -838,7 +820,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(synthetic)]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Added synthetic instrument {synthetic.id}.")
+        self._log.debug(f"Added synthetic instrument {synthetic.id}")
 
     cpdef void add_account(self, Account account):
         """
@@ -856,7 +838,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(account.last_event_c())]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Added {account}.")
+        self._log.debug(f"Added {account}")
 
     cpdef void add_order(self, Order order, PositionId position_id = None, ClientId client_id = None):
         """
@@ -886,7 +868,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         if order.emulation_trigger != TriggerType.NO_TRIGGER:
             self._backing.insert(_INDEX_ORDERS_EMULATED, payload)
 
-        self._log.debug(f"Added {order}.")
+        self._log.debug(f"Added {order}")
 
         if position_id is not None:
             self.index_order_position(order.client_order_id, position_id)
@@ -916,7 +898,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         self._backing.insert(_INDEX_POSITIONS, [position_id_bytes])
         self._backing.insert(_INDEX_POSITIONS_OPEN, [position_id_bytes])
 
-        self._log.debug(f"Added {position}.")
+        self._log.debug(f"Added {position}")
 
     cpdef void index_venue_order_id(self, ClientOrderId client_order_id, VenueOrderId venue_order_id):
         """
@@ -976,7 +958,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(state)]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Saved actor state for {actor.id.value}.")
+        self._log.debug(f"Saved actor state for {actor.id.value}")
 
     cpdef void update_strategy(self, Strategy strategy):
         """
@@ -996,7 +978,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(state)]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Saved strategy state for {strategy.id.value}.")
+        self._log.debug(f"Saved strategy state for {strategy.id.value}")
 
     cpdef void update_account(self, Account account):
         """
@@ -1013,7 +995,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(account.last_event_c())]
         self._backing.update(key, payload)
 
-        self._log.debug(f"Updated {account}.")
+        self._log.debug(f"Updated {account}")
 
     cpdef void update_order(self, Order order):
         """
@@ -1058,7 +1040,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         else:
             self._backing.insert(_INDEX_ORDERS_EMULATED, payload)
 
-        self._log.debug(f"Updated {order}.")
+        self._log.debug(f"Updated {order}")
 
     cpdef void update_position(self, Position position):
         """
@@ -1084,7 +1066,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
             self._backing.insert(_INDEX_POSITIONS_CLOSED, payload)
             self._backing.delete(_INDEX_POSITIONS_OPEN, payload)
 
-        self._log.debug(f"Updated {position}.")
+        self._log.debug(f"Updated {position}")
 
     cpdef void snapshot_order_state(self, Order order):
         """
@@ -1102,7 +1084,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(order.to_dict())]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Added state snapshot {order}.")
+        self._log.debug(f"Added state snapshot {order}")
 
     cpdef void snapshot_position_state(self, Position position, uint64_t ts_snapshot, Money unrealized_pnl = None):
         """
@@ -1113,7 +1095,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         position : Position
             The position for the state snapshot.
         ts_snapshot : uint64_t
-            The UNIX timestamp (nanoseconds) when the snapshot was taken.
+            UNIX timestamp (nanoseconds) when the snapshot was taken.
         unrealized_pnl : Money, optional
             The unrealized PnL for the state snapshot.
 
@@ -1123,7 +1105,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef dict position_state = position.to_dict()
 
         if unrealized_pnl is not None:
-            position_state["unrealized_pnl"] = unrealized_pnl.to_str()
+            position_state["unrealized_pnl"] = str(unrealized_pnl)
 
         position_state["ts_snapshot"] = ts_snapshot
 
@@ -1131,7 +1113,7 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef list payload = [self._serializer.serialize(position_state)]
         self._backing.insert(key, payload)
 
-        self._log.debug(f"Added state snapshot {position}.")
+        self._log.debug(f"Added state snapshot {position}")
 
     cpdef void heartbeat(self, datetime timestamp):
         """
@@ -1148,4 +1130,4 @@ cdef class CacheDatabaseAdapter(CacheDatabaseFacade):
         cdef timestamp_str = format_iso8601(timestamp)
         self._backing.insert(_HEARTBEAT, [timestamp_str.encode()])
 
-        self._log.debug(f"Set last heartbeat {timestamp_str}.")
+        self._log.debug(f"Set last heartbeat {timestamp_str}")

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,15 +19,14 @@ from libc.stdint cimport uint64_t
 from nautilus_trader.cache.cache cimport Cache
 from nautilus_trader.common.component cimport CMD
 from nautilus_trader.common.component cimport EVT
-from nautilus_trader.common.component cimport RECV
 from nautilus_trader.common.component cimport SENT
 from nautilus_trader.common.component cimport Clock
 from nautilus_trader.common.component cimport LogColor
 from nautilus_trader.common.component cimport Logger
 from nautilus_trader.common.component cimport MessageBus
+from nautilus_trader.common.component cimport is_logging_initialized
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.core.message cimport Event
-from nautilus_trader.core.rust.common cimport logging_is_initialized
 from nautilus_trader.core.rust.model cimport ContingencyType
 from nautilus_trader.core.rust.model cimport OrderStatus
 from nautilus_trader.core.rust.model cimport TriggerType
@@ -101,6 +100,8 @@ cdef class OrderManager:
         cancel_order_handler: Callable[[Order], None] = None,
         modify_order_handler: Callable[[Order, Quantity], None] = None,
         bint debug = False,
+        bint log_events = True,
+        bint log_commands = True,
     ):
         Condition.valid_string(component_name, "component_name")
         Condition.callable_or_none(submit_order_handler, "submit_order_handler")
@@ -114,6 +115,8 @@ cdef class OrderManager:
 
         self.active_local = active_local
         self.debug = debug
+        self.log_events = log_events
+        self.log_commands = log_commands
         self._submit_order_handler = submit_order_handler
         self._cancel_order_handler = cancel_order_handler
         self._modify_order_handler = modify_order_handler
@@ -186,11 +189,11 @@ cdef class OrderManager:
             return  # Already pending cancel locally
 
         if order.is_closed_c():
-            self._log.warning("Cannot cancel order: already closed.")
+            self._log.warning("Cannot cancel order: already closed")
             return
 
         if self.debug:
-            self._log.info(f"Cancelling order {order}.", LogColor.MAGENTA)
+            self._log.info(f"Canceling order {order}", LogColor.MAGENTA)
 
         self._submit_order_commands.pop(order.client_order_id, None)
 
@@ -236,7 +239,7 @@ cdef class OrderManager:
 
         if self.debug:
             self._log.info(
-                f"Creating new `SubmitOrder` command for {order}, {position_id=}, {client_id=}.",
+                f"Creating new `SubmitOrder` command for {order}, {position_id=}, {client_id=}",
                 LogColor.MAGENTA,
             )
 
@@ -317,7 +320,7 @@ cdef class OrderManager:
         if order is None:
             self._log.error(  # pragma: no cover (design-time error)
                 "Cannot handle `OrderRejected`: "
-                f"order for {repr(rejected.client_order_id)} not found. {rejected}.",
+                f"order for {repr(rejected.client_order_id)} not found, {rejected}",
                 )
             return
 
@@ -331,7 +334,7 @@ cdef class OrderManager:
         if order is None:
             self._log.error(  # pragma: no cover (design-time error)
                 "Cannot handle `OrderCanceled`: "
-                f"order for {repr(canceled.client_order_id)} not found. {canceled}.",
+                f"order for {repr(canceled.client_order_id)} not found, {canceled}",
                 )
             return
 
@@ -345,7 +348,7 @@ cdef class OrderManager:
         if order is None:
             self._log.error(  # pragma: no cover (design-time error)
                 "Cannot handle `OrderExpired`: "
-                f"order for {repr(expired.client_order_id)} not found. {expired}.",
+                f"order for {repr(expired.client_order_id)} not found, {expired}",
                 )
             return
 
@@ -359,7 +362,7 @@ cdef class OrderManager:
         if order is None:
             self._log.error(  # pragma: no cover (design-time error)
                 "Cannot handle `OrderUpdated`: "
-                f"order for {repr(updated.client_order_id)} not found. {updated}.",
+                f"order for {repr(updated.client_order_id)} not found, {updated}",
                 )
             return
 
@@ -370,13 +373,13 @@ cdef class OrderManager:
         Condition.not_none(filled, "filled")
 
         if self.debug:
-            self._log.info(f"Handling fill for {filled.client_order_id}.", LogColor.MAGENTA)
+            self._log.info(f"Handling fill for {filled.client_order_id}", LogColor.MAGENTA)
 
         cdef Order order = self._cache.order(filled.client_order_id)
         if order is None:  # pragma: no cover (design-time error)
             self._log.error(
                 "Cannot handle `OrderFilled`: "
-                f"order for {repr(filled.client_order_id)} not found. {filled}.",
+                f"order for {repr(filled.client_order_id)} not found, {filled}",
             )
             return
 
@@ -409,8 +412,8 @@ cdef class OrderManager:
                     continue  # Not being managed
 
                 if self.debug:
-                    self._log.info(f"Processing OTO child order {child_order}.", LogColor.MAGENTA)
-                    self._log.info(f"{parent_filled_qty=}.", LogColor.MAGENTA)
+                    self._log.info(f"Processing OTO child order {child_order}", LogColor.MAGENTA)
+                    self._log.info(f"{parent_filled_qty=}", LogColor.MAGENTA)
 
                 if child_order.position_id is None:
                     child_order.position_id = position_id
@@ -435,7 +438,7 @@ cdef class OrderManager:
                     raise RuntimeError(f"Cannot find OCO contingent order for {repr(client_order_id)}")  # pragma: no cover
 
                 if self.debug:
-                    self._log.info(f"Processing OCO contingent order {contingent_order}.", LogColor.MAGENTA)
+                    self._log.info(f"Processing OCO contingent order {contingent_order}", LogColor.MAGENTA)
 
                 if not self.should_manage_order(contingent_order):
                     continue  # Not being managed
@@ -452,7 +455,7 @@ cdef class OrderManager:
 
         if self.debug:
             self._log.info(
-                f"Handling contingencies for {order.client_order_id}.", LogColor.MAGENTA,
+                f"Handling contingencies for {order.client_order_id}", LogColor.MAGENTA,
             )
 
         cdef:
@@ -484,20 +487,20 @@ cdef class OrderManager:
 
             if order.contingency_type == ContingencyType.OTO:
                 if self.debug:
-                    self._log.info(f"Processing OTO child order {contingent_order}.", LogColor.MAGENTA)
-                    self._log.info(f"{filled_qty=}, {contingent_order.quantity=}.", LogColor.YELLOW)
+                    self._log.info(f"Processing OTO child order {contingent_order}", LogColor.MAGENTA)
+                    self._log.info(f"{filled_qty=}, {contingent_order.quantity=}", LogColor.YELLOW)
                 if order.is_closed_c() and filled_qty._mem.raw == 0 and (order.exec_spawn_id is None or not is_spawn_active):
                     self.cancel_order(contingent_order)
                 elif filled_qty._mem.raw > 0 and filled_qty._mem.raw != contingent_order.quantity._mem.raw:
                     self.modify_order_quantity(contingent_order, filled_qty)
             elif order.contingency_type == ContingencyType.OCO:
                 if self.debug:
-                    self._log.info(f"Processing OCO contingent order {client_order_id}.", LogColor.MAGENTA)
+                    self._log.info(f"Processing OCO contingent order {client_order_id}", LogColor.MAGENTA)
                 if order.is_closed_c() and (order.exec_spawn_id is None or not is_spawn_active):
                     self.cancel_order(contingent_order)
             elif order.contingency_type == ContingencyType.OUO:
                 if self.debug:
-                    self._log.info(f"Processing OUO contingent order {client_order_id}, {leaves_qty=}, {contingent_order.leaves_qty=}.", LogColor.MAGENTA)
+                    self._log.info(f"Processing OUO contingent order {client_order_id}, {leaves_qty=}, {contingent_order.leaves_qty=}", LogColor.MAGENTA)
                 if leaves_qty._mem.raw == 0 and order.exec_spawn_id is not None:
                     self.cancel_order(contingent_order)
                 elif order.is_closed_c() and (order.exec_spawn_id is None or not is_spawn_active):
@@ -554,42 +557,42 @@ cdef class OrderManager:
     cpdef void send_emulator_command(self, TradingCommand command):
         Condition.not_none(command, "command")
 
-        if logging_is_initialized():
-            self._log.info(f"{CMD}{SENT} {command}.")  # pragma: no cover  (no logging in tests)
+        if self.log_commands and is_logging_initialized():
+            self._log.info(f"{CMD}{SENT} {command}")  # pragma: no cover  (no logging in tests)
         self._msgbus.send(endpoint="OrderEmulator.execute", msg=command)
 
     cpdef void send_algo_command(self, TradingCommand command, ExecAlgorithmId exec_algorithm_id):
         Condition.not_none(command, "command")
         Condition.not_none(exec_algorithm_id, "exec_algorithm_id")
 
-        if logging_is_initialized():
-            self._log.info(f"{CMD}{SENT} {command}.")  # pragma: no cover  (no logging in tests)
+        if self.log_commands and is_logging_initialized():
+            self._log.info(f"{CMD}{SENT} {command}")  # pragma: no cover  (no logging in tests)
         self._msgbus.send(endpoint=f"{exec_algorithm_id}.execute", msg=command)
 
     cpdef void send_risk_command(self, TradingCommand command):
         Condition.not_none(command, "command")
 
-        if logging_is_initialized():
-            self._log.info(f"{CMD}{SENT} {command}.")  # pragma: no cover  (no logging in tests)
+        if self.log_commands and is_logging_initialized():
+            self._log.info(f"{CMD}{SENT} {command}")  # pragma: no cover  (no logging in tests)
         self._msgbus.send(endpoint="RiskEngine.execute", msg=command)
 
     cpdef void send_exec_command(self, TradingCommand command):
         Condition.not_none(command, "command")
 
-        if logging_is_initialized():
-            self._log.info(f"{CMD}{SENT} {command}.")  # pragma: no cover  (no logging in tests)
+        if self.log_commands and is_logging_initialized():
+            self._log.info(f"{CMD}{SENT} {command}")  # pragma: no cover  (no logging in tests)
         self._msgbus.send(endpoint="ExecEngine.execute", msg=command)
 
     cpdef void send_risk_event(self, OrderEvent event):
         Condition.not_none(event, "event")
 
-        if logging_is_initialized():
-            self._log.info(f"{EVT}{SENT} {event}.")  # pragma: no cover  (no logging in tests)
+        if self.log_events and is_logging_initialized():
+            self._log.info(f"{EVT}{SENT} {event}")  # pragma: no cover  (no logging in tests)
         self._msgbus.send(endpoint="RiskEngine.process", msg=event)
 
     cpdef void send_exec_event(self, OrderEvent event):
         Condition.not_none(event, "event")
 
-        if logging_is_initialized():
-            self._log.info(f"{EVT}{SENT} {event}.")  # pragma: no cover (no logging in tests)
+        if self.log_events and is_logging_initialized():
+            self._log.info(f"{EVT}{SENT} {event}")  # pragma: no cover (no logging in tests)
         self._msgbus.send(endpoint="ExecEngine.process", msg=event)

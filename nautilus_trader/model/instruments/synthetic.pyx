@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -56,7 +56,7 @@ cdef class SyntheticInstrument(Data):
     Represents a synthetic instrument with prices derived from component instruments using a
     formula.
 
-    The `id` for the synthetic will become {symbol}.{SYNTH}.
+    The `id` for the synthetic will become `{symbol}.{SYNTH}`.
 
     Parameters
     ----------
@@ -69,9 +69,9 @@ cdef class SyntheticInstrument(Data):
     formula : str
         The derivation formula for the synthetic instrument.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
 
     Raises
     ------
@@ -90,6 +90,7 @@ cdef class SyntheticInstrument(Data):
     --------
     All component instruments should already be defined and exist in the cache prior to defining
     a new synthetic instrument.
+
     """
 
     def __init__(
@@ -100,9 +101,9 @@ cdef class SyntheticInstrument(Data):
         str formula not None,
         uint64_t ts_event,
         uint64_t ts_init,
-    ):
-        Condition.true(price_precision <= 9, f"invalid `price_precision` greater than max 9, was {price_precision}")
-        Condition.true(len(components) >= 2, "There must be at least two component instruments")
+    ) -> None:
+        Condition.is_true(price_precision <= 9, f"invalid `price_precision` greater than max 9, was {price_precision}")
+        Condition.is_true(len(components) >= 2, "There must be at least two component instruments")
         Condition.list_type(components, InstrumentId, "components")
         Condition.valid_string(formula, "formula")
 
@@ -214,7 +215,7 @@ cdef class SyntheticInstrument(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -226,7 +227,7 @@ cdef class SyntheticInstrument(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -314,7 +315,7 @@ cdef class SyntheticInstrument(Data):
         cvec.cap = len_
 
         cdef Price_t mem = synthetic_instrument_calculate(&self._mem, cvec)
-        if mem.raw == ERROR_PRICE.raw:
+        if mem.precision == ERROR_PRICE.precision:
             raise RuntimeError(
                 f"error calculating {self.id} `SyntheticInstrument` price from {inputs}",
             )

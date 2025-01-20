@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,6 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::python::to_pyvalue_err;
 use nautilus_model::enums::PriceType;
 use pyo3::prelude::*;
 
@@ -22,8 +21,9 @@ use crate::{indicator::Indicator, ratio::efficiency_ratio::EfficiencyRatio};
 #[pymethods]
 impl EfficiencyRatio {
     #[new]
-    fn py_new(period: usize, price_type: Option<PriceType>) -> PyResult<Self> {
-        Self::new(period, price_type).map_err(to_pyvalue_err)
+    #[pyo3(signature = (period, price_type=None))]
+    fn py_new(period: usize, price_type: Option<PriceType>) -> Self {
+        Self::new(period, price_type)
     }
 
     fn __repr__(&self) -> String {
@@ -38,19 +38,19 @@ impl EfficiencyRatio {
 
     #[getter]
     #[pyo3(name = "period")]
-    fn py_period(&self) -> usize {
+    const fn py_period(&self) -> usize {
         self.period
     }
 
     #[getter]
     #[pyo3(name = "value")]
-    fn py_value(&self) -> f64 {
+    const fn py_value(&self) -> f64 {
         self.value
     }
 
     #[getter]
     #[pyo3(name = "initialized")]
-    fn py_initialized(&self) -> bool {
+    const fn py_initialized(&self) -> bool {
         self.initialized
     }
 

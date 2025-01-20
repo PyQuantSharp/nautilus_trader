@@ -1,5 +1,5 @@
 # -----------------------------------book--------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -38,6 +38,8 @@ from nautilus_trader.config import InstrumentProviderConfig
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.instruments import BettingInstrument
 from nautilus_trader.model.instruments.betting import null_handicap
+from nautilus_trader.model.objects import Currency
+from nautilus_trader.model.objects import Money
 
 
 class BetfairInstrumentProviderConfig(InstrumentProviderConfig, frozen=True, kw_only=True):
@@ -107,7 +109,7 @@ class BetfairInstrumentProvider(InstrumentProvider):
         self._log.info(f"Found {len(markets)} markets, loading metadata")
         market_metadata = await load_markets_metadata(client=self._client, markets=markets)
 
-        self._log.info("Creating instruments..")
+        self._log.info("Creating instruments...")
         instruments = [
             instrument
             for metadata in market_metadata
@@ -202,6 +204,7 @@ def market_definition_to_instruments(
             currency=currency,
             price_precision=BETFAIR_PRICE_PRECISION,
             size_precision=BETFAIR_QUANTITY_PRECISION,
+            min_notional=Money(1, Currency.from_str(currency)),
             ts_event=ts_event,
             ts_init=ts_init,
             info=msgspec.json.decode(msgspec.json.encode(market_definition)),

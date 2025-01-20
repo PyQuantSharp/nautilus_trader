@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,6 +17,9 @@ pub mod ama;
 pub mod dema;
 pub mod ema;
 pub mod hma;
+pub mod lr;
 pub mod rma;
 pub mod sma;
+pub mod vidya;
+pub mod vwap;
 pub mod wma;

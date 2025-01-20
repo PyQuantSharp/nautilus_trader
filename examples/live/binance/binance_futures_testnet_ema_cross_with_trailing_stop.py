@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -40,7 +40,7 @@ from nautilus_trader.model.identifiers import TraderId
 # Configure the trading node
 config_node = TradingNodeConfig(
     trader_id=TraderId("TESTER-001"),
-    logging=LoggingConfig(log_level="INFO"),
+    logging=LoggingConfig(log_level="INFO", use_pyo3=True),
     exec_engine=LiveExecEngineConfig(
         reconciliation=True,
         reconciliation_lookback_mins=1440,
@@ -67,9 +67,11 @@ config_node = TradingNodeConfig(
             us=False,  # If client is for Binance US
             testnet=True,  # If client uses the testnet
             instrument_provider=InstrumentProviderConfig(load_all=True),
+            max_retries=3,
+            retry_delay=1.0,
         ),
     },
-    timeout_connection=20.0,
+    timeout_connection=30.0,
     timeout_reconciliation=10.0,
     timeout_portfolio=10.0,
     timeout_disconnection=10.0,
@@ -80,16 +82,17 @@ config_node = TradingNodeConfig(
 node = TradingNode(config=config_node)
 
 # Configure your strategy
+symbol = "ETHUSDT-PERP"
 strat_config = EMACrossTrailingStopConfig(
-    instrument_id=InstrumentId.from_str("ETHUSDT-PERP.BINANCE"),
-    external_order_claims=[InstrumentId.from_str("ETHUSDT-PERP.BINANCE")],
-    bar_type=BarType.from_str("ETHUSDT-PERP.BINANCE-1-MINUTE-LAST-EXTERNAL"),
+    instrument_id=InstrumentId.from_str(f"{symbol}.BINANCE"),
+    external_order_claims=[InstrumentId.from_str(f"{symbol}.BINANCE")],
+    bar_type=BarType.from_str(f"{symbol}.BINANCE-1-MINUTE-LAST-EXTERNAL"),
     fast_ema_period=10,
     slow_ema_period=20,
     atr_period=20,
     trailing_atr_multiple=3.0,
     trailing_offset_type="BASIS_POINTS",
-    trigger_type="LAST_TRADE",
+    trigger_type="LAST_PRICE",
     trade_size=Decimal("0.010"),
 )
 # Instantiate your strategy
@@ -98,7 +101,7 @@ strategy = EMACrossTrailingStop(config=strat_config)
 # Add your strategies and modules
 node.trader.add_strategy(strategy)
 
-# Register your client factories with the node (can take user defined factories)
+# Register your client factories with the node (can take user-defined factories)
 node.add_data_client_factory("BINANCE", BinanceLiveDataClientFactory)
 node.add_exec_client_factory("BINANCE", BinanceLiveExecClientFactory)
 node.build()

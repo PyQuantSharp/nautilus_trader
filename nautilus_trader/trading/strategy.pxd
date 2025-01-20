@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -144,8 +144,8 @@ cdef class Strategy(Actor):
     cpdef void cancel_order(self, Order order, ClientId client_id=*)
     cpdef void cancel_orders(self, list orders, ClientId client_id=*)
     cpdef void cancel_all_orders(self, InstrumentId instrument_id, OrderSide order_side=*, ClientId client_id=*)
-    cpdef void close_position(self, Position position, ClientId client_id=*, str tags=*)
-    cpdef void close_all_positions(self, InstrumentId instrument_id, PositionSide position_side=*, ClientId client_id=*, str tags=*)
+    cpdef void close_position(self, Position position, ClientId client_id=*, list[str] tags=*, bint reduce_only=*)
+    cpdef void close_all_positions(self, InstrumentId instrument_id, PositionSide position_side=*, ClientId client_id=*, list[str] tags=*, bint reduce_only=*)
     cpdef void query_order(self, Order order, ClientId client_id=*)
     cdef ModifyOrder _create_modify_order(
         self,

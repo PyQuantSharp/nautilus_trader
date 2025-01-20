@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -64,11 +64,19 @@ cdef class BettingInstrument(Instrument):
         int8_t size_precision,
         uint64_t ts_event,
         uint64_t ts_init,
-        str tick_scheme_name=None,
-        Price min_price = None,
-        Price max_price = None,
+        Quantity max_quantity: Quantity | None = None,
+        Quantity min_quantity: Quantity | None = None,
+        Money max_notional: Money | None = None,
+        Money min_notional: Money | None = None,
+        Price max_price: Price | None = None,
+        Price min_price: Price | None = None,
+        margin_init: Decimal | None = None,
+        margin_maint: Decimal | None = None,
+        maker_fee: Decimal | None = None,
+        taker_fee: Decimal | None = None,
+        str tick_scheme_name = None,
         dict info = None,
-    ):
+    ) -> None:
         assert event_open_date.tzinfo or market_start_time.tzinfo is not None
 
         # Event type (Sport) info e.g. Basketball
@@ -112,16 +120,16 @@ cdef class BettingInstrument(Instrument):
             size_increment=Quantity(0.01, precision=size_precision),
             multiplier=Quantity.from_int_c(1),
             lot_size=Quantity.from_int_c(1),
-            max_quantity=None,   # Can be None
-            min_quantity=None,   # Can be None
-            max_notional=None,   # Can be None
-            min_notional=Money(1, Currency.from_str_c(currency)),
-            max_price=None,      # Can be None
-            min_price=None,      # Can be None
-            margin_init=Decimal(1),
-            margin_maint=Decimal(1),
-            maker_fee=Decimal(0),
-            taker_fee=Decimal(0),
+            max_quantity=max_quantity,
+            min_quantity=min_quantity,
+            max_notional=max_notional,
+            min_notional=min_notional,
+            max_price=max_price,
+            min_price=min_price,
+            margin_init=margin_init or Decimal(1),
+            margin_maint=margin_maint or Decimal(1),
+            maker_fee=maker_fee or Decimal(0),
+            taker_fee=taker_fee or Decimal(0),
             ts_event=ts_event,
             ts_init=ts_init,
             tick_scheme_name=tick_scheme_name,
@@ -136,9 +144,53 @@ cdef class BettingInstrument(Instrument):
     cdef BettingInstrument from_dict_c(dict values):
         Condition.not_none(values, "values")
         data = values.copy()
-        data['event_open_date'] = pd.Timestamp(data['event_open_date'])
-        data['market_start_time'] = pd.Timestamp(data['market_start_time'])
-        return BettingInstrument(**{k: v for k, v in data.items() if k not in ('id', "type")})
+        data["event_open_date"] = pd.Timestamp(data["event_open_date"], tz="UTC")
+        data["market_start_time"] = pd.Timestamp(data["market_start_time"], tz="UTC")
+
+        max_quantity = data.get("max_quantity")
+        if max_quantity:
+            data["max_quantity"] = Quantity.from_str(max_quantity)
+
+        min_quantity = data.get("min_quantity")
+        if min_quantity:
+            data["min_quantity"] = Quantity.from_str(min_quantity)
+
+        max_notional = data.get("max_notional")
+        if max_notional:
+            data["max_notional"] = Money.from_str(max_notional)
+
+        min_notional = data.get("min_notional")
+        if min_notional:
+            data["min_notional"] = Money.from_str(min_notional)
+
+        max_price = data.get("max_price")
+        if max_price:
+            data["max_price"] = Price.from_str(max_price)
+
+        min_price = data.get("min_price")
+        if min_price:
+            data["min_price"] = Price.from_str(min_price)
+
+        margin_init = data.get("margin_init")
+        if margin_init:
+            data["margin_init"] = Decimal(margin_init)
+
+        margin_maint = data.get("margin_maint")
+        if margin_maint:
+            data["margin_maint"] = Decimal(margin_maint)
+
+        maker_fee = data.get("maker_fee")
+        if maker_fee:
+            data["maker_fee"] = Decimal(maker_fee)
+
+        taker_fee = data.get("taker_fee")
+        if taker_fee:
+            data["taker_fee"] = Decimal(taker_fee)
+
+        data.pop("raw_symbol", None)
+        data.pop("price_increment", None)
+        data.pop("size_increment", None)
+        return BettingInstrument(**{k: v for k, v in data.items() if k not in ("id", "type")})
 
     @staticmethod
     cdef dict to_dict_c(BettingInstrument obj):
@@ -146,6 +198,7 @@ cdef class BettingInstrument(Instrument):
         return {
             "type": "BettingInstrument",
             "id": obj.id.to_str(),
+            "raw_symbol": obj.id.symbol.value,
             "venue_name": obj.id.venue.value,
             "event_type_id": obj.event_type_id,
             "event_type_name": obj.event_type_name,
@@ -154,20 +207,33 @@ cdef class BettingInstrument(Instrument):
             "event_id": obj.event_id,
             "event_name": obj.event_name,
             "event_country_code": obj.event_country_code,
-            "event_open_date": obj.event_open_date.isoformat(),
+            "event_open_date": obj.event_open_date.value,
             "betting_type": obj.betting_type,
             "market_id": obj.market_id,
             "market_name": obj.market_name,
-            "market_start_time": obj.market_start_time.isoformat(),
             "market_type": obj.market_type,
+            "market_start_time": obj.market_start_time.value,
             "selection_id": obj.selection_id,
             "selection_name": obj.selection_name,
             "selection_handicap": obj.selection_handicap,
             "price_precision": obj.price_precision,
             "size_precision": obj.size_precision,
+            "price_increment": str(obj.price_increment),
+            "size_increment": str(obj.size_increment),
             "currency": obj.quote_currency.code,
+            "max_quantity": str(obj.max_quantity) if obj.max_quantity is not None else None,
+            "min_quantity": str(obj.min_quantity) if obj.min_quantity is not None else None,
+            "max_notional": str(obj.max_notional) if obj.max_notional is not None else None,
+            "min_notional": str(obj.min_notional) if obj.min_notional is not None else None,
+            "max_price": str(obj.max_price) if obj.max_price is not None else None,
+            "min_price": str(obj.min_price) if obj.min_price is not None else None,
+            "margin_init": str(obj.margin_init),
+            "margin_maint": str(obj.margin_maint),
+            "maker_fee": str(obj.maker_fee),
+            "taker_fee": str(obj.taker_fee),
             "ts_event": obj.ts_event,
             "ts_init": obj.ts_init,
+            "info": obj.info,
         }
 
     @staticmethod
@@ -204,27 +270,22 @@ cdef class BettingInstrument(Instrument):
         return Money(quantity.as_f64_c() * float(self.multiplier), self.quote_currency)
 
 
-def make_symbol(
-    market_id: str,
-    selection_id: int,
-    selection_handicap: float,
-) -> Symbol:
+cpdef Symbol make_symbol(
+    str market_id,
+    int selection_id,
+    float selection_handicap,
+):
     """
     Make symbol.
 
     >>> make_symbol(market_id="1.201070830", selection_id=123456, selection_handicap=null_handicap())
-    Symbol('1.201070830-123456-None')
+    Symbol('1-201070830-123456-None')
 
     """
-
-    def _clean(s):
-        return str(s).replace(" ", "").replace(":", "")
-
+    market_id = market_id.replace(".", "-")
     handicap = selection_handicap if selection_handicap != null_handicap() else None
 
-    value: str = "-".join(
-        [_clean(k) for k in (market_id, selection_id, handicap)],
-    )
+    cdef str value = f"{market_id}-{selection_id}-{handicap}".replace(" ", "").replace(":", "")
     assert len(value) <= 32, f"Symbol too long ({len(value)}): '{value}'"
     return Symbol(value)
 

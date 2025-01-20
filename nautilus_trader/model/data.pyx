@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,6 +14,9 @@
 # -------------------------------------------------------------------------------------------------
 
 import pickle
+import warnings
+
+import numpy as np
 
 from nautilus_trader.core import nautilus_pyo3
 
@@ -26,6 +29,7 @@ from cpython.pycapsule cimport PyCapsule_New
 from libc.stdint cimport uint8_t
 from libc.stdint cimport uint32_t
 from libc.stdint cimport uint64_t
+from libc.stdint cimport uintptr_t
 
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.core.data cimport Data
@@ -40,15 +44,18 @@ from nautilus_trader.core.rust.model cimport BookAction
 from nautilus_trader.core.rust.model cimport BookOrder_t
 from nautilus_trader.core.rust.model cimport Data_t
 from nautilus_trader.core.rust.model cimport Data_t_Tag
-from nautilus_trader.core.rust.model cimport HaltReason
 from nautilus_trader.core.rust.model cimport InstrumentCloseType
-from nautilus_trader.core.rust.model cimport MarketStatus
+from nautilus_trader.core.rust.model cimport MarketStatusAction
 from nautilus_trader.core.rust.model cimport OrderSide
+from nautilus_trader.core.rust.model cimport Price_t
+from nautilus_trader.core.rust.model cimport PriceRaw
 from nautilus_trader.core.rust.model cimport PriceType
+from nautilus_trader.core.rust.model cimport Quantity_t
+from nautilus_trader.core.rust.model cimport QuantityRaw
+from nautilus_trader.core.rust.model cimport RecordFlag
 from nautilus_trader.core.rust.model cimport bar_eq
 from nautilus_trader.core.rust.model cimport bar_hash
 from nautilus_trader.core.rust.model cimport bar_new
-from nautilus_trader.core.rust.model cimport bar_new_from_raw
 from nautilus_trader.core.rust.model cimport bar_specification_eq
 from nautilus_trader.core.rust.model cimport bar_specification_ge
 from nautilus_trader.core.rust.model cimport bar_specification_gt
@@ -58,21 +65,29 @@ from nautilus_trader.core.rust.model cimport bar_specification_lt
 from nautilus_trader.core.rust.model cimport bar_specification_new
 from nautilus_trader.core.rust.model cimport bar_specification_to_cstr
 from nautilus_trader.core.rust.model cimport bar_to_cstr
+from nautilus_trader.core.rust.model cimport bar_type_aggregation_source
 from nautilus_trader.core.rust.model cimport bar_type_check_parsing
+from nautilus_trader.core.rust.model cimport bar_type_composite
 from nautilus_trader.core.rust.model cimport bar_type_eq
 from nautilus_trader.core.rust.model cimport bar_type_from_cstr
 from nautilus_trader.core.rust.model cimport bar_type_ge
 from nautilus_trader.core.rust.model cimport bar_type_gt
 from nautilus_trader.core.rust.model cimport bar_type_hash
+from nautilus_trader.core.rust.model cimport bar_type_instrument_id
+from nautilus_trader.core.rust.model cimport bar_type_is_composite
+from nautilus_trader.core.rust.model cimport bar_type_is_standard
 from nautilus_trader.core.rust.model cimport bar_type_le
 from nautilus_trader.core.rust.model cimport bar_type_lt
 from nautilus_trader.core.rust.model cimport bar_type_new
+from nautilus_trader.core.rust.model cimport bar_type_new_composite
+from nautilus_trader.core.rust.model cimport bar_type_spec
+from nautilus_trader.core.rust.model cimport bar_type_standard
 from nautilus_trader.core.rust.model cimport bar_type_to_cstr
 from nautilus_trader.core.rust.model cimport book_order_debug_to_cstr
 from nautilus_trader.core.rust.model cimport book_order_eq
 from nautilus_trader.core.rust.model cimport book_order_exposure
-from nautilus_trader.core.rust.model cimport book_order_from_raw
 from nautilus_trader.core.rust.model cimport book_order_hash
+from nautilus_trader.core.rust.model cimport book_order_new
 from nautilus_trader.core.rust.model cimport book_order_signed_size
 from nautilus_trader.core.rust.model cimport instrument_id_from_cstr
 from nautilus_trader.core.rust.model cimport orderbook_delta_eq
@@ -118,21 +133,22 @@ from nautilus_trader.model.functions cimport bar_aggregation_from_str
 from nautilus_trader.model.functions cimport bar_aggregation_to_str
 from nautilus_trader.model.functions cimport book_action_from_str
 from nautilus_trader.model.functions cimport book_action_to_str
-from nautilus_trader.model.functions cimport halt_reason_from_str
-from nautilus_trader.model.functions cimport halt_reason_to_str
 from nautilus_trader.model.functions cimport instrument_close_type_from_str
 from nautilus_trader.model.functions cimport instrument_close_type_to_str
-from nautilus_trader.model.functions cimport market_status_from_str
-from nautilus_trader.model.functions cimport market_status_to_str
+from nautilus_trader.model.functions cimport market_status_action_from_str
+from nautilus_trader.model.functions cimport market_status_action_to_str
 from nautilus_trader.model.functions cimport order_side_from_str
 from nautilus_trader.model.functions cimport order_side_to_str
 from nautilus_trader.model.functions cimport price_type_from_str
 from nautilus_trader.model.functions cimport price_type_to_str
 from nautilus_trader.model.identifiers cimport InstrumentId
 from nautilus_trader.model.identifiers cimport Symbol
+from nautilus_trader.model.identifiers cimport TradeId
 from nautilus_trader.model.identifiers cimport Venue
 from nautilus_trader.model.objects cimport Price
 from nautilus_trader.model.objects cimport Quantity
+from nautilus_trader.model.objects cimport price_new
+from nautilus_trader.model.objects cimport quantity_new
 
 
 cdef inline BookOrder order_from_mem_c(BookOrder_t mem):
@@ -248,7 +264,7 @@ cdef class BarSpecification:
         BarAggregation aggregation,
         PriceType price_type,
     ) -> None:
-        Condition.positive_int(step, 'step')
+        Condition.positive_int(step, "step")
 
         self._mem = bar_specification_new(
             step,
@@ -620,9 +636,9 @@ cdef class BarType:
     Parameters
     ----------
     instrument_id : InstrumentId
-        The bar types instrument ID.
+        The bar type's instrument ID.
     bar_spec : BarSpecification
-        The bar types specification.
+        The bar type's specification.
     aggregation_source : AggregationSource, default EXTERNAL
         The bar type aggregation source. If ``INTERNAL`` the `DataEngine`
         will subscribe to the necessary ticks and aggregate bars accordingly.
@@ -649,25 +665,63 @@ cdef class BarType:
         )
 
     def __getstate__(self):
-        return (
-            self.instrument_id.value,
-            self._mem.spec.step,
-            self._mem.spec.aggregation,
-            self._mem.spec.price_type,
-            self._mem.aggregation_source
-        )
+        if self.is_standard():
+            spec = self.spec
+
+            return (
+                self.instrument_id.value,
+                spec.step,
+                spec.aggregation,
+                spec.price_type,
+                self.aggregation_source,
+            )
+        else:
+            composite = self.composite()
+            spec = self.spec
+            spec_composite = composite.spec
+
+            return (
+                self.instrument_id.value,
+                spec.step,
+                spec.aggregation,
+                spec.price_type,
+                self.aggregation_source,
+
+                spec_composite.step,
+                spec_composite.aggregation,
+                composite.aggregation_source
+            )
 
     def __setstate__(self, state):
-        cdef InstrumentId instrument_id = InstrumentId.from_str_c(state[0])
-        self._mem = bar_type_new(
-            instrument_id._mem,
-            bar_specification_new(
-                state[1],
-                state[2],
-                state[3]
-            ),
-            state[4],
-        )
+        if len(state) == 5:
+            instrument_id = InstrumentId.from_str_c(state[0])
+
+            self._mem = bar_type_new(
+                instrument_id._mem,
+                bar_specification_new(
+                    state[1],
+                    state[2],
+                    state[3]
+                ),
+                state[4],
+            )
+        else:
+            instrument_id = InstrumentId.from_str_c(state[0])
+            composite_instrument_id = InstrumentId.from_str_c(state[5])
+
+            self._mem = bar_type_new_composite(
+                instrument_id._mem,
+                bar_specification_new(
+                    state[1],
+                    state[2],
+                    state[3]
+                ),
+                state[4],
+
+                state[5],
+                state[6],
+                state[7],
+            )
 
     cdef str to_str(self):
         return cstr_to_pystr(bar_type_to_cstr(&self._mem))
@@ -706,7 +760,7 @@ cdef class BarType:
         InstrumentId
 
         """
-        return InstrumentId.from_mem_c(self._mem.instrument_id)
+        return InstrumentId.from_mem_c(bar_type_instrument_id(&self._mem))
 
     @property
     def spec(self) -> BarSpecification:
@@ -718,7 +772,7 @@ cdef class BarType:
         BarSpecification
 
         """
-        return BarSpecification.from_mem_c(self._mem.spec)
+        return BarSpecification.from_mem_c(bar_type_spec(&self._mem))
 
     @property
     def aggregation_source(self) -> AggregationSource:
@@ -730,7 +784,7 @@ cdef class BarType:
         AggregationSource
 
         """
-        return self._mem.aggregation_source
+        return bar_type_aggregation_source(&self._mem)
 
     @staticmethod
     cdef BarType from_mem_c(BarType_t mem):
@@ -794,6 +848,60 @@ cdef class BarType:
         """
         return self.aggregation_source == AggregationSource.INTERNAL
 
+    @staticmethod
+    def new_composite(
+        InstrumentId instrument_id,
+        BarSpecification bar_spec,
+        AggregationSource aggregation_source,
+
+        int composite_step,
+        BarAggregation composite_aggregation,
+        AggregationSource composite_aggregation_source,
+    ) -> BarType:
+        return BarType.from_mem_c(
+            bar_type_new_composite(
+                instrument_id._mem,
+                bar_spec._mem,
+                aggregation_source,
+
+                composite_step,
+                composite_aggregation,
+                composite_aggregation_source,
+            )
+        )
+
+    cpdef bint is_standard(self):
+        """
+        Return a value indicating whether the bar type corresponds to `BarType::Standard` in Rust.
+
+        Returns
+        -------
+        bool
+
+        """
+        return bar_type_is_standard(&self._mem)
+
+    cpdef bint is_composite(self):
+        """
+        Return a value indicating whether the bar type corresponds to `BarType::Composite` in Rust.
+
+        Returns
+        -------
+        bool
+
+        """
+        return bar_type_is_composite(&self._mem)
+
+    cpdef BarType standard(self):
+        cdef BarType bar_type = BarType.__new__(BarType)
+        bar_type._mem = bar_type_standard(&self._mem)
+        return bar_type
+
+    cpdef BarType  composite(self):
+        cdef BarType bar_type = BarType.__new__(BarType)
+        bar_type._mem = bar_type_composite(&self._mem)
+        return bar_type
+
 
 cdef class Bar(Data):
     """
@@ -814,9 +922,9 @@ cdef class Bar(Data):
     volume : Quantity
         The bars volume.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
     is_revision : bool, default False
         If this bar is a revision of a previous bar with the same `ts_event`.
 
@@ -843,11 +951,11 @@ cdef class Bar(Data):
         uint64_t ts_init,
         bint is_revision = False,
     ) -> None:
-        Condition.true(high._mem.raw >= open._mem.raw, "high was < open")
-        Condition.true(high._mem.raw >= low._mem.raw, "high was < low")
-        Condition.true(high._mem.raw >= close._mem.raw, "high was < close")
-        Condition.true(low._mem.raw <= close._mem.raw, "low was > close")
-        Condition.true(low._mem.raw <= open._mem.raw, "low was > open")
+        Condition.is_true(high._mem.raw >= open._mem.raw, "high was < open")
+        Condition.is_true(high._mem.raw >= low._mem.raw, "high was < low")
+        Condition.is_true(high._mem.raw >= close._mem.raw, "high was < close")
+        Condition.is_true(low._mem.raw <= close._mem.raw, "low was > close")
+        Condition.is_true(low._mem.raw <= open._mem.raw, "low was > open")
 
         self._mem = bar_new(
             bar_type._mem,
@@ -862,12 +970,10 @@ cdef class Bar(Data):
         self.is_revision = is_revision
 
     def __getstate__(self):
-        return (
-            self.bar_type.instrument_id.value,
-            self._mem.bar_type.spec.step,
-            self._mem.bar_type.spec.aggregation,
-            self._mem.bar_type.spec.price_type,
-            self._mem.bar_type.aggregation_source,
+        bar_type = BarType.from_mem_c(self._mem.bar_type)
+        bart_type_state = bar_type.__getstate__()
+
+        return bart_type_state + (
             self._mem.open.raw,
             self._mem.high.raw,
             self._mem.low.raw,
@@ -880,27 +986,60 @@ cdef class Bar(Data):
         )
 
     def __setstate__(self, state):
-        cdef InstrumentId instrument_id = InstrumentId.from_str_c(state[0])
-        self._mem = bar_new_from_raw(
-            bar_type_new(
-                instrument_id._mem,
-                bar_specification_new(
-                    state[1],
-                    state[2],
-                    state[3],
+        cdef InstrumentId instrument_id
+        cdef uint8_t price_prec
+        cdef uint8_t size_prec
+
+        if len(state) == 14:
+            instrument_id = InstrumentId.from_str_c(state[0])
+            price_prec = state[9]
+            size_prec = state[11]
+
+            self._mem = bar_new(
+                bar_type_new(
+                    instrument_id._mem,
+                    bar_specification_new(
+                        state[1],
+                        state[2],
+                        state[3],
+                    ),
+                    state[4],
                 ),
-                state[4],
-            ),
-            state[5],
-            state[6],
-            state[7],
-            state[8],
-            state[9],
-            state[10],
-            state[11],
-            state[12],
-            state[13],
-        )
+                price_new(state[5], price_prec),
+                price_new(state[6], price_prec),
+                price_new(state[7], price_prec),
+                price_new(state[8], price_prec),
+                quantity_new(state[10], size_prec),
+                state[12],
+                state[13],
+            )
+        else:
+            instrument_id = InstrumentId.from_str_c(state[0])
+            price_prec = state[12]
+            size_prec = state[14]
+
+            self._mem = bar_new(
+                bar_type_new_composite(
+                    instrument_id._mem,
+                    bar_specification_new(
+                        state[1],
+                        state[2],
+                        state[3]
+                    ),
+                    state[4],
+
+                    state[5],
+                    state[6],
+                    state[7]
+                ),
+                price_new(state[8], price_prec),
+                price_new(state[9], price_prec),
+                price_new(state[10], price_prec),
+                price_new(state[11], price_prec),
+                quantity_new(state[13], size_prec),
+                state[15],
+                state[16],
+            )
 
     def __eq__(self, Bar other) -> bool:
         return self.to_str() == other.to_str()
@@ -992,7 +1131,7 @@ cdef class Bar(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -1004,7 +1143,7 @@ cdef class Bar(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1016,6 +1155,115 @@ cdef class Bar(Data):
     @staticmethod
     cdef Bar from_mem_c(Bar_t mem):
         return bar_from_mem_c(mem)
+
+    @staticmethod
+    cdef Bar from_raw_c(
+        BarType bar_type,
+        PriceRaw open,
+        PriceRaw high,
+        PriceRaw low,
+        PriceRaw close,
+        uint8_t price_prec,
+        QuantityRaw volume,
+        uint8_t size_prec,
+        uint64_t ts_event,
+        uint64_t ts_init,
+    ):
+        cdef Price_t open_price = price_new(open, price_prec)
+        cdef Price_t high_price = price_new(high, price_prec)
+        cdef Price_t low_price = price_new(low, price_prec)
+        cdef Price_t close_price = price_new(close, price_prec)
+        cdef Quantity_t volume_qty = quantity_new(volume, size_prec)
+        cdef Bar bar = Bar.__new__(Bar)
+        bar._mem = bar_new(
+            bar_type._mem,
+            open_price,
+            high_price,
+            low_price,
+            close_price,
+            volume_qty,
+            ts_event,
+            ts_init,
+        )
+
+        return bar
+
+    @staticmethod
+    cdef list[Bar] from_raw_arrays_to_list_c(
+        BarType bar_type,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] opens,
+        double[:] highs,
+        double[:] lows,
+        double[:] closes,
+        double[:] volumes,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
+    ):
+        Condition.is_true(
+            len(opens) == len(highs) == len(lows) == len(lows) ==
+            len(closes) == len(volumes) == len(ts_events) == len(ts_inits),
+            "Array lengths must be equal",
+        )
+
+        cdef int count = ts_events.shape[0]
+        cdef list[Bar] bars = []
+
+        cdef:
+            int i
+            Price open_price
+            Price high_price
+            Price low_price
+            Price close_price
+            Quantity volume_qty
+            Bar bar
+        for i in range(count):
+            open_price = Price(opens[i], price_prec)
+            high_price = Price(highs[i], price_prec)
+            low_price = Price(lows[i], price_prec)
+            close_price = Price(closes[i], price_prec)
+            volume_qty = Quantity(volumes[i], size_prec)
+            bar = Bar.__new__(Bar)
+            bar._mem = bar_new(
+                bar_type._mem,
+                open_price._mem,
+                high_price._mem,
+                low_price._mem,
+                close_price._mem,
+                volume_qty._mem,
+                ts_events[i],
+                ts_inits[i],
+            )
+            bars.append(bar)
+
+        return bars
+
+    @staticmethod
+    def from_raw_arrays_to_list(
+        BarType bar_type,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] opens,
+        double[:] highs,
+        double[:] lows,
+        double[:] closes,
+        double[:] volumes,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
+    ) -> list[Bar]:
+        return Bar.from_raw_arrays_to_list_c(
+            bar_type,
+            price_prec,
+            size_prec,
+            opens,
+            highs,
+            lows,
+            closes,
+            volumes,
+            ts_events,
+            ts_inits,
+        )
 
     @staticmethod
     cdef Bar from_dict_c(dict values):
@@ -1053,6 +1301,32 @@ cdef class Bar(Data):
         capsule = pyo3_bar.as_pycapsule()
         cdef Data_t* ptr = <Data_t*>PyCapsule_GetPointer(capsule, NULL)
         return bar_from_mem_c(ptr.bar)
+
+    @staticmethod
+    def from_raw(
+        BarType bar_type,
+        PriceRaw open,
+        PriceRaw high,
+        PriceRaw low,
+        PriceRaw close,
+        uint8_t price_prec,
+        QuantityRaw volume,
+        uint8_t size_prec,
+        uint64_t ts_event,
+        uint64_t ts_init,
+    ) -> Bar:
+        return Bar.from_raw_c(
+            bar_type,
+            open,
+            high,
+            low,
+            close,
+            price_prec,
+            volume,
+            size_prec,
+            ts_event,
+            ts_init,
+        )
 
     @staticmethod
     def from_dict(dict values) -> Bar:
@@ -1167,6 +1441,26 @@ cdef class Bar(Data):
         """
         return Bar.from_pyo3_c(pyo3_bar)
 
+    def to_pyo3(self) -> nautilus_pyo3.Bar:
+        """
+        Return a pyo3 object from this legacy Cython instance.
+
+        Returns
+        -------
+        nautilus_pyo3.Bar
+
+        """
+        return nautilus_pyo3.Bar(
+            nautilus_pyo3.BarType.from_str(BarType.from_mem_c(self._mem.bar_type).to_str()),
+            nautilus_pyo3.Price.from_raw(self._mem.open.raw, self._mem.open.precision),
+            nautilus_pyo3.Price.from_raw(self._mem.high.raw, self._mem.high.precision),
+            nautilus_pyo3.Price.from_raw(self._mem.low.raw, self._mem.low.precision),
+            nautilus_pyo3.Price.from_raw(self._mem.close.raw, self._mem.close.precision),
+            nautilus_pyo3.Quantity.from_raw(self._mem.volume.raw, self._mem.volume.precision),
+            self._mem.ts_event,
+            self._mem.ts_init,
+        )
+
     cpdef bint is_single_price(self):
         """
         If the OHLC are all equal to a single price.
@@ -1270,7 +1564,7 @@ cdef class CustomData(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -1282,7 +1576,7 @@ cdef class CustomData(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1325,12 +1619,10 @@ cdef class BookOrder:
         Quantity size not None,
         uint64_t order_id,
     ) -> None:
-        self._mem = book_order_from_raw(
+        self._mem = book_order_new(
             side,
-            price._mem.raw,
-            price._mem.precision,
-            size._mem.raw,
-            size._mem.precision,
+            price._mem,
+            size._mem,
             order_id,
         )
 
@@ -1339,18 +1631,18 @@ cdef class BookOrder:
             self._mem.side,
             self._mem.price.raw,
             self._mem.price.precision,
-            self._mem.size.raw ,
+            self._mem.size.raw,
             self._mem.size.precision,
             self._mem.order_id,
         )
 
     def __setstate__(self, state):
-        self._mem = book_order_from_raw(
+        cdef Price_t price = price_new(state[1], state[2])
+        cdef Quantity_t size = quantity_new(state[3], state[4])
+        self._mem = book_order_new(
             state[0],
-            state[1],
-            state[2],
-            state[3],
-            state[4],
+            price,
+            size,
             state[5],
         )
 
@@ -1366,19 +1658,19 @@ cdef class BookOrder:
     @staticmethod
     cdef BookOrder from_raw_c(
         OrderSide side,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         uint64_t order_id,
     ):
+        cdef Price_t price = price_new(price_raw, price_prec)
+        cdef Quantity_t size = quantity_new(size_raw, size_prec)
         cdef BookOrder order = BookOrder.__new__(BookOrder)
-        order._mem = book_order_from_raw(
+        order._mem = book_order_new(
             side,
-            price_raw,
-            price_prec,
-            size_raw,
-            size_prec,
+            price,
+            size,
             order_id,
         )
         return order
@@ -1396,7 +1688,7 @@ cdef class BookOrder:
         return Price.from_raw_c(self._mem.price.raw, self._mem.price.precision)
 
     @property
-    def size(self) -> Price:
+    def size(self) -> Quantity:
         """
         Return the book orders size.
 
@@ -1460,9 +1752,9 @@ cdef class BookOrder:
     @staticmethod
     def from_raw(
         OrderSide side,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         uint64_t order_id,
     ) -> BookOrder:
@@ -1473,12 +1765,12 @@ cdef class BookOrder:
         ----------
         side : OrderSide {``BUY``, ``SELL``}
             The order side.
-        price_raw : int64_t
-            The order raw price (as a scaled fixed precision integer).
+        price_raw : int
+            The order raw price (as a scaled fixed-point integer).
         price_prec : uint8_t
             The order price precision.
-        size_raw : uint64_t
-            The order raw size (as a scaled fixed precision integer).
+        size_raw : int
+            The order raw size (as a scaled fixed-point integer).
         size_prec : uint8_t
             The order size precision.
         order_id : uint64_t
@@ -1559,16 +1851,23 @@ cdef class OrderBookDelta(Data):
         The instrument ID for the book.
     action : BookAction {``ADD``, ``UPDATE``, ``DELETE``, ``CLEAR``}
         The order book delta action.
-    order : BookOrder, optional with no default so ``None`` must be passed explicitly
+    order : BookOrder or ``None``
         The book order for the delta.
-    ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
-    ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
-    flags : uint8_t, default 0 (no flags)
-        A combination of packet end with matching engine status.
-    sequence : uint64_t, default 0
+    flags : uint8_t
+        The record flags bit field, indicating event end and data information.
+        A value of zero indicates no flags.
+    sequence : uint64_t
         The unique sequence number for the update.
+        If no sequence number provided in the source data then use a value of zero.
+    ts_event : uint64_t
+        UNIX timestamp (nanoseconds) when the data event occurred.
+    ts_init : uint64_t
+        UNIX timestamp (nanoseconds) when the data object was initialized.
+
+    Raises
+    ------
+    ValueError
+        If `action` is `ADD` or `UPDATE` and `order.size` is not positive (> 0).
 
     """
 
@@ -1577,20 +1876,22 @@ cdef class OrderBookDelta(Data):
         InstrumentId instrument_id not None,
         BookAction action,
         BookOrder order: BookOrder | None,
+        uint8_t flags,
+        uint64_t sequence,
         uint64_t ts_event,
         uint64_t ts_init,
-        uint8_t flags=0,
-        uint64_t sequence=0,
     ) -> None:
         # Placeholder for now
-        cdef BookOrder_t book_order = order._mem if order is not None else book_order_from_raw(
+        cdef BookOrder_t book_order = order._mem if order is not None else book_order_new(
             OrderSide.NO_ORDER_SIDE,
-            0,
-            0,
-            0,
-            0,
+            price_new(0, 0),
+            quantity_new(0, 0),
             0,
         )
+
+        if action == BookAction.ADD or action == BookAction.UPDATE:
+            Condition.positive_int(book_order.size.raw, "size")
+
         self._mem = orderbook_delta_new(
             instrument_id._mem,
             action,
@@ -1608,7 +1909,7 @@ cdef class OrderBookDelta(Data):
             self._mem.order.side,
             self._mem.order.price.raw,
             self._mem.order.price.precision,
-            self._mem.order.size.raw ,
+            self._mem.order.size.raw,
             self._mem.order.size.precision,
             self._mem.order.order_id,
             self._mem.flags,
@@ -1618,18 +1919,23 @@ cdef class OrderBookDelta(Data):
         )
 
     def __setstate__(self, state):
+        cdef BookAction action = state[1]
+        cdef Price_t price = price_new(state[3], state[4])
+        cdef Quantity_t size = quantity_new(state[5], state[6])
+
+        if action == BookAction.ADD or action == BookAction.UPDATE:
+            Condition.positive_int(size.raw, "size")
+
         cdef InstrumentId instrument_id = InstrumentId.from_str_c(state[0])
-        cdef BookOrder_t book_order = book_order_from_raw(
+        cdef BookOrder_t book_order = book_order_new(
             state[2],
-            state[3],
-            state[4],
-            state[5],
-            state[6],
+            price,
+            size,
             state[7],
         )
         self._mem = orderbook_delta_new(
             instrument_id._mem,
-            state[1],
+            action,
             book_order,
             state[8],
             state[9],
@@ -1769,7 +2075,7 @@ cdef class OrderBookDelta(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -1781,7 +2087,7 @@ cdef class OrderBookDelta(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1795,9 +2101,9 @@ cdef class OrderBookDelta(Data):
         InstrumentId instrument_id,
         BookAction action,
         OrderSide side,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         uint64_t order_id,
         uint8_t flags,
@@ -1805,19 +2111,23 @@ cdef class OrderBookDelta(Data):
         uint64_t ts_event,
         uint64_t ts_init,
     ):
-        cdef BookOrder_t order_mem = book_order_from_raw(
+        cdef Price_t price = price_new(price_raw, price_prec)
+        cdef Quantity_t size = quantity_new(size_raw, size_prec)
+        cdef BookOrder_t book_order = book_order_new(
             side,
-            price_raw,
-            price_prec,
-            size_raw,
-            size_prec,
+            price,
+            size,
             order_id,
         )
+
+        if action == BookAction.ADD or action == BookAction.UPDATE:
+            Condition.positive_int(size_raw, "size_raw")
+
         cdef OrderBookDelta delta = OrderBookDelta.__new__(OrderBookDelta)
         delta._mem = orderbook_delta_new(
             instrument_id._mem,
             action,
-            order_mem,
+            book_order,
             flags,
             sequence,
             ts_event,
@@ -1875,17 +2185,18 @@ cdef class OrderBookDelta(Data):
     @staticmethod
     cdef OrderBookDelta clear_c(
         InstrumentId instrument_id,
+        uint64_t sequence,
         uint64_t ts_event,
         uint64_t ts_init,
-        uint64_t sequence=0,
     ):
         return OrderBookDelta(
             instrument_id=instrument_id,
             action=BookAction.CLEAR,
             order=None,
+            flags=0,
+            sequence=sequence,
             ts_event=ts_event,
             ts_init=ts_init,
-            sequence=sequence,
         )
 
     @staticmethod
@@ -1935,9 +2246,9 @@ cdef class OrderBookDelta(Data):
         InstrumentId instrument_id,
         BookAction action,
         OrderSide side,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         uint64_t order_id,
         uint8_t flags,
@@ -1956,24 +2267,26 @@ cdef class OrderBookDelta(Data):
             The order book delta action.
         side : OrderSide {``BUY``, ``SELL``}
             The order side.
-        price_raw : int64_t
-            The order raw price (as a scaled fixed precision integer).
+        price_raw : int
+            The order raw price (as a scaled fixed-point integer).
         price_prec : uint8_t
             The order price precision.
-        size_raw : uint64_t
-            The order raw size (as a scaled fixed precision integer).
+        size_raw : int
+            The order raw size (as a scaled fixed-point integer).
         size_prec : uint8_t
             The order size precision.
         order_id : uint64_t
             The order ID.
         flags : uint8_t
-            A combination of packet end with matching engine status.
+            The record flags bit field, indicating event end and data information.
+            A value of zero indicates no flags.
         sequence : uint64_t
             The unique sequence number for the update.
+            If no sequence number provided in the source data then use a value of zero.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the tick event occurred.
+            UNIX timestamp (nanoseconds) when the tick event occurred.
         ts_init : uint64_t
-            The UNIX timestamp (nanoseconds) when the data object was initialized.
+            UNIX timestamp (nanoseconds) when the data object was initialized.
 
         Returns
         -------
@@ -2025,7 +2338,7 @@ cdef class OrderBookDelta(Data):
         return OrderBookDelta.to_dict_c(obj)
 
     @staticmethod
-    def clear(InstrumentId instrument_id, uint64_t ts_event, uint64_t ts_init, uint64_t sequence=0):
+    def clear(InstrumentId instrument_id, uint64_t sequence, uint64_t ts_event, uint64_t ts_init):
         """
         Return an order book delta which acts as an initial ``CLEAR``.
 
@@ -2034,7 +2347,8 @@ cdef class OrderBookDelta(Data):
         OrderBookDelta
 
         """
-        return OrderBookDelta.clear_c(instrument_id, ts_event, ts_init, sequence)
+        return OrderBookDelta.clear_c(instrument_id, sequence, ts_event, ts_init)
+
 
     @staticmethod
     def to_pyo3_list(list[OrderBookDelta] deltas) -> list[nautilus_pyo3.OrderBookDelta]:
@@ -2130,14 +2444,14 @@ cdef class OrderBookDelta(Data):
 
 cdef class OrderBookDeltas(Data):
     """
-    Represents a grouped batch of `OrderBookDelta` updates for an `OrderBook`.
+    Represents a batch of `OrderBookDelta` updates for an `OrderBook`.
 
     Parameters
     ----------
     instrument_id : InstrumentId
         The instrument ID for the book.
     deltas : list[OrderBookDelta]
-        The list of order book changes.
+        The batch of order book changes.
 
     Raises
     ------
@@ -2322,7 +2636,7 @@ cdef class OrderBookDeltas(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -2334,7 +2648,7 @@ cdef class OrderBookDeltas(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -2389,6 +2703,62 @@ cdef class OrderBookDeltas(Data):
         """
         return OrderBookDeltas.to_dict_c(obj)
 
+    @staticmethod
+    def batch(list data: list[OrderBookDelta]) -> list[OrderBookDeltas]:
+        """
+        Groups the given list of `OrderBookDelta` records into batches, creating `OrderBookDeltas`
+        objects when an `F_LAST` flag is encountered.
+
+        The method iterates through the `data` list and appends each `OrderBookDelta` to the current
+        batch. When an `F_LAST` flag is found, it indicates the end of a batch. The batch is then
+        appended to the list of completed batches and a new batch is started.
+
+        Returns
+        -------
+        list[OrderBookDeltas]
+
+        Raises
+        ------
+        ValueError
+            If `data` is empty.
+        TypeError
+            If `data` is not a list of `OrderBookDelta`.
+
+        Warnings
+        --------
+        UserWarning
+            If there are remaining deltas in the final batch after the last `F_LAST` flag.
+
+        """
+        Condition.not_empty(data, "data")
+        cdef OrderBookDelta first = data[0]
+
+        cdef InstrumentId instrument_id = first.instrument_id
+        cdef list[list[OrderBookDelta]] batches = []
+        cdef list[OrderBookDelta] batch = []
+
+        cdef:
+            OrderBookDelta delta
+        for delta in data:
+            batch.append(delta)
+            if delta.flags == RecordFlag.F_LAST:
+                batches.append(batch)
+                batch = []
+
+        cdef list[OrderBookDeltas] deltas = [OrderBookDeltas(instrument_id, deltas=batch) for batch in batches]
+
+        if batch:
+            warnings.warn(
+                f"Batched {len(batches):_} `OrderBookDeltas`, but found {len(batch):_} remaining deltas "
+                "without an 'F_LAST' flag. This can indicate incomplete data processing, as deltas "
+                "should typically end with an 'F_LAST' flag to signal the end of a batch. If using streaming, "
+                "this warning can occur if the last chunk did not include a final 'F_LAST' delta.",
+                UserWarning,
+            )
+            deltas.append(OrderBookDeltas(instrument_id, deltas=batch))
+
+        return deltas
+
     cpdef to_capsule(self):
         cdef OrderBookDeltas_API *data = <OrderBookDeltas_API *>PyMem_Malloc(sizeof(OrderBookDeltas_API))
         data[0] = self._mem
@@ -2396,6 +2766,14 @@ cdef class OrderBookDeltas(Data):
         return capsule
 
     cpdef to_pyo3(self):
+        """
+        Return a pyo3 object from this legacy Cython instance.
+
+        Returns
+        -------
+        nautilus_pyo3.OrderBookDeltas
+
+        """
         capsule = self.to_capsule()
         deltas = nautilus_pyo3.OrderBookDeltas.from_pycapsule(capsule)
         return deltas
@@ -2419,28 +2797,22 @@ cdef class OrderBookDepth10(Data):
     ask_counts : list[uint32_t]
         The count of ask orders per level for the update. Can be zeros if data not available.
     flags : uint8_t
-        A combination of packet end with matching engine status.
+        The record flags bit field, indicating event end and data information.
+        A value of zero indicates no flags.
     sequence : uint64_t
         The unique sequence number for the update.
+        If no sequence number provided in the source data then use a value of zero.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the tick event occurred.
+        UNIX timestamp (nanoseconds) when the tick event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
 
     Raises
     ------
     ValueError
-        If `bids` is empty.
+        If `bids`, `asks`, `bid_counts`, `ask_counts` lengths are greater than 10.
     ValueError
-        If `asks` is empty.
-    ValueError
-        If `bids` length is not equal to 10.
-    ValueError
-        If `asks` length is not equal to 10.
-    ValueError
-        If `bid_counts` length is not equal to 10.
-    ValueError
-        If `ask_counts` length is not equal to 10.
+        If `bids`, `asks`, `bid_counts`, `ask_counts` lengths are not equal.
 
     """
 
@@ -2456,12 +2828,20 @@ cdef class OrderBookDepth10(Data):
         uint64_t ts_event,
         uint64_t ts_init,
     ) -> None:
-        Condition.not_empty(bids, "bids")
-        Condition.not_empty(asks, "asks")
-        Condition.true(len(bids) == DEPTH10_LEN, f"`bids` length != 10, was {len(bids)}")
-        Condition.true(len(asks) == DEPTH10_LEN, f"`asks` length != 10, was {len(asks)}")
-        Condition.true(len(bid_counts) == DEPTH10_LEN, f"`bid_counts` length != 10, was {len(bid_counts)}")
-        Condition.true(len(ask_counts) == DEPTH10_LEN, f"`ask_counts` length != 10, was {len(ask_counts)}")
+        cdef uint32_t bids_len = len(bids)
+        cdef uint32_t asks_len = len(asks)
+        Condition.is_true(bids_len <= 10, f"bids length greater than maximum 10, was {bids_len}")
+        Condition.is_true(asks_len <= 10, f"asks length greater than maximum 10, was {asks_len}")
+        Condition.equal(bids_len, asks_len, "bids length", "asks length")
+        Condition.equal(bids_len, len(bid_counts), "len(bids)", "len(bid_counts)")
+        Condition.equal(asks_len, len(ask_counts), "len(asks)", "len(ask_counts)")
+
+        if bids_len < 10:
+            # Fill remaining levels with with null orders and zero counts
+            bids.extend([NULL_ORDER] * (10 - bids_len))
+            asks.extend([NULL_ORDER] * (10 - asks_len))
+            bid_counts.extend([0] * (10 - bids_len))
+            ask_counts.extend([0] * (10 - asks_len))
 
         # Create temporary arrays to copy data to Rust
         cdef BookOrder_t *bids_array = <BookOrder_t *>PyMem_Malloc(DEPTH10_LEN * sizeof(BookOrder_t))
@@ -2697,7 +3077,7 @@ cdef class OrderBookDepth10(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -2709,7 +3089,7 @@ cdef class OrderBookDepth10(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -2872,99 +3252,6 @@ cdef class OrderBookDepth10(Data):
         return output
 
 
-cdef class VenueStatus(Data):
-    """
-    Represents an update that indicates a change in a Venue status.
-
-    Parameters
-    ----------
-    venue : Venue
-        The venue ID.
-    status : MarketStatus
-        The venue market status.
-    ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the status update event occurred.
-    ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
-
-    """
-
-    def __init__(
-        self,
-        Venue venue,
-        MarketStatus status,
-        uint64_t ts_event,
-        uint64_t ts_init,
-    ) -> None:
-        self.venue = venue
-        self.status = status
-        self.ts_event = ts_event
-        self.ts_init = ts_init
-
-    def __eq__(self, VenueStatus other) -> bool:
-        return VenueStatus.to_dict_c(self) == VenueStatus.to_dict_c(other)
-
-    def __hash__(self) -> int:
-        return hash(frozenset(VenueStatus.to_dict_c(self)))
-
-    def __repr__(self) -> str:
-        return (
-            f"{type(self).__name__}("
-            f"venue={self.venue}, "
-            f"status={market_status_to_str(self.status)})"
-        )
-
-    @staticmethod
-    cdef VenueStatus from_dict_c(dict values):
-        Condition.not_none(values, "values")
-        return VenueStatus(
-            venue=Venue(values["venue"]),
-            status=market_status_from_str(values["status"]),
-            ts_event=values["ts_event"],
-            ts_init=values["ts_init"],
-        )
-
-    @staticmethod
-    cdef dict to_dict_c(VenueStatus obj):
-        Condition.not_none(obj, "obj")
-        return {
-            "type": "VenueStatus",
-            "venue": obj.venue.to_str(),
-            "status": market_status_to_str(obj.status),
-            "ts_event": obj.ts_event,
-            "ts_init": obj.ts_init,
-        }
-
-    @staticmethod
-    def from_dict(dict values) -> VenueStatus:
-        """
-        Return a venue status update from the given dict values.
-
-        Parameters
-        ----------
-        values : dict[str, object]
-            The values for initialization.
-
-        Returns
-        -------
-        VenueStatus
-
-        """
-        return VenueStatus.from_dict_c(values)
-
-    @staticmethod
-    def to_dict(VenueStatus obj):
-        """
-        Return a dictionary representation of this object.
-
-        Returns
-        -------
-        dict[str, object]
-
-        """
-        return VenueStatus.to_dict_c(obj)
-
-
 cdef class InstrumentStatus(Data):
     """
     Represents an event that indicates a change in an instrument market status.
@@ -2972,43 +3259,47 @@ cdef class InstrumentStatus(Data):
     Parameters
     ----------
     instrument_id : InstrumentId
-        The instrument ID.
-    status : MarketStatus
-        The instrument market session status.
+        The instrument ID for the status change.
+    action : MarketStatusAction
+        The instrument market status action.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the status update event occurred.
+        UNIX timestamp (nanoseconds) when the status event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
-    trading_session : str, default 'Regular'
-        The name of the trading session.
-    halt_reason : HaltReason, default ``NOT_HALTED``
-        The halt reason (only applicable for ``HALT`` status).
-
-    Raises
-    ------
-    ValueError
-        If `status` is not equal to ``HALT`` and `halt_reason` is other than ``NOT_HALTED``.
+        UNIX timestamp (nanoseconds) when the object was initialized.
+    reason : str, optional
+        Additional details about the cause of the status change.
+    trading_event : str, optional
+        Further information about the status change (if provided).
+    is_trading : bool, optional
+        The state of trading in the instrument.
+    is_quoting : bool, optional
+        The state of quoting in the instrument.
+    is_short_sell_restricted : bool, optional
+        The state of short sell restrictions for the instrument (if applicable).
 
     """
 
     def __init__(
         self,
         InstrumentId instrument_id,
-        MarketStatus status,
+        MarketStatusAction action,
         uint64_t ts_event,
         uint64_t ts_init,
-        str trading_session = "Regular",
-        HaltReason halt_reason = HaltReason.NOT_HALTED,
+        str reason = None,
+        str trading_event = None,
+        is_trading: bool | None = None,
+        is_quoting: bool | None = None,
+        is_short_sell_restricted: bool | None = None,
     ) -> None:
-        if status != MarketStatus.HALT:
-            Condition.equal(halt_reason, HaltReason.NOT_HALTED, "halt_reason", "NO_HALT")
-
         self.instrument_id = instrument_id
-        self.trading_session = trading_session
-        self.status = status
-        self.halt_reason = halt_reason
+        self.action = action
         self.ts_event = ts_event
         self.ts_init = ts_init
+        self.reason = reason
+        self.trading_event = trading_event
+        self._is_trading = is_trading
+        self._is_quoting = is_quoting
+        self._is_short_sell_restricted = is_short_sell_restricted
 
     def __eq__(self, InstrumentStatus other) -> bool:
         return InstrumentStatus.to_dict_c(self) == InstrumentStatus.to_dict_c(other)
@@ -3020,20 +3311,62 @@ cdef class InstrumentStatus(Data):
         return (
             f"{type(self).__name__}("
             f"instrument_id={self.instrument_id}, "
-            f"trading_session={self.trading_session}, "
-            f"status={market_status_to_str(self.status)}, "
-            f"halt_reason={halt_reason_to_str(self.halt_reason)}, "
+            f"action={market_status_action_to_str(self.action)}, "
+            f"reason={self.reason}, "
+            f"trading_event={self.trading_event}, "
+            f"is_trading={self.is_trading}, "
+            f"is_quoting={self.is_quoting}, "
+            f"is_short_sell_restricted={self.is_short_sell_restricted}, "
             f"ts_event={self.ts_event})"
         )
+
+    @property
+    def is_trading(self) -> bool | None:
+        """
+        Return the state of trading in the instrument (if known).
+
+        returns
+        -------
+        bool or ``None``
+
+        """
+        return self._is_trading
+
+    @property
+    def is_quoting(self) -> bool | None:
+        """
+        Return the state of quoting in the instrument (if known).
+
+        returns
+        -------
+        bool or ``None``
+
+        """
+        return self._is_quoting
+
+    @property
+    def is_short_sell_restricted(self) -> bool | None:
+        """
+        Return the state of short sell restrictions for the instrument (if known and applicable).
+
+        returns
+        -------
+        bool or ``None``
+
+        """
+        return self._is_short_sell_restricted
 
     @staticmethod
     cdef InstrumentStatus from_dict_c(dict values):
         Condition.not_none(values, "values")
         return InstrumentStatus(
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
-            trading_session=values.get("trading_session", "Regular"),
-            status=market_status_from_str(values["status"]),
-            halt_reason=halt_reason_from_str(values.get("halt_reason", "NOT_HALTED")),
+            action=market_status_action_from_str(values["action"]),
+            reason=values["reason"],
+            trading_event=values["trading_event"],
+            is_trading=values["is_trading"],
+            is_quoting=values["is_quoting"],
+            is_short_sell_restricted=values["is_short_sell_restricted"],
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
         )
@@ -3044,9 +3377,12 @@ cdef class InstrumentStatus(Data):
         return {
             "type": "InstrumentStatus",
             "instrument_id": obj.instrument_id.to_str(),
-            "trading_session": obj.trading_session,
-            "status": market_status_to_str(obj.status),
-            "halt_reason": halt_reason_to_str(obj.halt_reason),
+            "action": market_status_action_to_str(obj.action),
+            "reason": obj.reason,
+            "trading_event": obj.trading_event,
+            "is_trading": obj.is_trading,
+            "is_quoting": obj.is_quoting,
+            "is_short_sell_restricted": obj.is_short_sell_restricted,
             "ts_event": obj.ts_event,
             "ts_init": obj.ts_init,
         }
@@ -3080,6 +3416,76 @@ cdef class InstrumentStatus(Data):
         """
         return InstrumentStatus.to_dict_c(obj)
 
+    @staticmethod
+    def from_pyo3_list(list pyo3_status_list) -> list[QuoteTick]:
+        """
+        Return legacy Cython instrument status converted from the given pyo3 Rust objects.
+
+        Parameters
+        ----------
+        pyo3_status_list : list[nautilus_pyo3.InstrumentStatus]
+            The pyo3 Rust instrument status list to convert from.
+
+        Returns
+        -------
+        list[InstrumentStatus]
+
+        """
+        cdef list[InstrumentStatus] output = []
+
+        for pyo3_status in pyo3_status_list:
+            output.append(InstrumentStatus.from_pyo3(pyo3_status))
+
+        return output
+
+    @staticmethod
+    def from_pyo3(pyo3_status) -> InstrumentStatus:
+        """
+        Return a legacy Cython quote tick converted from the given pyo3 Rust object.
+
+        Parameters
+        ----------
+        pyo3_status : nautilus_pyo3.InstrumentStatus
+            The pyo3 Rust instrument status to convert from.
+
+        Returns
+        -------
+        InstrumentStatus
+
+        """
+        return InstrumentStatus(
+            instrument_id=InstrumentId.from_str(pyo3_status.instrument_id.value),
+            action=pyo3_status.action.value,
+            ts_event=pyo3_status.ts_event,
+            ts_init=pyo3_status.ts_init,
+            reason=pyo3_status.reason,
+            trading_event=pyo3_status.trading_event,
+            is_trading=pyo3_status.is_trading,
+            is_quoting=pyo3_status.is_quoting,
+            is_short_sell_restricted=pyo3_status.is_short_sell_restricted,
+        )
+
+    def to_pyo3(self) -> nautilus_pyo3.InstrumentStatus:
+        """
+        Return a pyo3 object from this legacy Cython instance.
+
+        Returns
+        -------
+        nautilus_pyo3.InstrumentStatus
+
+        """
+        return nautilus_pyo3.InstrumentStatus(
+            nautilus_pyo3.InstrumentId.from_str(self.instrument_id.value),
+            nautilus_pyo3.MarketStatusAction(market_status_action_to_str(self.action)),
+            self.ts_event,
+            self.ts_init,
+            self.reason,
+            self.trading_event,
+            self.is_trading,
+            self.is_quoting,
+            self.is_short_sell_restricted,
+        )
+
 
 cdef class InstrumentClose(Data):
     """
@@ -3094,9 +3500,9 @@ cdef class InstrumentClose(Data):
     close_type : InstrumentCloseType
         The type of closing price.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the close price event occurred.
+        UNIX timestamp (nanoseconds) when the close price event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     """
 
@@ -3183,26 +3589,26 @@ cdef class InstrumentClose(Data):
 
 cdef class QuoteTick(Data):
     """
-    Represents a single quote tick in a financial market.
+    Represents a single quote tick in a market.
 
-    Contains information about the best top of book bid and ask.
+    Contains information about the best top-of-book bid and ask.
 
     Parameters
     ----------
     instrument_id : InstrumentId
         The quotes instrument ID.
     bid_price : Price
-        The top of book bid price.
+        The top-of-book bid price.
     ask_price : Price
-        The top of book ask price.
+        The top-of-book ask price.
     bid_size : Quantity
-        The top of book bid size.
+        The top-of-book bid size.
     ask_size : Quantity
-        The top of book ask size.
+        The top-of-book ask size.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the tick event occurred.
+        UNIX timestamp (nanoseconds) when the tick event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
 
     Raises
     ------
@@ -3228,14 +3634,10 @@ cdef class QuoteTick(Data):
 
         self._mem = quote_tick_new(
             instrument_id._mem,
-            bid_price._mem.raw,
-            ask_price._mem.raw,
-            bid_price._mem.precision,
-            ask_price._mem.precision,
-            bid_size._mem.raw,
-            ask_size._mem.raw,
-            bid_size._mem.precision,
-            ask_size._mem.precision,
+            bid_price._mem,
+            ask_price._mem,
+            bid_size._mem,
+            ask_size._mem,
             ts_event,
             ts_init,
         )
@@ -3257,16 +3659,16 @@ cdef class QuoteTick(Data):
 
     def __setstate__(self, state):
         cdef InstrumentId instrument_id = InstrumentId.from_str_c(state[0])
+        cdef Price_t bid_price = price_new(state[1], state[3])
+        cdef Price_t ask_price = price_new(state[2], state[4])
+        cdef Quantity_t bid_size = quantity_new(state[5], state[7])
+        cdef Quantity_t ask_size = quantity_new(state[6], state[8])
         self._mem = quote_tick_new(
             instrument_id._mem,
-            state[1],
-            state[2],
-            state[3],
-            state[4],
-            state[5],
-            state[6],
-            state[7],
-            state[8],
+            bid_price,
+            ask_price,
+            bid_size,
+            ask_size,
             state[9],
             state[10],
         )
@@ -3301,7 +3703,7 @@ cdef class QuoteTick(Data):
     @property
     def bid_price(self) -> Price:
         """
-        Return the top of book bid price.
+        Return the top-of-book bid price.
 
         Returns
         -------
@@ -3313,7 +3715,7 @@ cdef class QuoteTick(Data):
     @property
     def ask_price(self) -> Price:
         """
-        Return the top of book ask price.
+        Return the top-of-book ask price.
 
         Returns
         -------
@@ -3325,7 +3727,7 @@ cdef class QuoteTick(Data):
     @property
     def bid_size(self) -> Quantity:
         """
-        Return the top of book bid size.
+        Return the top-of-book bid size.
 
         Returns
         -------
@@ -3337,7 +3739,7 @@ cdef class QuoteTick(Data):
     @property
     def ask_size(self) -> Quantity:
         """
-        Return the top of book ask size.
+        Return the top-of-book ask size.
 
         Returns
         -------
@@ -3349,7 +3751,7 @@ cdef class QuoteTick(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -3361,7 +3763,7 @@ cdef class QuoteTick(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -3412,32 +3814,101 @@ cdef class QuoteTick(Data):
     @staticmethod
     cdef QuoteTick from_raw_c(
         InstrumentId instrument_id,
-        int64_t bid_price_raw,
-        int64_t ask_price_raw,
+        PriceRaw bid_price_raw,
+        PriceRaw ask_price_raw,
         uint8_t bid_price_prec,
         uint8_t ask_price_prec,
-        uint64_t bid_size_raw,
-        uint64_t ask_size_raw,
+        QuantityRaw bid_size_raw,
+        QuantityRaw ask_size_raw,
         uint8_t bid_size_prec,
         uint8_t ask_size_prec,
         uint64_t ts_event,
         uint64_t ts_init,
     ):
+        cdef Price_t bid_price = price_new(bid_price_raw, bid_price_prec)
+        cdef Price_t ask_price = price_new(ask_price_raw, ask_price_prec)
+        cdef Quantity_t bid_size = quantity_new(bid_size_raw, bid_size_prec)
+        cdef Quantity_t ask_size = quantity_new(ask_size_raw, ask_size_prec)
         cdef QuoteTick quote = QuoteTick.__new__(QuoteTick)
         quote._mem = quote_tick_new(
             instrument_id._mem,
-            bid_price_raw,
-            ask_price_raw,
-            bid_price_prec,
-            ask_price_prec,
-            bid_size_raw,
-            ask_size_raw,
-            bid_size_prec,
-            ask_size_prec,
+            bid_price,
+            ask_price,
+            bid_size,
+            ask_size,
             ts_event,
             ts_init,
         )
         return quote
+
+    @staticmethod
+    cdef list[QuoteTick] from_raw_arrays_to_list_c(
+        InstrumentId instrument_id,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] bid_prices_raw,
+        double[:] ask_prices_raw,
+        double[:] bid_sizes_raw,
+        double[:] ask_sizes_raw,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
+    ):
+        Condition.is_true(len(bid_prices_raw) == len(ask_prices_raw) == len(bid_sizes_raw) == len(ask_sizes_raw)
+                       == len(ts_events) == len(ts_inits), "Array lengths must be equal")
+
+        cdef int count = ts_events.shape[0]
+        cdef list[QuoteTick] quotes = []
+
+        cdef:
+            int i
+            cdef Price bid_price
+            cdef Price ask_price
+            cdef Quantity bid_size
+            cdef Quantity ask_size
+            QuoteTick quote
+        for i in range(count):
+            bid_price = Price(bid_prices_raw[i], price_prec)
+            ask_price = Price(ask_prices_raw[i], price_prec)
+            bid_size = Quantity(bid_sizes_raw[i], size_prec)
+            ask_size = Quantity(ask_sizes_raw[i], size_prec)
+
+            quote = QuoteTick.__new__(QuoteTick)
+            quote._mem = quote_tick_new(
+                instrument_id._mem,
+                bid_price._mem,
+                ask_price._mem,
+                bid_size._mem,
+                ask_size._mem,
+                ts_events[i],
+                ts_inits[i],
+            )
+            quotes.append(quote)
+
+        return quotes
+
+    @staticmethod
+    def from_raw_arrays_to_list(
+        instrument_id: InstrumentId,
+        price_prec: int,
+        size_prec: int,
+        bid_prices_raw: np.ndarray,
+        ask_prices_raw: np.ndarray,
+        bid_sizes_raw: np.ndarray,
+        ask_sizes_raw: np.ndarray,
+        ts_events: np.ndarray,
+        ts_inits: np.ndarray,
+    ) -> list[QuoteTick]:
+        return QuoteTick.from_raw_arrays_to_list_c(
+            instrument_id,
+            price_prec,
+            size_prec,
+            bid_prices_raw,
+            ask_prices_raw,
+            bid_sizes_raw,
+            ask_sizes_raw,
+            ts_events,
+            ts_inits,
+        )
 
     @staticmethod
     cdef list[QuoteTick] capsule_to_list_c(object capsule):
@@ -3484,12 +3955,12 @@ cdef class QuoteTick(Data):
     @staticmethod
     def from_raw(
         InstrumentId instrument_id,
-        int64_t bid_price_raw,
-        int64_t ask_price_raw,
+        PriceRaw bid_price_raw,
+        PriceRaw ask_price_raw,
         uint8_t bid_price_prec,
         uint8_t ask_price_prec,
-        uint64_t bid_size_raw ,
-        uint64_t ask_size_raw,
+        QuantityRaw bid_size_raw ,
+        QuantityRaw ask_size_raw,
         uint8_t bid_size_prec,
         uint8_t ask_size_prec,
         uint64_t ts_event,
@@ -3502,26 +3973,26 @@ cdef class QuoteTick(Data):
         ----------
         instrument_id : InstrumentId
             The quotes instrument ID.
-        bid_price_raw : int64_t
-            The raw top of book bid price (as a scaled fixed precision integer).
-        ask_price_raw : int64_t
-            The raw top of book ask price (as a scaled fixed precision integer).
+        bid_price_raw : int
+            The raw top-of-book bid price (as a scaled fixed-point integer).
+        ask_price_raw : int
+            The raw top-of-book ask price (as a scaled fixed-point integer).
         bid_price_prec : uint8_t
             The bid price precision.
         ask_price_prec : uint8_t
             The ask price precision.
-        bid_size_raw : uint64_t
-            The raw top of book bid size (as a scaled fixed precision integer).
-        ask_size_raw : uint64_t
-            The raw top of book ask size (as a scaled fixed precision integer).
+        bid_size_raw : int
+            The raw top-of-book bid size (as a scaled fixed-point integer).
+        ask_size_raw : int
+            The raw top-of-book ask size (as a scaled fixed-point integer).
         bid_size_prec : uint8_t
             The bid size precision.
         ask_size_prec : uint8_t
             The ask size precision.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the tick event occurred.
+            UNIX timestamp (nanoseconds) when the tick event occurred.
         ts_init : uint64_t
-            The UNIX timestamp (nanoseconds) when the data object was initialized.
+            UNIX timestamp (nanoseconds) when the data object was initialized.
 
         Returns
         -------
@@ -3584,12 +4055,12 @@ cdef class QuoteTick(Data):
     @staticmethod
     def from_pyo3_list(list pyo3_quotes) -> list[QuoteTick]:
         """
-        Return legacy Cython quote ticks converted from the given pyo3 Rust objects.
+        Return legacy Cython quotes converted from the given pyo3 Rust objects.
 
         Parameters
         ----------
         pyo3_quotes : list[nautilus_pyo3.QuoteTick]
-            The pyo3 Rust quote ticks to convert from.
+            The pyo3 Rust quotes to convert from.
 
         Returns
         -------
@@ -3606,12 +4077,12 @@ cdef class QuoteTick(Data):
     @staticmethod
     def to_pyo3_list(list[QuoteTick] quotes) -> list[nautilus_pyo3.QuoteTick]:
         """
-        Return pyo3 Rust quote ticks converted from the given legacy Cython objects.
+        Return pyo3 Rust quotes converted from the given legacy Cython objects.
 
         Parameters
         ----------
         quotes : list[QuoteTick]
-            The legacy Cython quote ticks to convert from.
+            The legacy Cython quotes to convert from.
 
         Returns
         -------
@@ -3666,6 +4137,25 @@ cdef class QuoteTick(Data):
         """
         return QuoteTick.from_pyo3_c(pyo3_quote)
 
+    def to_pyo3(self) -> nautilus_pyo3.QuoteTick:
+        """
+        Return a pyo3 object from this legacy Cython instance.
+
+        Returns
+        -------
+        nautilus_pyo3.QuoteTick
+
+        """
+        return nautilus_pyo3.QuoteTick(
+            nautilus_pyo3.InstrumentId.from_str(self.instrument_id.value),
+            nautilus_pyo3.Price.from_raw(self._mem.bid_price.raw, self._mem.bid_price.precision),
+            nautilus_pyo3.Price.from_raw(self._mem.ask_price.raw, self._mem.ask_price.precision),
+            nautilus_pyo3.Quantity.from_raw(self._mem.bid_size.raw, self._mem.bid_size.precision),
+            nautilus_pyo3.Quantity.from_raw(self._mem.ask_size.raw, self._mem.ask_size.precision),
+            self._mem.ts_event,
+            self._mem.ts_init,
+        )
+
     cpdef Price extract_price(self, PriceType price_type):
         """
         Extract the price for the given price type.
@@ -3689,9 +4179,9 @@ cdef class QuoteTick(Data):
         else:
             raise ValueError(f"Cannot extract with PriceType {price_type_to_str(price_type)}")
 
-    cpdef Quantity extract_volume(self, PriceType price_type):
+    cpdef Quantity extract_size(self, PriceType price_type):
         """
-        Extract the volume for the given price type.
+        Extract the size for the given price type.
 
         Parameters
         ----------
@@ -3715,7 +4205,7 @@ cdef class QuoteTick(Data):
 
 cdef class TradeTick(Data):
     """
-    Represents a single trade tick in a financial market.
+    Represents a single trade tick in a market.
 
     Contains information about a single unique trade which matched buyer and
     seller counterparties.
@@ -3733,14 +4223,16 @@ cdef class TradeTick(Data):
     trade_id : TradeId
         The trade match ID (assigned by the venue).
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the tick event occurred.
+        UNIX timestamp (nanoseconds) when the tick event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
 
     Raises
     ------
     ValueError
         If `trade_id` is not a valid string.
+    ValueError
+        If `size` is not positive (> 0).
 
     """
 
@@ -3754,12 +4246,12 @@ cdef class TradeTick(Data):
         uint64_t ts_event,
         uint64_t ts_init,
     ) -> None:
+        Condition.positive_int(size._mem.raw, "size")
+
         self._mem = trade_tick_new(
             instrument_id._mem,
-            price._mem.raw,
-            price._mem.precision,
-            size._mem.raw,
-            size._mem.precision,
+            price._mem,
+            size._mem,
             aggressor_side,
             trade_id._mem,
             ts_event,
@@ -3781,12 +4273,14 @@ cdef class TradeTick(Data):
 
     def __setstate__(self, state):
         cdef InstrumentId instrument_id = InstrumentId.from_str_c(state[0])
+        cdef Price_t price = price_new(state[1], state[2])
+        cdef Quantity_t size = quantity_new(state[3], state[4])
+        Condition.positive_int(size.raw, "size")
+
         self._mem = trade_tick_new(
             instrument_id._mem,
-            state[1],
-            state[2],
-            state[3],
-            state[4],
+            price,
+            size,
             state[5],
             TradeId(state[6])._mem,
             state[7],
@@ -3845,7 +4339,7 @@ cdef class TradeTick(Data):
         return Price.from_raw_c(self._mem.price.raw, self._mem.price.precision)
 
     @property
-    def size(self) -> Price:
+    def size(self) -> Quantity:
         """
         Return the ticks size.
 
@@ -3871,7 +4365,7 @@ cdef class TradeTick(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -3883,7 +4377,7 @@ cdef class TradeTick(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -3907,28 +4401,100 @@ cdef class TradeTick(Data):
     @staticmethod
     cdef TradeTick from_raw_c(
         InstrumentId instrument_id,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         AggressorSide aggressor_side,
         TradeId trade_id,
         uint64_t ts_event,
         uint64_t ts_init,
     ):
+        Condition.positive_int(size_raw, "size_raw")
+
+        cdef Price_t price = price_new(price_raw, price_prec)
+        cdef Quantity_t size = quantity_new(size_raw, size_prec)
+
         cdef TradeTick trade = TradeTick.__new__(TradeTick)
         trade._mem = trade_tick_new(
             instrument_id._mem,
-            price_raw,
-            price_prec,
-            size_raw,
-            size_prec,
+            price,
+            size,
             aggressor_side,
             trade_id._mem,
             ts_event,
             ts_init,
         )
         return trade
+
+    @staticmethod
+    cdef list[TradeTick] from_raw_arrays_to_list_c(
+        InstrumentId instrument_id,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] prices_raw,
+        double[:] sizes_raw,
+        uint8_t[:] aggressor_sides,
+        list[str] trade_ids,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
+    ):
+        Condition.is_true(len(prices_raw) == len(sizes_raw) == len(aggressor_sides) == len(trade_ids) ==
+                       len(ts_events) == len(ts_inits), "Array lengths must be equal")
+
+        cdef int count = ts_events.shape[0]
+        cdef list[TradeTick] trades = []
+
+        cdef:
+            int i
+            Price price
+            Quantity size
+            AggressorSide aggressor_side
+            TradeId trade_id
+            TradeTick trade
+        for i in range(count):
+            price = Price(prices_raw[i], price_prec)
+            size = Quantity(sizes_raw[i], size_prec)
+            Condition.positive_int(size.raw, "size")
+            aggressor_side = <AggressorSide>aggressor_sides[i]
+            trade_id = TradeId(trade_ids[i])
+            trade = TradeTick.__new__(TradeTick)
+            trade._mem = trade_tick_new(
+                instrument_id._mem,
+                price._mem,
+                size._mem,
+                aggressor_side,
+                trade_id._mem,
+                ts_events[i],
+                ts_inits[i],
+            )
+            trades.append(trade)
+
+        return trades
+
+    @staticmethod
+    def from_raw_arrays_to_list(
+        InstrumentId instrument_id,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] prices_raw,
+        double[:] sizes_raw,
+        uint8_t[:] aggressor_sides,
+        list[str] trade_ids,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
+    ) -> list[TradeTick]:
+        return TradeTick.from_raw_arrays_to_list_c(
+            instrument_id,
+            price_prec,
+            size_prec,
+            prices_raw,
+            sizes_raw,
+            aggressor_sides,
+            trade_ids,
+            ts_events,
+            ts_inits,
+        )
 
     @staticmethod
     cdef list[TradeTick] capsule_to_list_c(capsule):
@@ -4002,9 +4568,9 @@ cdef class TradeTick(Data):
     @staticmethod
     def from_raw(
         InstrumentId instrument_id,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         AggressorSide aggressor_side,
         TradeId trade_id,
@@ -4018,12 +4584,12 @@ cdef class TradeTick(Data):
         ----------
         instrument_id : InstrumentId
             The trade instrument ID.
-        price_raw : int64_t
-            The traded raw price (as a scaled fixed precision integer).
+        price_raw : int
+            The traded raw price (as a scaled fixed-point integer).
         price_prec : uint8_t
             The traded price precision.
-        size_raw : uint64_t
-            The traded raw size (as a scaled fixed precision integer).
+        size_raw : int
+            The traded raw size (as a scaled fixed-point integer).
         size_prec : uint8_t
             The traded size precision.
         aggressor_side : AggressorSide
@@ -4031,9 +4597,9 @@ cdef class TradeTick(Data):
         trade_id : TradeId
             The trade match ID (assigned by the venue).
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the tick event occurred.
+            UNIX timestamp (nanoseconds) when the tick event occurred.
         ts_init : uint64_t
-            The UNIX timestamp (nanoseconds) when the data object was initialized.
+            UNIX timestamp (nanoseconds) when the data object was initialized.
 
         Returns
         -------
@@ -4084,12 +4650,12 @@ cdef class TradeTick(Data):
     @staticmethod
     def to_pyo3_list(list[TradeTick] trades) -> list[nautilus_pyo3.TradeTick]:
         """
-        Return pyo3 Rust trade ticks converted from the given legacy Cython objects.
+        Return pyo3 Rust trades converted from the given legacy Cython objects.
 
         Parameters
         ----------
         ticks : list[TradeTick]
-            The legacy Cython Rust trade ticks to convert from.
+            The legacy Cython Rust trades to convert from.
 
         Returns
         -------
@@ -4126,12 +4692,12 @@ cdef class TradeTick(Data):
     @staticmethod
     def from_pyo3_list(list pyo3_trades) -> list[TradeTick]:
         """
-        Return legacy Cython trade ticks converted from the given pyo3 Rust objects.
+        Return legacy Cython trades converted from the given pyo3 Rust objects.
 
         Parameters
         ----------
         pyo3_trades : list[nautilus_pyo3.TradeTick]
-            The pyo3 Rust trade ticks to convert from.
+            The pyo3 Rust trades to convert from.
 
         Returns
         -------
@@ -4161,3 +4727,22 @@ cdef class TradeTick(Data):
 
         """
         return TradeTick.from_pyo3_c(pyo3_trade)
+
+    def to_pyo3(self) -> nautilus_pyo3.TradeTick:
+        """
+        Return a pyo3 object from this legacy Cython instance.
+
+        Returns
+        -------
+        nautilus_pyo3.TradeTick
+
+        """
+        return nautilus_pyo3.TradeTick(
+            nautilus_pyo3.InstrumentId.from_str(self.instrument_id.value),
+            nautilus_pyo3.Price.from_raw(self._mem.price.raw, self._mem.price.precision),
+            nautilus_pyo3.Quantity.from_raw(self._mem.size.raw, self._mem.size.precision),
+            nautilus_pyo3.AggressorSide(aggressor_side_to_str(self._mem.aggressor_side)),
+            nautilus_pyo3.TradeId(self.trade_id.value),
+            self._mem.ts_event,
+            self._mem.ts_init,
+        )

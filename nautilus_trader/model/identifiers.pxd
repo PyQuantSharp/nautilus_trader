@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -38,6 +38,9 @@ cdef class Symbol(Identifier):
 
     @staticmethod
     cdef Symbol from_mem_c(Symbol_t mem)
+    cpdef bint is_composite(self)
+    cpdef str root(self)
+    cpdef str topic(self)
 
 
 cdef class Venue(Identifier):
@@ -115,7 +118,6 @@ cdef class ClientOrderId(Identifier):
 
     @staticmethod
     cdef ClientOrderId from_mem_c(ClientOrderId_t mem)
-    cpdef bint is_this_trader(self, TraderId trader_id)
 
 
 cdef class VenueOrderId(Identifier):

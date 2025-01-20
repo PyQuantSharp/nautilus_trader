@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,19 +13,55 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Data types for the trading domain model.
+
 pub mod bar;
 pub mod delta;
 pub mod deltas;
 pub mod depth;
+pub mod greeks;
 pub mod order;
 pub mod quote;
+pub mod status;
 pub mod trade;
 
+use indexmap::IndexMap;
 #[cfg(feature = "ffi")]
 use nautilus_core::ffi::cvec::CVec;
-use pyo3::{prelude::*, types::PyCapsule};
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule};
 
-use crate::data::Data;
+use crate::data::{
+    is_monotonically_increasing_by_init, Bar, Data, DataType, OrderBookDelta, QuoteTick, TradeTick,
+};
+
+const ERROR_MONOTONICITY: &str = "`data` was not monotonically increasing by the `ts_init` field";
+
+#[pymethods]
+impl DataType {
+    #[new]
+    #[pyo3(signature = (type_name, metadata=None))]
+    fn py_new(type_name: &str, metadata: Option<IndexMap<String, String>>) -> Self {
+        Self::new(type_name, metadata)
+    }
+
+    #[getter]
+    #[pyo3(name = "type_name")]
+    fn py_type_name(&self) -> &str {
+        self.type_name()
+    }
+
+    #[getter]
+    #[pyo3(name = "metadata")]
+    fn py_metadata(&self) -> Option<IndexMap<String, String>> {
+        self.metadata().cloned()
+    }
+
+    #[getter]
+    #[pyo3(name = "topic")]
+    fn py_topic(&self) -> &str {
+        self.topic()
+    }
+}
 
 /// Creates a Python `PyCapsule` object containing a Rust `Data` instance.
 ///
@@ -41,13 +77,13 @@ use crate::data::Data;
 /// # Safety
 ///
 /// This function is safe as long as the `Data` instance does not violate Rust's
-/// safety guarantees (e.g., no invalid memory access). However, users of the
+/// safety guarantees (e.g., no invalid memory access). Users of the
 /// `PyCapsule` in Python must ensure they understand how to extract and use the
 /// encapsulated `Data` safely, especially when converting the capsule back to a
 /// Rust data structure.
 #[must_use]
 pub fn data_to_pycapsule(py: Python, data: Data) -> PyObject {
-    let capsule = PyCapsule::new(py, data, None).expect("Error creating `PyCapsule`");
+    let capsule = PyCapsule::new_bound(py, data, None).expect("Error creating `PyCapsule`");
     capsule.into_py(py)
 }
 
@@ -59,7 +95,8 @@ pub fn data_to_pycapsule(py: Python, data: Data) -> PyObject {
 ///
 /// # Panics
 ///
-/// Panics if the capsule cannot be downcast to a `PyCapsule`, indicating a type mismatch
+/// This function panics:
+/// - If the capsule cannot be downcast to a `PyCapsule`, indicating a type mismatch
 /// or improper capsule handling.
 ///
 /// # Safety
@@ -69,9 +106,9 @@ pub fn data_to_pycapsule(py: Python, data: Data) -> PyObject {
 /// Incorrect usage can lead to memory corruption or undefined behavior.
 #[pyfunction]
 #[cfg(feature = "ffi")]
-pub fn drop_cvec_pycapsule(capsule: &PyAny) {
-    let capsule: &PyCapsule = capsule
-        .downcast()
+pub fn drop_cvec_pycapsule(capsule: &Bound<'_, PyAny>) {
+    let capsule: &Bound<'_, PyCapsule> = capsule
+        .downcast::<PyCapsule>()
         .expect("Error on downcast to `&PyCapsule`");
     let cvec: &CVec = unsafe { &*(capsule.pointer() as *const CVec) };
     let data: Vec<Data> =
@@ -81,6 +118,68 @@ pub fn drop_cvec_pycapsule(capsule: &PyAny) {
 
 #[pyfunction]
 #[cfg(not(feature = "ffi"))]
-pub fn drop_cvec_pycapsule(_capsule: &PyAny) {
+pub fn drop_cvec_pycapsule(_capsule: &Bound<'_, PyAny>) {
     panic!("`ffi` feature is not enabled");
+}
+
+/// Transforms the given `data` Python objects into a vector of [`OrderBookDelta`] objects.
+pub fn pyobjects_to_order_book_deltas(
+    data: Vec<Bound<'_, PyAny>>,
+) -> PyResult<Vec<OrderBookDelta>> {
+    let deltas: Vec<OrderBookDelta> = data
+        .into_iter()
+        .map(|obj| OrderBookDelta::from_pyobject(&obj))
+        .collect::<PyResult<Vec<OrderBookDelta>>>()?;
+
+    // Validate monotonically increasing
+    if !is_monotonically_increasing_by_init(&deltas) {
+        return Err(PyValueError::new_err(ERROR_MONOTONICITY));
+    }
+
+    Ok(deltas)
+}
+
+/// Transforms the given `data` Python objects into a vector of [`QuoteTick`] objects.
+pub fn pyobjects_to_quote_ticks(data: Vec<Bound<'_, PyAny>>) -> PyResult<Vec<QuoteTick>> {
+    let ticks: Vec<QuoteTick> = data
+        .into_iter()
+        .map(|obj| QuoteTick::from_pyobject(&obj))
+        .collect::<PyResult<Vec<QuoteTick>>>()?;
+
+    // Validate monotonically increasing
+    if !is_monotonically_increasing_by_init(&ticks) {
+        return Err(PyValueError::new_err(ERROR_MONOTONICITY));
+    }
+
+    Ok(ticks)
+}
+
+/// Transforms the given `data` Python objects into a vector of [`TradeTick`] objects.
+pub fn pyobjects_to_trade_ticks(data: Vec<Bound<'_, PyAny>>) -> PyResult<Vec<TradeTick>> {
+    let ticks: Vec<TradeTick> = data
+        .into_iter()
+        .map(|obj| TradeTick::from_pyobject(&obj))
+        .collect::<PyResult<Vec<TradeTick>>>()?;
+
+    // Validate monotonically increasing
+    if !is_monotonically_increasing_by_init(&ticks) {
+        return Err(PyValueError::new_err(ERROR_MONOTONICITY));
+    }
+
+    Ok(ticks)
+}
+
+/// Transforms the given `data` Python objects into a vector of [`Bar`] objects.
+pub fn pyobjects_to_bars(data: Vec<Bound<'_, PyAny>>) -> PyResult<Vec<Bar>> {
+    let bars: Vec<Bar> = data
+        .into_iter()
+        .map(|obj| Bar::from_pyobject(&obj))
+        .collect::<PyResult<Vec<Bar>>>()?;
+
+    // Validate monotonically increasing
+    if !is_monotonically_increasing_by_init(&bars) {
+        return Err(PyValueError::new_err(ERROR_MONOTONICITY));
+    }
+
+    Ok(bars)
 }

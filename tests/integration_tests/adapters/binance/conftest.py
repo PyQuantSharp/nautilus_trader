@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -43,8 +43,8 @@ def live_logger():
 def binance_http_client(loop, live_clock):
     client = BinanceHttpClient(
         clock=live_clock,
-        key="SOME_BINANCE_API_KEY",
-        secret="SOME_BINANCE_API_SECRET",
+        api_key="SOME_BINANCE_API_KEY",
+        api_secret="SOME_BINANCE_API_SECRET",
         base_url="https://api.binance.com/",  # Spot/Margin
     )
     return client

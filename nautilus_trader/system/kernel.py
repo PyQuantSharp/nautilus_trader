@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,6 +15,7 @@
 
 import asyncio
 import concurrent.futures
+import os
 import platform
 import signal
 import socket
@@ -22,6 +23,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from pathlib import Path
 
 import msgspec
 
@@ -33,17 +35,22 @@ from nautilus_trader.common.actor import Actor
 from nautilus_trader.common.component import Clock
 from nautilus_trader.common.component import LiveClock
 from nautilus_trader.common.component import Logger
+from nautilus_trader.common.component import LogGuard
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
 from nautilus_trader.common.component import init_logging
+from nautilus_trader.common.component import is_backtest_force_stop
 from nautilus_trader.common.component import is_logging_initialized
 from nautilus_trader.common.component import log_header
 from nautilus_trader.common.component import register_component_clock
+from nautilus_trader.common.component import set_backtest_force_stop
 from nautilus_trader.common.component import set_logging_pyo3
 from nautilus_trader.common.config import InvalidConfiguration
+from nautilus_trader.common.config import msgspec_encoding_hook
 from nautilus_trader.common.enums import LogColor
 from nautilus_trader.common.enums import LogLevel
 from nautilus_trader.common.enums import log_level_from_str
+from nautilus_trader.common.messages import ShutdownSystem
 from nautilus_trader.config import ActorFactory
 from nautilus_trader.config import ControllerFactory
 from nautilus_trader.config import DataEngineConfig
@@ -130,7 +137,12 @@ class NautilusKernel:
         PyCondition.type(config, NautilusKernelConfig, "config")
 
         self._config: NautilusKernelConfig = config
-        self._environment: Environment = config.environment
+
+        environment = config.environment
+        if isinstance(config.environment, str):
+            environment = Environment(config.environment)
+
+        self._environment: Environment = environment
         self._load_state: bool = config.load_state
         self._save_state: bool = config.save_state
 
@@ -143,7 +155,6 @@ class NautilusKernel:
         self._trader_id: TraderId = trader_id
         self._machine_id: str = socket.gethostname()
         self._instance_id: UUID4 = config.instance_id or UUID4()
-        self._ts_created: int = time.time_ns()
 
         # Components
         if self._environment == Environment.BACKTEST:
@@ -155,23 +166,45 @@ class NautilusKernel:
                 f"environment {self._environment} not recognized",  # pragma: no cover (design-time error)
             )
 
+        self._ts_created: int = self._clock.timestamp_ns()
+        self._ts_started: int | None = None
+        self._ts_shutdown: int | None = None
+        ts_build = time.time_ns()
+
         register_component_clock(self._instance_id, self._clock)
 
-        # Setup logging
+        # Initialize logging system
+        self._log_guard: nautilus_pyo3.LogGuard | LogGuard | None = None
         logging: LoggingConfig = config.logging or LoggingConfig()
 
         if not is_logging_initialized():
+            if "RUST_LOG" not in os.environ:
+                os.environ["RUST_LOG"] = "off"
+
             if not logging.bypass_logging:
+                if logging.clear_log_file and logging.log_directory and logging.log_file_name:
+                    file_path = Path(
+                        logging.log_directory,
+                        f"{logging.log_file_name}.{'log' if logging.log_file_format is None else 'json'}",
+                    )
+
+                    if file_path.exists():
+                        # Truncate log file to zero length and reset metadata
+                        file_path.touch()
+                        file_path.open("w").close()
+
                 if logging.use_pyo3:
                     set_logging_pyo3(True)
+
                     # Initialize tracing for async Rust
                     nautilus_pyo3.init_tracing()
 
                     # Initialize logging for sync Rust and Python
-                    nautilus_pyo3.init_logging(
+                    self._log_guard = nautilus_pyo3.init_logging(
                         trader_id=nautilus_pyo3.TraderId(self._trader_id.value),
-                        instance_id=nautilus_pyo3.UUID4(self._instance_id.value),
+                        instance_id=nautilus_pyo3.UUID4.from_str(self._instance_id.value),
                         level_stdout=nautilus_pyo3.LogLevel(logging.log_level),
+                        level_file=nautilus_pyo3.LogLevel(logging.log_level_file or "OFF"),
                         directory=logging.log_directory,
                         file_name=logging.log_file_name,
                         file_format=logging.log_file_format,
@@ -182,12 +215,12 @@ class NautilusKernel:
                     nautilus_pyo3.log_header(
                         trader_id=nautilus_pyo3.TraderId(self._trader_id.value),
                         machine_id=self._machine_id,
-                        instance_id=nautilus_pyo3.UUID4(self._instance_id.value),
+                        instance_id=nautilus_pyo3.UUID4.from_str(self._instance_id.value),
                         component=name,
                     )
                 else:
                     # Initialize logging for sync Rust and Python
-                    init_logging(
+                    self._log_guard = init_logging(
                         trader_id=self._trader_id,
                         machine_id=self._machine_id,
                         instance_id=self._instance_id,
@@ -218,10 +251,9 @@ class NautilusKernel:
                 )
 
         self._log: Logger = Logger(name=name)
+        self._log.info("Building system kernel")
 
-        self._log.info("Building system kernel...")
-
-        # Setup loop (if sandbox live)
+        # Set up loop (if sandbox live)
         self._loop: asyncio.AbstractEventLoop | None = None
         if self._environment != Environment.BACKTEST:
             self._loop = loop or asyncio.get_running_loop()
@@ -235,6 +267,27 @@ class NautilusKernel:
                     # https://stackoverflow.com/questions/45987985/asyncio-loops-add-signal-handler-in-windows
                     self._setup_loop()
 
+        ########################################################################
+        # MessageBus database
+        ########################################################################
+        if not config.message_bus or not config.message_bus.database:
+            self._msgbus_db = None
+        elif config.message_bus.database.type == "redis":
+            self._msgbus_db = nautilus_pyo3.RedisMessageBusDatabase(
+                trader_id=nautilus_pyo3.TraderId(self._trader_id.value),
+                instance_id=nautilus_pyo3.UUID4.from_str(self._instance_id.value),
+                config_json=msgspec.json.encode(config.message_bus, enc_hook=msgspec_encoding_hook),
+            )
+        else:
+            raise ValueError(
+                f"Unrecognized `config.message_bus.database.type`, was '{config.message_bus.database.type}'. "
+                "The only database type currently supported is 'redis', if you don't want a message bus database backing "
+                "then you can pass `None` for the `message_bus.database` ('in-memory' is no longer valid)",
+            )
+
+        ########################################################################
+        # Cache database
+        ########################################################################
         if not config.cache or not config.cache.database:
             cache_db = None
         elif config.cache.database.type == "redis":
@@ -244,7 +297,7 @@ class NautilusKernel:
                 instance_id=self._instance_id,
                 serializer=MsgSpecSerializer(
                     encoding=msgspec.msgpack if encoding == "msgpack" else msgspec.json,
-                    timestamps_as_str=True,  # Hardcoded for now
+                    timestamps_as_str=True,  # Hard-coded for now
                     timestamps_as_iso8601=config.cache.timestamps_as_iso8601,
                 ),
                 config=config.cache,
@@ -259,39 +312,27 @@ class NautilusKernel:
         ########################################################################
         # Core components
         ########################################################################
-        if (
-            config.message_bus
-            and config.message_bus.database
-            and config.message_bus.database.type != "redis"
-        ):
-            raise ValueError(
-                f"Unrecognized `config.message_bus.type`, was '{config.message_bus.database.type}'. "
-                "The only database type currently supported is 'redis', if you don't want a message bus database backing "
-                "then you can pass `None` for the `message_bus.database`",
-            )
-
-        msgbus_serializer = None
+        self._msgbus_serializer = None
         if config.message_bus:
             encoding = config.message_bus.encoding.lower()
-            msgbus_serializer = MsgSpecSerializer(
+            self._msgbus_serializer = MsgSpecSerializer(
                 encoding=msgspec.msgpack if encoding == "msgpack" else msgspec.json,
-                timestamps_as_str=True,  # Hardcoded for now
+                timestamps_as_str=True,  # Hard-coded for now
                 timestamps_as_iso8601=config.message_bus.timestamps_as_iso8601,
             )
         self._msgbus = MessageBus(
             trader_id=self._trader_id,
             instance_id=self._instance_id,
             clock=self._clock,
-            serializer=msgbus_serializer,
-            snapshot_orders=config.snapshot_orders,
-            snapshot_positions=config.snapshot_positions,
+            serializer=self._msgbus_serializer,
+            database=self._msgbus_db,
             config=config.message_bus,
         )
 
+        self._setup_shutdown_handling()
+
         self._cache = Cache(
             database=cache_db,
-            snapshot_orders=config.snapshot_orders,
-            snapshot_positions=config.snapshot_positions,
             config=config.cache,
         )
 
@@ -428,6 +469,7 @@ class NautilusKernel:
                 config=self._config.controller,
                 trader=self._trader,
             )
+            assert self._controller is not None  # Type checking
             self._controller.register_base(
                 portfolio=self._portfolio,
                 msgbus=self._msgbus,
@@ -435,20 +477,30 @@ class NautilusKernel:
                 clock=self._clock,
             )
 
-        # Setup stream writer
+        # Set up stream writer
         self._writer: StreamingFeatherWriter | None = None
         if config.streaming:
             self._setup_streaming(config=config.streaming)
 
-        # Setup data catalog
-        self._catalog: ParquetDataCatalog | None = None
-        if config.catalog:
-            self._catalog = ParquetDataCatalog(
-                path=config.catalog.path,
-                fs_protocol=config.catalog.fs_protocol,
-                fs_storage_options=config.catalog.fs_storage_options,
-            )
-            self._data_engine.register_catalog(catalog=self._catalog)
+        # Set up data catalog
+        self._catalogs: dict[str, ParquetDataCatalog] = {}
+        if config.catalogs:
+            catalog_name_index = 0
+            for catalog_config in config.catalogs:
+                catalog = ParquetDataCatalog(
+                    path=catalog_config.path,
+                    fs_protocol=catalog_config.fs_protocol,
+                    fs_storage_options=catalog_config.fs_storage_options,
+                )
+
+                used_catalog_name = catalog_config.name
+
+                if used_catalog_name is None:
+                    used_catalog_name = f"catalog_{catalog_name_index}"
+                    catalog_name_index += 1
+
+                self._catalogs[used_catalog_name] = catalog
+                self._data_engine.register_catalog(catalog, used_catalog_name)
 
         # Create importable actors
         for actor_config in config.actors:
@@ -465,8 +517,11 @@ class NautilusKernel:
             exec_algorithm: ExecAlgorithm = ExecAlgorithmFactory.create(exec_algorithm_config)
             self._trader.add_exec_algorithm(exec_algorithm)
 
-        build_time_ms = nanos_to_millis(time.time_ns() - self.ts_created)
-        self._log.info(f"Initialized in {build_time_ms}ms.")
+        # State flags
+        self._is_running = False
+
+        build_time_ms = nanos_to_millis(time.time_ns() - ts_build)
+        self._log.info(f"Initialized in {build_time_ms}ms")
 
     def __del__(self) -> None:
         if hasattr(self, "_writer") and self._writer and not self._writer.is_closed:
@@ -477,14 +532,14 @@ class NautilusKernel:
             raise RuntimeError("No event loop available for the node")
 
         if self._loop.is_closed():
-            self._log.error("Cannot setup signal handling (event loop was closed).")
+            self._log.error("Cannot set up signal handling (event loop was closed)")
             return
 
         signal.signal(signal.SIGINT, signal.SIG_DFL)
         signals = (signal.SIGTERM, signal.SIGINT, signal.SIGABRT)
         for sig in signals:
             self._loop.add_signal_handler(sig, self._loop_sig_handler, sig)
-        self._log.debug(f"Event loop signal handling setup for {signals}.")
+        self._log.debug(f"Event loop signal handling setup for {signals}")
 
     def _loop_sig_handler(self, sig: signal.Signals) -> None:
         if self._loop is None:
@@ -495,14 +550,24 @@ class NautilusKernel:
         if self._loop_sig_callback:
             self._loop_sig_callback(sig)
 
+    def _setup_shutdown_handling(self) -> None:
+        self._msgbus.subscribe("commands.system.shutdown", self._on_shutdown_system)
+
     def _setup_streaming(self, config: StreamingConfig) -> None:
-        # Setup persistence
+        # Set up persistence
         path = f"{config.catalog_path}/{self._environment.value}/{self.instance_id}"
         self._writer = StreamingFeatherWriter(
             path=path,
+            cache=self._cache,
+            clock=self._clock,
             fs_protocol=config.fs_protocol,
             flush_interval_ms=config.flush_interval_ms,
             include_types=config.include_types,
+            rotation_mode=config.rotation_mode,
+            max_file_size=config.max_file_size,
+            rotation_interval=config.rotation_interval,
+            rotation_time=config.rotation_time,
+            rotation_timezone=config.rotation_timezone,
         )
         self._trader.subscribe("*", self._writer.write)
         self._log.info(f"Writing data & events to {path}")
@@ -511,6 +576,29 @@ class NautilusKernel:
         full_path = f"{self._writer.path}/config.json"
         with self._writer.fs.open(full_path, "wb") as f:
             f.write(self._config.json())
+
+    def _on_shutdown_system(self, command: ShutdownSystem):
+        if command.trader_id != self.trader_id:
+            self._log.warning(f"Received {command!r} not for this trader {self.trader_id}")
+            return
+
+        if self._environment == Environment.BACKTEST and is_backtest_force_stop():
+            return  # Backtest has already been force stopped
+
+        if not self._is_running:
+            self._log.warning(f"Received {command!r} when not running")
+            return
+
+        self._log.info(f"Received {command!r}, shutting down...", LogColor.BLUE)
+
+        if self._loop:
+            self._loop.create_task(self.stop_async())
+        else:
+            self.stop()
+
+        if self._environment == Environment.BACKTEST:
+            set_backtest_force_stop(True)
+            self._log.debug("Set backtest FORCE_STOP")
 
     @property
     def environment(self) -> Environment:
@@ -615,10 +703,34 @@ class NautilusKernel:
 
         Returns
         -------
-        uint64_t
+        int
 
         """
         return self._ts_created
+
+    @property
+    def ts_started(self) -> int | None:
+        """
+        Return the UNIX timestamp (nanoseconds) when the kernel was last started.
+
+        Returns
+        -------
+        int or ``None``
+
+        """
+        return self._ts_started
+
+    @property
+    def ts_shutdown(self) -> int | None:
+        """
+        Return the UNIX timestamp (nanoseconds) when the kernel was last shutdown.
+
+        Returns
+        -------
+        int or ``None``
+
+        """
+        return self._ts_shutdown
 
     @property
     def load_state(self) -> bool:
@@ -679,6 +791,30 @@ class NautilusKernel:
 
         """
         return self._msgbus
+
+    @property
+    def msgbus_serializer(self) -> MessageBus:
+        """
+        Return the kernels message bus serializer (if created).
+
+        Returns
+        -------
+        MsgSpecSerializer or ``None``
+
+        """
+        return self._msgbus_serializer
+
+    @property
+    def msgbus_database(self) -> MessageBus:
+        """
+        Return the kernels message bus database (if created).
+
+        Returns
+        -------
+        RedisMessageBusDatabase or ``None``
+
+        """
+        return self._msgbus_db
 
     @property
     def cache(self) -> CacheFacade:
@@ -777,22 +913,48 @@ class NautilusKernel:
         return self._writer
 
     @property
-    def catalog(self) -> ParquetDataCatalog | None:
+    def catalogs(self) -> dict[str, ParquetDataCatalog]:
         """
-        Return the kernels data catalog.
+        Return the kernel's list of data catalogs.
 
         Returns
         -------
-        ParquetDataCatalog or ``None``
+        dict[str, ParquetDataCatalog]
 
         """
-        return self._catalog
+        return self._catalogs
+
+    def get_log_guard(self) -> nautilus_pyo3.LogGuard | LogGuard | None:
+        """
+        Return the global logging systems log guard.
+
+        May return ``None`` if the logging system was already initialized.
+
+        Returns
+        -------
+        nautilus_pyo3.LogGuard | LogGuard | None
+
+        """
+        return self._log_guard
+
+    def is_running(self) -> bool:
+        """
+        Return whether the kernel is running.
+
+        Returns
+        -------
+        bool
+
+        """
+        return self._is_running
 
     def start(self) -> None:
         """
         Start the Nautilus system kernel.
         """
-        self._log.info("STARTING...")
+        self._log.info("STARTING")
+        self._ts_started = self._clock.timestamp_ns()
+        self._is_running = True
 
         self._start_engines()
         self._connect_clients()
@@ -816,7 +978,9 @@ class NautilusKernel:
         if self.loop is None:
             raise RuntimeError("no event loop has been assigned to the kernel")
 
-        self._log.info("STARTING...")
+        self._log.info("STARTING")
+        self._ts_started = self._clock.timestamp_ns()
+        self._is_running = True
 
         self._register_executor()
         self._start_engines()
@@ -839,11 +1003,13 @@ class NautilusKernel:
         if self._controller:
             self._controller.start()
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         """
         Stop the Nautilus system kernel.
         """
-        self._log.info("STOPPING...")
+        self._log.info("STOPPING")
+
+        self._stop_clients()
 
         if self._controller:
             self._controller.stop()
@@ -860,7 +1026,9 @@ class NautilusKernel:
         self._cancel_timers()
         self._flush_writer()
 
-        self._log.info("STOPPED.")
+        self._log.info("STOPPED")
+        self._is_running = False
+        self._ts_shutdown = self._clock.timestamp_ns()
 
     async def stop_async(self) -> None:
         """
@@ -879,7 +1047,7 @@ class NautilusKernel:
         if self.loop is None:
             raise RuntimeError("no event loop has been assigned to the kernel")
 
-        self._log.info("STOPPING...")
+        self._log.info("STOPPING")
 
         if self._trader.is_running:
             self._trader.stop()
@@ -888,6 +1056,7 @@ class NautilusKernel:
         if self.save_state:
             self._trader.save()
 
+        self._stop_clients()
         self._disconnect_clients()
 
         await self._await_engines_disconnected()
@@ -896,7 +1065,9 @@ class NautilusKernel:
         self._cancel_timers()
         self._flush_writer()
 
-        self._log.info("STOPPED.")
+        self._log.info("STOPPED")
+        self._is_running = False
+        self._ts_shutdown = self._clock.timestamp_ns()
 
     def dispose(self) -> None:
         """
@@ -916,6 +1087,9 @@ class NautilusKernel:
             self.risk_engine.dispose()
         if not self.exec_engine.is_disposed:
             self.exec_engine.dispose()
+
+        self._cache.dispose()
+        self._msgbus.dispose()
 
         if not self.trader.is_disposed:
             self.trader.dispose()
@@ -938,15 +1112,15 @@ class NautilusKernel:
 
         to_cancel = asyncio.tasks.all_tasks(self.loop)
         if not to_cancel:
-            self._log.info("All tasks canceled.")
+            self._log.info("All tasks canceled")
             return
 
         for task in to_cancel:
-            self._log.warning(f"Canceling pending task {task}")
+            self._log.warning(f"Canceling pending task '{task.get_name()}'")
             task.cancel()
 
         if self.loop and self.loop.is_running():
-            self._log.warning("Event loop still running during `cancel_all_tasks`.")
+            self._log.warning("Event loop still running during `cancel_all_tasks`")
             return
 
         finish_all_tasks: asyncio.Future = asyncio.tasks.gather(*to_cancel)
@@ -1000,6 +1174,10 @@ class NautilusKernel:
         self._data_engine.disconnect()
         self._exec_engine.disconnect()
 
+    def _stop_clients(self) -> None:
+        self._data_engine.stop_clients()
+        self._exec_engine.stop_clients()
+
     def _initialize_portfolio(self) -> None:
         self._portfolio.initialize_orders()
         self._portfolio.initialize_positions()
@@ -1012,7 +1190,7 @@ class NautilusKernel:
         )
         if not await self._check_engines_connected():
             self._log.warning(
-                f"Timed out ({self._config.timeout_connection}s) waiting for engines to connect and initialize."
+                f"Timed out ({self._config.timeout_connection}s) waiting for engines to connect and initialize"
                 f"\nStatus"
                 f"\n------"
                 f"\nDataEngine.check_connected() == {self._data_engine.check_connected()}"
@@ -1030,7 +1208,7 @@ class NautilusKernel:
         )
         if not await self._check_engines_disconnected():
             self._log.error(
-                f"Timed out ({self._config.timeout_disconnection}s) waiting for engines to disconnect."
+                f"Timed out ({self._config.timeout_disconnection}s) waiting for engines to disconnect"
                 f"\nStatus"
                 f"\n------"
                 f"\nDataEngine.check_disconnected() == {self._data_engine.check_disconnected()}"
@@ -1046,10 +1224,10 @@ class NautilusKernel:
         if not await self._exec_engine.reconcile_state(
             timeout_secs=self._config.timeout_reconciliation,
         ):
-            self._log.error("Execution state could not be reconciled.")
+            self._log.error("Execution state could not be reconciled")
             return False
 
-        self._log.info("Execution state reconciled.", color=LogColor.GREEN)
+        self._log.info("Execution state reconciled", color=LogColor.GREEN)
         return True
 
     async def _await_portfolio_initialization(self) -> bool:
@@ -1059,14 +1237,14 @@ class NautilusKernel:
         )
         if not await self._check_portfolio_initialized():
             self._log.warning(
-                f"Timed out ({self._config.timeout_portfolio}s) waiting for portfolio to initialize."
+                f"Timed out ({self._config.timeout_portfolio}s) waiting for portfolio to initialize"
                 f"\nStatus"
                 f"\n------"
                 f"\nPortfolio.initialized == {self._portfolio.initialized}",
             )
             return False
 
-        self._log.info("Portfolio initialized.", color=LogColor.GREEN)
+        self._log.info("Portfolio initialized", color=LogColor.GREEN)
         return True
 
     async def _await_trader_residuals(self) -> None:
@@ -1134,7 +1312,7 @@ class NautilusKernel:
         self._clock.cancel_timers()
 
         for name in timer_names:
-            self._log.info(f"Canceled Timer(name={name}).")
+            self._log.info(f"Canceled Timer(name={name})")
 
     def _flush_writer(self) -> None:
         if self._writer is not None:

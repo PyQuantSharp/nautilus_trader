@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -60,8 +60,8 @@ impl<T> Iterator for EagerStream<T> {
 
 impl<T> Drop for EagerStream<T> {
     fn drop(&mut self) {
-        self.task.abort();
         self.rx.close();
+        self.task.abort();
     }
 }
 
@@ -107,6 +107,7 @@ where
     I: Iterator<Item = IntoIter<T>>,
     C: Compare<ElementBatchIter<I, T>>,
 {
+    /// Creates a new [`KMerge`] instance.
     pub fn new(cmp: C) -> Self {
         Self {
             heap: BinaryHeap::from_vec_cmp(Vec::new(), cmp),
@@ -117,6 +118,10 @@ where
         if let Some(heap_elem) = ElementBatchIter::new_from_iter(s) {
             self.heap.push(heap_elem);
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.heap.clear();
     }
 }
 
@@ -141,8 +146,8 @@ where
                     // Otherwise get the next batch and the element from it
                     // Unless the underlying iterator is exhausted
                     None => loop {
-                        match heap_elem.iter.next() {
-                            Some(mut batch) => match batch.next() {
+                        if let Some(mut batch) = heap_elem.iter.next() {
+                            match batch.next() {
                                 Some(mut item) => {
                                     heap_elem.batch = batch;
                                     std::mem::swap(&mut item, &mut heap_elem.item);
@@ -150,17 +155,14 @@ where
                                 }
                                 // Get next batch from iterator
                                 None => continue,
-                            },
-                            // Iterator has no more batches return current element
-                            // and pop the heap element
-                            None => {
-                                let ElementBatchIter {
-                                    item,
-                                    batch: _,
-                                    iter: _,
-                                } = PeekMut::pop(heap_elem);
-                                break Some(item);
                             }
+                        } else {
+                            let ElementBatchIter {
+                                item,
+                                batch: _,
+                                iter: _,
+                            } = PeekMut::pop(heap_elem);
+                            break Some(item);
                         }
                     },
                 }

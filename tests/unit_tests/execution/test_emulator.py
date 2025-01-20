@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,6 +17,7 @@ from decimal import Decimal
 
 import pytest
 
+from nautilus_trader.backtest.data_client import BacktestMarketDataClient
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
@@ -124,6 +125,13 @@ class TestOrderEmulatorWithSingleOrders:
         )
 
         self.venue = Venue("BINANCE")
+        self.data_client = BacktestMarketDataClient(
+            client_id=ClientId(self.venue.value),
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
         self.exec_client = MockExecutionClient(
             client_id=ClientId(self.venue.value),
             venue=self.venue,
@@ -136,6 +144,7 @@ class TestOrderEmulatorWithSingleOrders:
 
         update = TestEventStubs.margin_account_state(account_id=AccountId("BINANCE-001"))
         self.portfolio.update_account(update)
+        self.data_engine.register_client(self.data_client)
         self.exec_engine.register_client(self.exec_client)
 
         self.strategy = Strategy()
@@ -342,7 +351,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.BUY,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_000),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         # Act
@@ -363,7 +372,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.BUY,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_000),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         self.strategy.submit_order(order)
@@ -387,7 +396,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.BUY,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_000),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         self.strategy.submit_order(order)
@@ -405,7 +414,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.BUY,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_000),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         order2 = self.strategy.order_factory.limit(
@@ -413,7 +422,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.SELL,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_010),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         self.strategy.submit_order(order1)
@@ -435,7 +444,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.BUY,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_000),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         order2 = self.strategy.order_factory.limit(
@@ -443,7 +452,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=OrderSide.SELL,
             quantity=Quantity.from_int(10),
             price=ETHUSDT_PERP_BINANCE.make_price(2_010),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         self.strategy.submit_order(order1)
@@ -476,7 +485,7 @@ class TestOrderEmulatorWithSingleOrders:
             order_side=order_side,
             quantity=Quantity.from_int(10),
             price=trigger_price,
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         self.strategy.submit_order(order)
@@ -621,6 +630,56 @@ class TestOrderEmulatorWithSingleOrders:
 
         # Act
         self.data_engine.process(tick)
+
+        # Assert
+        order = self.cache.order(order.client_order_id)  # Recover transformed order from cache
+        assert order.order_type == OrderType.LIMIT
+        assert order.emulation_trigger == TriggerType.NO_TRIGGER
+        assert order.is_active_local
+        assert len(order.events) == 4
+        assert isinstance(order.events[0], OrderInitialized)
+        assert isinstance(order.events[1], OrderEmulated)
+        assert isinstance(order.events[2], OrderInitialized)
+        assert isinstance(order.events[3], OrderReleased)
+        assert self.exec_client.calls == ["_start", "submit_order"]
+
+    @pytest.mark.parametrize(
+        ("order_side", "trigger_price"),
+        [
+            [OrderSide.BUY, ETHUSDT_PERP_BINANCE.make_price(5_000)],
+            [OrderSide.SELL, ETHUSDT_PERP_BINANCE.make_price(5_000)],
+        ],
+    )
+    def test_submit_stop_limit_order_then_triggered_from_deltas_releases_limit_order(
+        self,
+        order_side: OrderSide,
+        trigger_price: TriggerType,
+    ) -> None:
+        # Arrange
+        order = self.strategy.order_factory.stop_limit(
+            instrument_id=ETHUSDT_PERP_BINANCE.id,
+            order_side=order_side,
+            quantity=Quantity.from_int(10),
+            price=trigger_price,
+            trigger_price=trigger_price,
+            emulation_trigger=TriggerType.DEFAULT,
+        )
+
+        self.strategy.submit_order(order)
+
+        order1 = TestDataStubs.order(price=5_000, side=OrderSide.BUY)
+        delta1 = TestDataStubs.order_book_delta(order=order1)
+
+        order2 = TestDataStubs.order(price=5_000, side=OrderSide.SELL)
+        delta2 = TestDataStubs.order_book_delta(order=order2)
+
+        deltas = TestDataStubs.order_book_deltas(
+            instrument_id=ETHUSDT_PERP_BINANCE.id,
+            deltas=[delta1, delta2],
+        )
+
+        # Act
+        self.data_engine.process(deltas)
 
         # Assert
         order = self.cache.order(order.client_order_id)  # Recover transformed order from cache

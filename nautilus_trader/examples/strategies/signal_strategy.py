@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -28,6 +28,12 @@ from nautilus_trader.trading.strategy import Strategy
 class SignalStrategyConfig(StrategyConfig, frozen=True):
     """
     Configuration for ``SignalStrategy`` instances.
+
+    Parameters
+    ----------
+    instrument_id : InstrumentId
+        The instrument ID for the strategy.
+
     """
 
     instrument_id: InstrumentId
@@ -46,7 +52,6 @@ class SignalStrategy(Strategy):
 
     def __init__(self, config: SignalStrategyConfig) -> None:
         super().__init__(config)
-        self.instrument_id = self.config.instrument_id
         self.instrument: Instrument | None = None
         self.counter = 0
 
@@ -54,9 +59,9 @@ class SignalStrategy(Strategy):
         """
         Actions to be performed on strategy start.
         """
-        self.instrument = self.cache.instrument(self.instrument_id)
-        self.subscribe_trade_ticks(instrument_id=self.instrument_id)
-        self.subscribe_quote_ticks(instrument_id=self.instrument_id)
+        self.instrument = self.cache.instrument(self.config.instrument_id)
+        self.subscribe_trade_ticks(instrument_id=self.config.instrument_id)
+        self.subscribe_quote_ticks(instrument_id=self.config.instrument_id)
 
     def on_quote_tick(self, tick: QuoteTick) -> None:
         """

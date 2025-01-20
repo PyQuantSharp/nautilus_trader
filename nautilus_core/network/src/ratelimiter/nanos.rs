@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -16,7 +16,7 @@
 //! A time-keeping abstraction (nanoseconds) that works for storing in an atomic integer.
 
 use std::{
-    fmt,
+    fmt::Debug,
     ops::{Add, Div, Mul},
     prelude::v1::*,
     time::Duration,
@@ -32,7 +32,7 @@ use super::clock;
 pub struct Nanos(u64);
 
 impl Nanos {
-    pub fn as_u64(self) -> u64 {
+    pub const fn as_u64(self) -> u64 {
         self.0
     }
 }
@@ -41,7 +41,7 @@ impl Nanos {
 #[cfg(feature = "std")]
 impl Nanos {
     pub const fn new(u: u64) -> Self {
-        Nanos(u)
+        Self(u)
     }
 }
 
@@ -56,8 +56,8 @@ impl From<Duration> for Nanos {
     }
 }
 
-impl fmt::Debug for Nanos {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for Nanos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         let d = Duration::from_nanos(self.0);
         write!(f, "Nanos({d:?})")
     }
@@ -107,7 +107,7 @@ impl From<Nanos> for Duration {
 
 impl Nanos {
     #[inline]
-    pub fn saturating_sub(self, rhs: Self) -> Self {
+    pub const fn saturating_sub(self, rhs: Self) -> Self {
         Self(self.0.saturating_sub(rhs.0))
     }
 }
@@ -145,7 +145,7 @@ mod test {
     #[test]
     fn nanos_impls() {
         let n = Nanos::new(20);
-        assert_eq!("Nanos(20ns)", format!("{:?}", n));
+        assert_eq!("Nanos(20ns)", format!("{n:?}"));
     }
 
     #[test]

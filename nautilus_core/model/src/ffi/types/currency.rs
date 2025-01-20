@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,9 @@
 
 use std::{ffi::c_char, str::FromStr};
 
-use nautilus_core::ffi::string::{cstr_to_str, str_to_cstr};
+use nautilus_core::ffi::string::{cstr_as_str, str_to_cstr};
 
-use crate::{currencies::CURRENCY_MAP, enums::CurrencyType, types::currency::Currency};
+use crate::{currencies::CURRENCY_MAP, enums::CurrencyType, types::Currency};
 
 /// Returns a [`Currency`] from pointers and primitives.
 ///
@@ -34,13 +34,12 @@ pub unsafe extern "C" fn currency_from_py(
     currency_type: CurrencyType,
 ) -> Currency {
     Currency::new(
-        cstr_to_str(code_ptr),
+        cstr_as_str(code_ptr),
         precision,
         iso4217,
-        cstr_to_str(name_ptr),
+        cstr_as_str(name_ptr),
         currency_type,
     )
-    .unwrap()
 }
 
 #[no_mangle]
@@ -76,7 +75,7 @@ pub extern "C" fn currency_register(currency: Currency) {
 /// - Assumes `code_ptr` is borrowed from a valid Python UTF-8 `str`.
 #[no_mangle]
 pub unsafe extern "C" fn currency_exists(code_ptr: *const c_char) -> u8 {
-    let code = cstr_to_str(code_ptr);
+    let code = cstr_as_str(code_ptr);
     u8::from(CURRENCY_MAP.lock().unwrap().contains_key(code))
 }
 
@@ -85,7 +84,7 @@ pub unsafe extern "C" fn currency_exists(code_ptr: *const c_char) -> u8 {
 /// - Assumes `code_ptr` is borrowed from a valid Python UTF-8 `str`.
 #[no_mangle]
 pub unsafe extern "C" fn currency_from_cstr(code_ptr: *const c_char) -> Currency {
-    let code = cstr_to_str(code_ptr);
+    let code = cstr_as_str(code_ptr);
     Currency::from_str(code).unwrap()
 }
 
@@ -99,11 +98,11 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::{enums::CurrencyType, types::currency::Currency};
+    use crate::{enums::CurrencyType, types::Currency};
 
     #[rstest]
     fn test_registration() {
-        let currency = Currency::new("MYC", 4, 0, "My Currency", CurrencyType::Crypto).unwrap();
+        let currency = Currency::new("MYC", 4, 0, "My Currency", CurrencyType::Crypto);
         currency_register(currency);
         unsafe {
             assert_eq!(currency_exists(str_to_cstr("MYC")), 1);
@@ -156,23 +155,5 @@ mod tests {
         let code = CString::new("USD").unwrap();
         let currency = unsafe { currency_from_cstr(code.as_ptr()) };
         assert_eq!(currency, Currency::USD());
-    }
-
-    #[rstest]
-    #[should_panic(expected = "`ptr` was NULL")]
-    fn test_currency_from_py_null_code_ptr() {
-        let name = CString::new("My Currency").unwrap();
-        let _ = unsafe {
-            currency_from_py(std::ptr::null(), 4, 0, name.as_ptr(), CurrencyType::Crypto)
-        };
-    }
-
-    #[rstest]
-    #[should_panic(expected = "`ptr` was NULL")]
-    fn test_currency_from_py_null_name_ptr() {
-        let code = CString::new("MYC").unwrap();
-        let _ = unsafe {
-            currency_from_py(code.as_ptr(), 4, 0, std::ptr::null(), CurrencyType::Crypto)
-        };
     }
 }

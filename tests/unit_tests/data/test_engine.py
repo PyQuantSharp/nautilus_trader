@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,12 +15,16 @@
 
 import sys
 
+import pandas as pd
 import pytest
 
+from nautilus_trader import TEST_DATA_DIR
+from nautilus_trader.adapters.databento.loaders import DatabentoDataLoader
 from nautilus_trader.backtest.data_client import BacktestMarketDataClient
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
 from nautilus_trader.core.data import Data
+from nautilus_trader.core.datetime import time_object_to_dt
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.data.engine import DataEngine
 from nautilus_trader.data.engine import DataEngineConfig
@@ -38,17 +42,21 @@ from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.enums import AggressorSide
 from nautilus_trader.model.enums import BarAggregation
 from nautilus_trader.model.enums import BookType
 from nautilus_trader.model.enums import PriceType
+from nautilus_trader.model.enums import RecordFlag
 from nautilus_trader.model.identifiers import ClientId
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import Symbol
+from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.instruments import Instrument
 from nautilus_trader.model.objects import Price
 from nautilus_trader.model.objects import Quantity
 from nautilus_trader.portfolio.portfolio import Portfolio
+from nautilus_trader.test_kit.mocks.data import MockMarketDataClient
 from nautilus_trader.test_kit.mocks.data import setup_catalog
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.stubs.component import TestComponentStubs
@@ -121,6 +129,13 @@ class TestDataEngine:
 
         self.betfair = BacktestMarketDataClient(
             client_id=ClientId("BETFAIR"),
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        self.mock_market_data_client = MockMarketDataClient(
+            client_id=ClientId(BINANCE.value),
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
@@ -569,6 +584,11 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_instruments() == [
+            BTCUSDT_BINANCE.id,
+            ETHUSDT_BINANCE.id,
+        ]
+
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
             venue=BINANCE,
@@ -582,6 +602,7 @@ class TestDataEngine:
 
         # Assert
         assert self.data_engine.subscribed_instruments() == []
+        assert self.binance_client.subscribed_instruments() == []
 
     def test_execute_subscribe_instrument_then_adds_handler(self):
         # Arrange
@@ -637,6 +658,8 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_instruments() == [ETHUSDT_BINANCE.id]
+
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
             venue=BINANCE,
@@ -650,6 +673,7 @@ class TestDataEngine:
 
         # Assert
         assert self.data_engine.subscribed_instruments() == []
+        assert self.binance_client.subscribed_instruments() == []
 
     def test_execute_unsubscribe_synthetic_instrument_logs_error(self):
         # Arrange
@@ -816,51 +840,7 @@ class TestDataEngine:
         # Assert
         assert self.data_engine.subscribed_order_book_deltas() == [ETHUSDT_BINANCE.id]
 
-    def test_execute_unsubscribe_order_book_stream_then_removes_handler(self):
-        # Arrange
-        self.data_engine.register_client(self.binance_client)
-        self.binance_client.start()
-
-        subscribe = Subscribe(
-            client_id=ClientId(BINANCE.value),
-            venue=BINANCE,
-            data_type=DataType(
-                OrderBook,
-                metadata={
-                    "instrument_id": ETHUSDT_BINANCE.id,
-                    "book_type": 2,
-                    "depth": 25,
-                    "interval_ms": 1000,
-                    "managed": True,
-                },
-            ),
-            command_id=UUID4(),
-            ts_init=self.clock.timestamp_ns(),
-        )
-
-        self.data_engine.execute(subscribe)
-
-        unsubscribe = Unsubscribe(
-            client_id=ClientId(BINANCE.value),
-            venue=BINANCE,
-            data_type=DataType(
-                OrderBook,
-                metadata={
-                    "instrument_id": ETHUSDT_BINANCE.id,
-                    "interval_ms": 1000,
-                },
-            ),
-            command_id=UUID4(),
-            ts_init=self.clock.timestamp_ns(),
-        )
-
-        # Act
-        self.data_engine.execute(unsubscribe)
-
-        # Assert
-        assert self.data_engine.subscribed_order_book_snapshots() == []
-
-    def test_execute_unsubscribe_order_book_data_then_removes_handler(self):
+    def test_execute_unsubscribe_order_book_deltas_then_removes_handler(self):
         # Arrange
         self.data_engine.register_client(self.binance_client)
         self.binance_client.start()
@@ -884,6 +864,8 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_order_book_deltas() == [ETHUSDT_BINANCE.id]
+
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
             venue=BINANCE,
@@ -903,8 +885,9 @@ class TestDataEngine:
 
         # Assert
         assert self.data_engine.subscribed_order_book_snapshots() == []
+        assert self.binance_client.subscribed_order_book_deltas() == []
 
-    def test_execute_unsubscribe_order_book_interval_then_removes_handler(self):
+    def test_execute_unsubscribe_order_book_at_interval_then_removes_handler(self):
         # Arrange
         self.data_engine.register_client(self.binance_client)
         self.binance_client.start()
@@ -928,6 +911,9 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_order_book_snapshots() == []
+        assert self.binance_client.subscribed_order_book_deltas() == [ETHUSDT_BINANCE.id]
+
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
             venue=BINANCE,
@@ -947,6 +933,8 @@ class TestDataEngine:
 
         # Assert
         assert self.data_engine.subscribed_order_book_snapshots() == []
+        assert self.binance_client.subscribed_order_book_snapshots() == []
+        assert self.binance_client.subscribed_order_book_deltas() == []
 
     def test_order_book_snapshots_when_book_not_updated_does_not_send_(self):
         # Arrange
@@ -1035,6 +1023,43 @@ class TestDataEngine:
         # Assert
         assert isinstance(handler[0], OrderBook)
 
+    def test_process_order_book_delta_then_sends_to_registered_handler(self):
+        # Arrange
+        self.data_engine.register_client(self.binance_client)
+        self.binance_client.start()
+
+        self.data_engine.process(ETHUSDT_BINANCE)  # <-- add necessary instrument for test
+
+        handler = []
+        self.msgbus.subscribe(topic="data.book.deltas.BINANCE.ETHUSDT", handler=handler.append)
+
+        subscribe = Subscribe(
+            client_id=ClientId(BINANCE.value),
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDelta,
+                {
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "book_type": BookType.L3_MBO,
+                    "depth": 5,
+                    "managed": True,
+                },
+            ),
+            command_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.data_engine.execute(subscribe)
+
+        deltas = TestDataStubs.order_book_delta(ETHUSDT_BINANCE.id)
+
+        # Act
+        self.data_engine.process(deltas)
+
+        # Assert
+        assert handler[0].instrument_id == ETHUSDT_BINANCE.id
+        assert isinstance(handler[0], OrderBookDeltas)
+
     def test_process_order_book_deltas_then_sends_to_registered_handler(self):
         # Arrange
         self.data_engine.register_client(self.binance_client)
@@ -1071,6 +1096,60 @@ class TestDataEngine:
         # Assert
         assert handler[0].instrument_id == ETHUSDT_BINANCE.id
         assert isinstance(handler[0], OrderBookDeltas)
+
+    def test_process_order_book_deltas_with_composite_symbol(self):
+        # Arrange
+        esf5 = TestInstrumentProvider.es_future(2024, 1)
+        esg5 = TestInstrumentProvider.es_future(2024, 2)
+        esh5 = TestInstrumentProvider.es_future(2024, 3)
+
+        self.data_engine.register_client(self.binance_client)
+        self.binance_client.start()
+
+        self.data_engine.process(esf5)  # <-- add necessary instrument for test
+        self.data_engine.process(esg5)  # <-- add necessary instrument for test
+        self.data_engine.process(esh5)  # <-- add necessary instrument for test
+
+        handler = []
+        self.msgbus.subscribe(topic="data.book.deltas.GLBX.ES*", handler=handler.append)
+
+        es_fut = InstrumentId.from_str("ES.FUT.GLBX")
+
+        subscribe = Subscribe(
+            client_id=ClientId(BINANCE.value),
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDelta,
+                {
+                    "instrument_id": es_fut,
+                    "book_type": BookType.L3_MBO,
+                    "depth": 25,
+                    "managed": True,
+                },
+            ),
+            command_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.data_engine.execute(subscribe)
+
+        deltas1 = TestDataStubs.order_book_deltas(esf5.id)
+        deltas2 = TestDataStubs.order_book_deltas(esg5.id)
+        deltas3 = TestDataStubs.order_book_deltas(esh5.id)
+
+        # Act
+        self.data_engine.process(deltas1)
+        self.data_engine.process(deltas2)
+        self.data_engine.process(deltas3)
+
+        # Assert
+        assert len(handler) == 3
+        assert isinstance(handler[0], OrderBookDeltas)
+        assert isinstance(handler[1], OrderBookDeltas)
+        assert isinstance(handler[2], OrderBookDeltas)
+        assert handler[0].instrument_id == esf5.id
+        assert handler[1].instrument_id == esg5.id
+        assert handler[2].instrument_id == esh5.id
 
     def test_process_order_book_snapshots_when_multiple_subscribers_then_sends_to_registered_handlers(
         self,
@@ -1303,6 +1382,8 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_quote_ticks() == [ETHUSDT_BINANCE.id]
+
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
             venue=BINANCE,
@@ -1316,6 +1397,7 @@ class TestDataEngine:
 
         # Assert
         assert self.data_engine.subscribed_quote_ticks() == []
+        assert self.binance_client.subscribed_quote_ticks() == []
 
     def test_process_quote_tick_when_subscriber_then_sends_to_registered_handler(self):
         # Arrange
@@ -1421,6 +1503,8 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_trade_ticks() == [ETHUSDT_BINANCE.id]
+
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
             venue=BINANCE,
@@ -1434,6 +1518,7 @@ class TestDataEngine:
 
         # Assert
         assert self.data_engine.subscribed_trade_ticks() == []
+        assert self.binance_client.subscribed_trade_ticks() == []
 
     def test_subscribe_synthetic_quote_ticks_then_subscribes(self):
         # Arrange
@@ -1722,6 +1807,8 @@ class TestDataEngine:
 
         self.data_engine.execute(subscribe)
 
+        assert self.binance_client.subscribed_bars() == [bar_type]
+
         self.msgbus.unsubscribe(topic=f"data.bars.{bar_type}", handler=handler.append)
         unsubscribe = Unsubscribe(
             client_id=ClientId(BINANCE.value),
@@ -1737,6 +1824,7 @@ class TestDataEngine:
         # Assert
         assert self.data_engine.command_count == 2
         assert self.data_engine.subscribed_bars() == []
+        assert self.binance_client.subscribed_bars() == []
 
     def test_process_bar_when_subscriber_then_sends_to_registered_handler(self):
         # Arrange
@@ -2132,6 +2220,836 @@ class TestDataEngine:
         assert len(handler) == 1
         assert len(handler[0].data) == 1
 
+    def test_request_order_book_snapshot_reaches_client(self):
+        # Arrange
+        self.data_engine.register_client(self.binance_client)
+
+        deltas = OrderBookDeltas(
+            instrument_id=ETHUSDT_BINANCE.id,
+            deltas=[TestDataStubs.order_book_delta(instrument_id=ETHUSDT_BINANCE.id)],
+        )
+
+        self.data_engine.process(deltas)
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDeltas,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "limit": 10,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 0
+
+    def test_request_bars_reaches_client(self):
+        # Arrange
+        self.data_engine.register_client(self.mock_market_data_client)
+        bar_spec = BarSpecification(1000, BarAggregation.TICK, PriceType.MID)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        bar = Bar(
+            bar_type,
+            Price.from_str("1051.00000"),
+            Price.from_str("1055.00000"),
+            Price.from_str("1050.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            0,
+            0,
+        )
+        self.mock_market_data_client.bars = [bar]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=bar_type.instrument_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_type": bar_type,
+                    "start": None,
+                    "end": None,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": False},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        assert handler[0].data == [bar]
+
+    def test_request_bars_with_start_and_end(self):
+        # Arrange
+        self.data_engine.register_client(self.mock_market_data_client)
+        bar_spec = BarSpecification(1000, BarAggregation.TICK, PriceType.MID)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        bar = Bar(
+            bar_type,
+            Price.from_str("1051.00000"),
+            Price.from_str("1055.00000"),
+            Price.from_str("1050.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            0,
+            0,
+        )
+        self.mock_market_data_client.bars = [bar]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=bar_type.instrument_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_type": bar_type,
+                    "start": pd.Timestamp("2024-10-01"),
+                    "end": pd.Timestamp("2024-10-31"),
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": False},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        assert handler[0].data == [bar]
+
+    def test_request_bars_when_catalog_registered(self):
+        # Arrange
+        catalog = setup_catalog(protocol="file")
+        bar_spec = BarSpecification(1000, BarAggregation.TICK, PriceType.MID)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        bar = Bar(
+            bar_type,
+            Price.from_str("1051.00000"),
+            Price.from_str("1055.00000"),
+            Price.from_str("1050.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            0,
+            0,
+        )
+        catalog.write_data([bar])
+        self.data_engine.register_catalog(catalog)
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=bar_type.instrument_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_type": bar_type,
+                    "start": None,
+                    "end": None,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": False},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        assert handler[0].data == [bar]
+
+    def test_request_bars_when_catalog_and_client_registered(self):
+        # Arrange
+        catalog = setup_catalog(protocol="file")
+        bar_spec = BarSpecification(1000, BarAggregation.TICK, PriceType.MID)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        bar = Bar(
+            bar_type,
+            Price.from_str("1051.00000"),
+            Price.from_str("1055.00000"),
+            Price.from_str("1050.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            pd.Timestamp("2024-3-24").value,
+            pd.Timestamp("2024-3-24").value,
+        )
+        catalog.write_data([bar])
+        self.data_engine.register_catalog(catalog)
+
+        self.data_engine.register_client(self.mock_market_data_client)
+        bar2 = Bar(
+            bar_type,
+            Price.from_str("1051.00000"),
+            Price.from_str("1055.00000"),
+            Price.from_str("1050.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            pd.Timestamp("2024-3-25").value,
+            pd.Timestamp("2024-3-25").value,
+        )
+        self.mock_market_data_client.bars = [bar2]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=bar_type.instrument_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_type": bar_type,
+                    "start": pd.Timestamp("2024-3-24"),
+                    "end": pd.Timestamp("2024-3-25"),
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": True},
+        )
+
+        self.clock.advance_time(pd.Timestamp("2024-3-25").value)
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        print(handler[0].data)
+        assert handler[0].data == [bar, bar2]
+        assert catalog.query_last_timestamp(Bar, bar_type=bar_type) == time_object_to_dt(
+            pd.Timestamp("2024-3-25"),
+        )
+
+    def test_request_quote_ticks_reaches_client(self):
+        # Arrange
+        self.data_engine.register_client(self.mock_market_data_client)
+        quote_tick = QuoteTick(
+            ETHUSDT_BINANCE.id,
+            Price.from_str("1051.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            Quantity.from_int(100),
+            0,
+            0,
+        )
+        self.mock_market_data_client.quote_ticks = [quote_tick]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=ETHUSDT_BINANCE.venue,
+            data_type=DataType(
+                QuoteTick,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "start": None,
+                    "end": None,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": False},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        assert handler[0].data == [quote_tick]
+
+    def test_request_quote_ticks_when_catalog_registered(self):
+        # Arrange
+        catalog = setup_catalog(protocol="file")
+        quote_tick = QuoteTick(
+            ETHUSDT_BINANCE.id,
+            Price.from_str("1051.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            Quantity.from_int(100),
+            0,
+            0,
+        )
+        catalog.write_data([quote_tick])
+        self.data_engine.register_catalog(catalog)
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=ETHUSDT_BINANCE.venue,
+            data_type=DataType(
+                QuoteTick,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "start": None,
+                    "end": None,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": False},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        # assert handler[0].data == [quote_tick]
+
+    def test_request_quote_ticks_when_catalog_and_client_registered(self):
+        # Arrange
+        catalog = setup_catalog(protocol="file")
+        quote_tick = QuoteTick(
+            ETHUSDT_BINANCE.id,
+            Price.from_str("1051.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            Quantity.from_int(100),
+            pd.Timestamp("2024-3-24").value,
+            pd.Timestamp("2024-3-24").value,
+        )
+        catalog.write_data([quote_tick])
+        self.data_engine.register_catalog(catalog)
+
+        self.data_engine.register_client(self.mock_market_data_client)
+        quote_tick2 = QuoteTick(
+            ETHUSDT_BINANCE.id,
+            Price.from_str("1051.00000"),
+            Price.from_str("1052.00000"),
+            Quantity.from_int(100),
+            Quantity.from_int(100),
+            pd.Timestamp("2024-3-25").value,
+            pd.Timestamp("2024-3-25").value,
+        )
+        self.mock_market_data_client.quote_ticks = [quote_tick2]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=ETHUSDT_BINANCE.venue,
+            data_type=DataType(
+                QuoteTick,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "start": pd.Timestamp("2024-3-24"),
+                    "end": pd.Timestamp("2024-3-25"),
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": True},
+        )
+
+        self.clock.advance_time(pd.Timestamp("2024-3-25").value)
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        # assert handler[0].data == [quote_tick, quote_tick2]
+        assert catalog.query_last_timestamp(
+            QuoteTick,
+            instrument_id=ETHUSDT_BINANCE.id,
+        ) == time_object_to_dt(
+            pd.Timestamp("2024-3-25"),
+        )
+
+    def test_request_trade_ticks_reaches_client(self):
+        # Arrange
+        self.data_engine.register_client(self.mock_market_data_client)
+        trade_tick = TradeTick(
+            instrument_id=ETHUSDT_BINANCE.id,
+            price=Price.from_str("1051.00000"),
+            size=Quantity.from_int(100),
+            aggressor_side=AggressorSide.BUYER,
+            trade_id=TradeId("123456"),
+            ts_event=0,
+            ts_init=0,
+        )
+        self.mock_market_data_client.trade_ticks = [trade_tick]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=ETHUSDT_BINANCE.venue,
+            data_type=DataType(
+                TradeTick,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "start": None,
+                    "end": None,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": True},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        assert handler[0].data == [trade_tick]
+
+    def test_request_trade_ticks_when_catalog_registered(self):
+        # Arrange
+        catalog = setup_catalog(protocol="file")
+        trade_tick = TradeTick(
+            instrument_id=ETHUSDT_BINANCE.id,
+            price=Price.from_str("1051.00000"),
+            size=Quantity.from_int(100),
+            aggressor_side=AggressorSide.BUYER,
+            trade_id=TradeId("123456"),
+            ts_event=0,
+            ts_init=0,
+        )
+        catalog.write_data([trade_tick])
+        self.data_engine.register_catalog(catalog)
+
+        assert trade_tick == trade_tick
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=ETHUSDT_BINANCE.venue,
+            data_type=DataType(
+                TradeTick,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "start": None,
+                    "end": None,
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": False},
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        # assert handler[0].data == [trade_tick]
+
+    def test_request_trade_ticks_when_catalog_and_client_registered(self):
+        # Arrange
+        catalog = setup_catalog(protocol="file")
+        trade_tick = TradeTick(
+            instrument_id=ETHUSDT_BINANCE.id,
+            price=Price.from_str("1051.00000"),
+            size=Quantity.from_int(100),
+            aggressor_side=AggressorSide.BUYER,
+            trade_id=TradeId("123456"),
+            ts_event=pd.Timestamp("2024-3-24").value,
+            ts_init=pd.Timestamp("2024-3-24").value,
+        )
+        catalog.write_data([trade_tick])
+        self.data_engine.register_catalog(catalog)
+
+        self.data_engine.register_client(self.mock_market_data_client)
+        trade_tick2 = TradeTick(
+            instrument_id=ETHUSDT_BINANCE.id,
+            price=Price.from_str("1051.00000"),
+            size=Quantity.from_int(100),
+            aggressor_side=AggressorSide.BUYER,
+            trade_id=TradeId("123456"),
+            ts_event=pd.Timestamp("2024-3-25").value,
+            ts_init=pd.Timestamp("2024-3-25").value,
+        )
+        self.mock_market_data_client.trade_ticks = [trade_tick2]
+
+        handler = []
+        request = DataRequest(
+            client_id=None,
+            venue=ETHUSDT_BINANCE.venue,
+            data_type=DataType(
+                TradeTick,
+                metadata={
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "start": pd.Timestamp("2024-3-24"),
+                    "end": pd.Timestamp("2024-3-25"),
+                },
+            ),
+            callback=handler.append,
+            request_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+            params={"update_catalog": True},
+        )
+
+        self.clock.advance_time(pd.Timestamp("2024-3-25").value)
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert len(handler) == 1
+        # assert handler[0].data == [trade_tick, trade_tick2]
+        assert catalog.query_last_timestamp(
+            TradeTick,
+            instrument_id=ETHUSDT_BINANCE.id,
+        ) == time_object_to_dt(
+            pd.Timestamp("2024-3-25"),
+        )
+
+    def test_request_aggregated_bars_with_bars(self):
+        # Arrange
+        loader = DatabentoDataLoader()
+
+        path = (
+            TEST_DATA_DIR
+            / "databento"
+            / "historical_bars_catalog"
+            / "databento"
+            / "futures_ohlcv-1m_2024-07-01T23h40_2024-07-02T00h10.dbn.zst"
+        )
+        data = loader.from_dbn_file(path, as_legacy_cython=True)
+
+        definition_path = (
+            TEST_DATA_DIR
+            / "databento"
+            / "historical_bars_catalog"
+            / "databento"
+            / "futures_definition.dbn.zst"
+        )
+        definition = loader.from_dbn_file(definition_path, as_legacy_cython=True)
+
+        catalog = setup_catalog(protocol="file")
+        catalog.write_data(data)
+        catalog.write_data(definition)
+
+        self.data_engine.register_catalog(catalog)
+        self.data_engine.process(definition[0])
+
+        symbol_id = InstrumentId.from_str("ESU4.GLBX")
+
+        utc_now = pd.Timestamp("2024-07-01T23:56")
+        self.clock.advance_time(utc_now.value)
+
+        start = utc_now - pd.Timedelta(minutes=11)
+        end = utc_now - pd.Timedelta(minutes=1)
+
+        bar_type_0 = data[0].bar_type
+        bar_type_1 = BarType.from_str("ESU4.GLBX-2-MINUTE-LAST-INTERNAL@1-MINUTE-EXTERNAL")
+        bar_type_2 = BarType.from_str("ESU4.GLBX-4-MINUTE-LAST-INTERNAL@2-MINUTE-INTERNAL")
+        bar_type_3 = BarType.from_str("ESU4.GLBX-5-MINUTE-LAST-INTERNAL@1-MINUTE-EXTERNAL")
+        bar_types = [bar_type_1, bar_type_2, bar_type_3]
+
+        handler = []
+        params = {}
+        params["include_external_data"] = True
+        params["update_subscriptions"] = False
+        params["update_catalog"] = False
+
+        request_id = UUID4()
+        request = DataRequest(
+            client_id=None,
+            venue=symbol_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_types": tuple(bar_types),
+                    "bars_market_data_type": "bars",
+                    "instrument_id": symbol_id,
+                    "bar_type": bar_types[0].composite(),
+                    "start": start,
+                    "end": end,
+                },
+            ),
+            callback=handler.append,
+            request_id=request_id,
+            ts_init=utc_now.value,
+            params=params,
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        last_1_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-1-MINUTE-LAST-EXTERNAL"),
+            Price.from_str("5528.75"),
+            Price.from_str("5529.25"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Quantity.from_int(164),
+            1719878040000000000,
+            1719878040000000000,
+        )
+
+        last_2_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-2-MINUTE-LAST-INTERNAL"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Price.from_str("5528.25"),
+            Price.from_str("5528.50"),
+            Quantity.from_int(76),
+            1719878040000000000,
+            1719878040000000000,
+        )
+
+        last_4_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-4-MINUTE-LAST-INTERNAL"),
+            Price.from_str("5527.50"),
+            Price.from_str("5528.50"),
+            Price.from_str("5527.50"),
+            Price.from_str("5528.50"),
+            Quantity.from_int(116),
+            1719877920000000000,
+            1719877920000000000,
+        )
+
+        last_5_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-5-MINUTE-LAST-INTERNAL"),
+            Price.from_str("5527.75"),
+            Price.from_str("5529.25"),
+            Price.from_str("5527.75"),
+            Price.from_str("5528.75"),
+            Quantity.from_int(329),
+            1719878100000000000,
+            1719878100000000000,
+        )
+
+        assert handler[0].data["bars"][bar_type_0][-1] == last_1_minute_bar
+        assert handler[0].data["bars"][bar_type_1.standard()][-1] == last_2_minute_bar
+        assert handler[0].data["bars"][bar_type_2.standard()][-1] == last_4_minute_bar
+        assert handler[0].data["bars"][bar_type_3.standard()][-1] == last_5_minute_bar
+
+    def test_request_aggregated_bars_with_quotes(self):
+        # Arrange
+        loader = DatabentoDataLoader()
+
+        path = (
+            TEST_DATA_DIR
+            / "databento"
+            / "historical_bars_catalog"
+            / "databento"
+            / "futures_mbp-1_2024-07-01T23h58_2024-07-02T00h02.dbn.zst"
+        )
+        data = loader.from_dbn_file(path, as_legacy_cython=True)
+
+        definition_path = (
+            TEST_DATA_DIR
+            / "databento"
+            / "historical_bars_catalog"
+            / "databento"
+            / "futures_definition.dbn.zst"
+        )
+        definition = loader.from_dbn_file(definition_path, as_legacy_cython=True)
+
+        catalog = setup_catalog(protocol="file")
+        catalog.write_data(data)
+        catalog.write_data(definition)
+
+        self.data_engine.register_catalog(catalog)
+        self.data_engine.process(definition[0])
+
+        symbol_id = InstrumentId.from_str("ESU4.GLBX")
+
+        utc_now = pd.Timestamp("2024-07-02T00:00:01")
+        self.clock.advance_time(utc_now.value)
+
+        start = utc_now - pd.Timedelta(minutes=2, seconds=1)
+        end = utc_now - pd.Timedelta(minutes=0, seconds=1)
+
+        bar_type_1 = BarType.from_str("ESU4.GLBX-1-MINUTE-BID-INTERNAL")
+        bar_type_2 = BarType.from_str("ESU4.GLBX-2-MINUTE-BID-INTERNAL@1-MINUTE-INTERNAL")
+        bar_types = [bar_type_1, bar_type_2]
+
+        handler = []
+        params = {}
+        params["include_external_data"] = False
+        params["update_subscriptions"] = False
+        params["update_catalog"] = False
+
+        request_id = UUID4()
+        request = DataRequest(
+            client_id=None,
+            venue=symbol_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_types": tuple(bar_types),
+                    "bars_market_data_type": "quote_ticks",
+                    "instrument_id": symbol_id,
+                    "bar_type": bar_types[0].composite(),
+                    "start": start,
+                    "end": end,
+                },
+            ),
+            callback=handler.append,
+            request_id=request_id,
+            ts_init=utc_now.value,
+            params=params,
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        last_1_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-1-MINUTE-BID-INTERNAL"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Quantity.from_int(5806),
+            1719878400000000000,
+            1719878400000000000,
+        )
+
+        last_2_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-2-MINUTE-BID-INTERNAL"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Quantity.from_int(10244),
+            1719878400000000000,
+            1719878400000000000,
+        )
+
+        assert handler[0].data["bars"][bar_type_1.standard()][-1] == last_1_minute_bar
+        assert handler[0].data["bars"][bar_type_2.standard()][-1] == last_2_minute_bar
+
+    def test_request_aggregated_bars_with_trades(self):
+        # Arrange
+        loader = DatabentoDataLoader()
+
+        path = (
+            TEST_DATA_DIR
+            / "databento"
+            / "historical_bars_catalog"
+            / "databento"
+            / "futures_trades_2024-07-01T23h58_2024-07-02T00h02.dbn.zst"
+        )
+        data = loader.from_dbn_file(path, as_legacy_cython=True)
+
+        definition_path = (
+            TEST_DATA_DIR
+            / "databento"
+            / "historical_bars_catalog"
+            / "databento"
+            / "futures_definition.dbn.zst"
+        )
+        definition = loader.from_dbn_file(definition_path, as_legacy_cython=True)
+
+        catalog = setup_catalog(protocol="file")
+        catalog.write_data(data)
+        catalog.write_data(definition)
+
+        self.data_engine.register_catalog(catalog)
+        self.data_engine.process(definition[0])
+
+        symbol_id = InstrumentId.from_str("ESU4.GLBX")
+
+        utc_now = pd.Timestamp("2024-07-02T00:00:01")
+        self.clock.advance_time(utc_now.value)
+
+        start = utc_now - pd.Timedelta(minutes=2, seconds=1)
+        end = utc_now - pd.Timedelta(minutes=0, seconds=0)
+
+        bar_type_1 = BarType.from_str("ESU4.GLBX-1-MINUTE-LAST-INTERNAL")
+        bar_type_2 = BarType.from_str("ESU4.GLBX-2-MINUTE-LAST-INTERNAL@1-MINUTE-INTERNAL")
+        bar_types = [bar_type_1, bar_type_2]
+
+        handler = []
+        params = {}
+        params["include_external_data"] = False
+        params["update_subscriptions"] = False
+        params["update_catalog"] = False
+
+        request_id = UUID4()
+        request = DataRequest(
+            client_id=None,
+            venue=symbol_id.venue,
+            data_type=DataType(
+                Bar,
+                metadata={
+                    "bar_types": tuple(bar_types),
+                    "bars_market_data_type": "trade_ticks",
+                    "instrument_id": symbol_id,
+                    "bar_type": bar_types[0].composite(),
+                    "start": start,
+                    "end": end,
+                },
+            ),
+            callback=handler.append,
+            request_id=request_id,
+            ts_init=utc_now.value,
+            params=params,
+        )
+
+        # Act
+        self.msgbus.request(endpoint="DataEngine.request", request=request)
+
+        # Assert
+        last_1_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-1-MINUTE-LAST-INTERNAL"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Quantity.from_int(23),
+            1719878400000000000,
+            1719878400000000000,
+        )
+
+        last_2_minute_bar = Bar(
+            BarType.from_str("ESU4.GLBX-2-MINUTE-LAST-INTERNAL"),
+            Price.from_str("5528.75"),
+            Price.from_str("5528.75"),
+            Price.from_str("5528.50"),
+            Price.from_str("5528.75"),
+            Quantity.from_int(41),
+            1719878400000000000,
+            1719878400000000000,
+        )
+
+        assert handler[0].data["bars"][bar_type_1.standard()][-1] == last_1_minute_bar
+        assert handler[0].data["bars"][bar_type_2.standard()][-1] == last_2_minute_bar
+
     # TODO: Implement with new Rust datafusion backend"
     # def test_request_quote_ticks_when_catalog_registered_using_rust(self) -> None:
     #     # Arrange
@@ -2376,3 +3294,232 @@ class TestDataEngine:
     #     assert len(handler[0].data) == 21
     #     assert handler[0].data[0].ts_init == 1637971200000000000
     #     assert handler[0].data[-1].ts_init == 1638058200000000000
+
+
+class TestDataBufferEngine:
+    def setup(self):
+        # Fixture Setup
+        self.clock = TestClock()
+        self.trader_id = TestIdStubs.trader_id()
+
+        self.msgbus = MessageBus(
+            trader_id=self.trader_id,
+            clock=self.clock,
+        )
+
+        self.cache = TestComponentStubs.cache()
+
+        self.portfolio = Portfolio(
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        config = DataEngineConfig(
+            validate_data_sequence=True,
+            debug=True,
+            buffer_deltas=True,
+        )
+        self.data_engine = DataEngine(
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+            config=config,
+        )
+
+        self.binance_client = BacktestMarketDataClient(
+            client_id=ClientId(BINANCE.value),
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        self.bitmex_client = BacktestMarketDataClient(
+            client_id=ClientId(BITMEX.value),
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        self.quandl = BacktestMarketDataClient(
+            client_id=ClientId("QUANDL"),
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        self.betfair = BacktestMarketDataClient(
+            client_id=ClientId("BETFAIR"),
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        self.data_engine.process(BTCUSDT_BINANCE)
+        self.data_engine.process(ETHUSDT_BINANCE)
+        self.data_engine.process(XBTUSD_BITMEX)
+
+    def test_process_order_book_delta_buffering_then_sends_to_registered_handler(self):
+        # Arrange
+        self.data_engine.register_client(self.binance_client)
+        self.binance_client.start()
+
+        self.data_engine.process(ETHUSDT_BINANCE)  # <-- add necessary instrument for test
+
+        handler = []
+        self.msgbus.subscribe(topic="data.book.deltas.BINANCE.ETHUSDT", handler=handler.append)
+
+        subscribe = Subscribe(
+            client_id=ClientId(BINANCE.value),
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDelta,
+                {
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "book_type": BookType.L3_MBO,
+                    "depth": 5,
+                    "managed": True,
+                },
+            ),
+            command_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.data_engine.execute(subscribe)
+
+        delta = TestDataStubs.order_book_delta(ETHUSDT_BINANCE.id)
+        last_delta = TestDataStubs.order_book_delta(ETHUSDT_BINANCE.id, flags=RecordFlag.F_LAST)
+
+        self.data_engine.process(delta)
+
+        assert handler == []
+
+        # Act
+        self.data_engine.process(last_delta)
+
+        # Assert
+        assert handler[0].instrument_id == ETHUSDT_BINANCE.id
+        assert isinstance(handler[0], OrderBookDeltas)
+        assert len(handler) == 1
+        assert handler[0].deltas == [delta, last_delta]
+
+    def test_process_order_book_delta_buffers_are_cleared(self):
+        # Arrange
+        self.data_engine.register_client(self.binance_client)
+        self.binance_client.start()
+
+        self.data_engine.process(ETHUSDT_BINANCE)  # <-- add necessary instrument for test
+
+        handler = []
+        self.msgbus.subscribe(topic="data.book.deltas.BINANCE.ETHUSDT", handler=handler.append)
+
+        subscribe = Subscribe(
+            client_id=ClientId(BINANCE.value),
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDelta,
+                {
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "book_type": BookType.L3_MBO,
+                    "depth": 5,
+                    "managed": True,
+                },
+            ),
+            command_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.data_engine.execute(subscribe)
+
+        delta = TestDataStubs.order_book_delta(ETHUSDT_BINANCE.id, flags=RecordFlag.F_LAST)
+
+        # Act
+        self.data_engine.process(delta)
+        self.data_engine.process(delta)
+
+        # Assert
+        assert len(handler) == 2
+        assert len(handler[0].deltas) == 1
+        assert len(handler[1].deltas) == 1
+
+    def test_process_order_book_deltas_then_sends_to_registered_handler(self):
+        # Arrange
+        self.data_engine.register_client(self.binance_client)
+        self.binance_client.start()
+
+        self.data_engine.process(ETHUSDT_BINANCE)  # <-- add necessary instrument for test
+
+        handler = []
+        self.msgbus.subscribe(topic="data.book.deltas.BINANCE.ETHUSDT", handler=handler.append)
+
+        subscribe = Subscribe(
+            client_id=ClientId(BINANCE.value),
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDelta,
+                {
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "book_type": BookType.L3_MBO,
+                    "depth": 5,
+                    "managed": True,
+                },
+            ),
+            command_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.data_engine.execute(subscribe)
+
+        deltas = TestDataStubs.order_book_deltas(ETHUSDT_BINANCE.id)
+        last_deltas = TestDataStubs.order_book_deltas(ETHUSDT_BINANCE.id, flags=RecordFlag.F_LAST)
+
+        self.data_engine.process(deltas)
+
+        assert handler == []
+
+        # Act
+        self.data_engine.process(last_deltas)
+
+        # Assert
+        assert handler[0].instrument_id == ETHUSDT_BINANCE.id
+        assert isinstance(handler[0], OrderBookDeltas)
+        assert len(handler[0].deltas) == 2
+
+    def test_process_order_book_deltas_buffers_are_cleared(self):
+        # Arrange
+        self.data_engine.register_client(self.binance_client)
+        self.binance_client.start()
+
+        self.data_engine.process(ETHUSDT_BINANCE)  # <-- add necessary instrument for test
+
+        handler = []
+        self.msgbus.subscribe(topic="data.book.deltas.BINANCE.ETHUSDT", handler=handler.append)
+
+        subscribe = Subscribe(
+            client_id=ClientId(BINANCE.value),
+            venue=BINANCE,
+            data_type=DataType(
+                OrderBookDelta,
+                {
+                    "instrument_id": ETHUSDT_BINANCE.id,
+                    "book_type": BookType.L3_MBO,
+                    "depth": 5,
+                    "managed": True,
+                },
+            ),
+            command_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.data_engine.execute(subscribe)
+
+        deltas = TestDataStubs.order_book_deltas(ETHUSDT_BINANCE.id, flags=RecordFlag.F_LAST)
+
+        # Act
+        self.data_engine.process(deltas)
+        self.data_engine.process(deltas)
+
+        # Assert
+        assert len(handler) == 2
+        assert len(handler[0].deltas) == 1
+        assert len(handler[1].deltas) == 1

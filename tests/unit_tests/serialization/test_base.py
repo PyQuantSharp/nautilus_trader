@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,17 +15,15 @@
 
 from __future__ import annotations
 
-from nautilus_trader.serialization.base import register_serializable_object
-from nautilus_trader.test_kit.providers import TestInstrumentProvider
-
-
-AUDUSD_SIM = TestInstrumentProvider.default_fx_ccy("AUD/USD")
+from nautilus_trader.serialization.base import register_serializable_type
 
 
 class TestObject:
     """
     Represents some generic user object which implements serialization value dicts.
     """
+
+    __test__ = False  # Prevents pytest from collecting this as a test class
 
     def __init__(self, value):
         self.value = value
@@ -40,8 +38,12 @@ class TestObject:
 
 
 class TestSerializationBase:
-    def test_register_serializable_object(self):
+    def test_register_serializable_type(self):
         # Arrange, Act, Assert
-        register_serializable_object(TestObject, TestObject.to_dict, TestObject.from_dict)
+        register_serializable_type(
+            cls=TestObject,
+            to_dict=TestObject.to_dict,
+            from_dict=TestObject.from_dict,
+        )
 
         # Does not raise exception

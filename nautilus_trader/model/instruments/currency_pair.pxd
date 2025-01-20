@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -26,3 +26,6 @@ cdef class CurrencyPair(Instrument):
 
     @staticmethod
     cdef dict to_dict_c(CurrencyPair obj)
+
+    @staticmethod
+    cdef CurrencyPair from_pyo3_c(pyo3_instrument)

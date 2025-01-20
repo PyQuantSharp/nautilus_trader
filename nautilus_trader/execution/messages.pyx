@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -40,7 +40,7 @@ cdef class TradingCommand(Command):
 
     Parameters
     ----------
-    client_id : ClientId, optional with no default so ``None`` must be passed explicitly
+    client_id : ClientId or ``None``
         The execution client ID for the command.
     trader_id : TraderId
         The trader ID for the command.
@@ -51,7 +51,7 @@ cdef class TradingCommand(Command):
     command_id : UUID4
         The commands ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     Warnings
     --------
@@ -90,7 +90,7 @@ cdef class SubmitOrder(TradingCommand):
     command_id : UUID4
         The commands ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     position_id : PositionId, optional
         The position ID for the command.
     client_id : ClientId, optional
@@ -157,7 +157,7 @@ cdef class SubmitOrder(TradingCommand):
             strategy_id=StrategyId(values["strategy_id"]),
             order=order,
             position_id=PositionId(p) if p is not None else None,
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -224,7 +224,7 @@ cdef class SubmitOrderList(TradingCommand):
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     position_id : PositionId, optional
         The position ID for the command.
     client_id : ClientId, optional
@@ -294,7 +294,7 @@ cdef class SubmitOrderList(TradingCommand):
             strategy_id=StrategyId(values["strategy_id"]),
             order_list=order_list,
             position_id=PositionId(p) if p is not None else None,
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -358,18 +358,18 @@ cdef class ModifyOrder(TradingCommand):
         The instrument ID for the command.
     client_order_id : ClientOrderId
         The client order ID to update.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue) to update.
-    quantity : Quantity, optional with no default so ``None`` must be passed explicitly
+    quantity : Quantity or ``None``
         The quantity for the order update.
-    price : Price, optional with no default so ``None`` must be passed explicitly
+    price : Price or ``None``
         The price for the order update.
-    trigger_price : Price, optional with no default so ``None`` must be passed explicitly
+    trigger_price : Price or ``None``
         The trigger price for the order update.
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_id : ClientId, optional
         The execution client ID for the command.
 
@@ -413,9 +413,9 @@ cdef class ModifyOrder(TradingCommand):
             f"instrument_id={self.instrument_id.to_str()}, "
             f"client_order_id={self.client_order_id.to_str()}, "
             f"venue_order_id={self.venue_order_id}, "  # Can be None
-            f"quantity={self.quantity.to_str() if self.quantity is not None else None}, "
-            f"price={self.price}, "
-            f"trigger_price={self.trigger_price})"
+            f"quantity={self.quantity.to_formatted_str() if self.quantity is not None else None}, "
+            f"price={self.price.to_formatted_str() if self.price is not None else None}, "
+            f"trigger_price={self.trigger_price.to_formatted_str() if self.trigger_price is not None else None})"
         )
 
     def __repr__(self) -> str:
@@ -427,9 +427,9 @@ cdef class ModifyOrder(TradingCommand):
             f"instrument_id={self.instrument_id.to_str()}, "
             f"client_order_id={self.client_order_id.to_str()}, "
             f"venue_order_id={self.venue_order_id}, "  # Can be None
-            f"quantity={self.quantity.to_str() if self.quantity is not None else None}, "
-            f"price={self.price}, "
-            f"trigger_price={self.trigger_price}, "
+            f"quantity={self.quantity.to_formatted_str() if self.quantity is not None else None}, "
+            f"price={self.price.to_formatted_str() if self.price is not None else None}, "
+            f"trigger_price={self.trigger_price.to_formatted_str() if self.trigger_price is not None else None}, "
             f"command_id={self.id.to_str()}, "
             f"ts_init={self.ts_init})"
         )
@@ -452,7 +452,7 @@ cdef class ModifyOrder(TradingCommand):
             quantity=Quantity.from_str_c(q) if q is not None else None,
             price=Price.from_str_c(p) if p is not None else None,
             trigger_price=Price.from_str_c(t) if t is not None else None,
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -518,12 +518,12 @@ cdef class CancelOrder(TradingCommand):
         The instrument ID for the command.
     client_order_id : ClientOrderId
         The client order ID to cancel.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue) to cancel.
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_id : ClientId, optional
         The execution client ID for the command.
 
@@ -590,7 +590,7 @@ cdef class CancelOrder(TradingCommand):
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -656,7 +656,7 @@ cdef class CancelAllOrders(TradingCommand):
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_id : ClientId, optional
         The execution client ID for the command.
     """
@@ -711,7 +711,7 @@ cdef class CancelAllOrders(TradingCommand):
             strategy_id=StrategyId(values["strategy_id"]),
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             order_side=order_side_from_str(values["order_side"]),
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -776,7 +776,7 @@ cdef class BatchCancelOrders(TradingCommand):
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_id : ClientId, optional
         The execution client ID for the command.
 
@@ -840,7 +840,7 @@ cdef class BatchCancelOrders(TradingCommand):
             strategy_id=StrategyId(values["strategy_id"]),
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             cancels=[CancelOrder.from_dict_c(cancel) for cancel in values["cancels"]],
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -902,12 +902,12 @@ cdef class QueryOrder(TradingCommand):
         The instrument ID for the command.
     client_order_id : ClientOrderId
         The client order ID for the order to query.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue) to query.
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_id : ClientId, optional
         The execution client ID for the command.
     """
@@ -970,7 +970,7 @@ cdef class QueryOrder(TradingCommand):
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
-            command_id=UUID4(values["command_id"]),
+            command_id=UUID4.from_str_c(values["command_id"]),
             ts_init=values["ts_init"],
         )
 

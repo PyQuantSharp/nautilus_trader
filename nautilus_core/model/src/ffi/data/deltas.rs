@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,18 +13,15 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::{ffi::cvec::CVec, time::UnixNanos};
+use nautilus_core::{ffi::cvec::CVec, UnixNanos};
 
 use crate::{
-    data::{
-        delta::OrderBookDelta,
-        deltas::{OrderBookDeltas, OrderBookDeltas_API},
-    },
+    data::{OrderBookDelta, OrderBookDeltas, OrderBookDeltas_API},
     enums::BookAction,
-    identifiers::instrument_id::InstrumentId,
+    identifiers::InstrumentId,
 };
 
-/// Creates a new `OrderBookDeltas` object from a `CVec` of `OrderBookDelta`.
+/// Creates a new `OrderBookDeltas` instance from a `CVec` of `OrderBookDelta`.
 ///
 /// # Safety
 /// - The `deltas` must be a valid pointer to a `CVec` containing `OrderBookDelta` objects

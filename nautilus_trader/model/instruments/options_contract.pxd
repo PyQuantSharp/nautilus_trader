@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,16 +21,18 @@ from nautilus_trader.model.objects cimport Price
 
 
 cdef class OptionsContract(Instrument):
+    cdef readonly str exchange
+    """The exchange ISO 10383 Market Identifier Code (MIC) where the instrument trades.\n\n:returns: `str` or ``None``"""
     cdef readonly str underlying
     """The underlying asset for the contract.\n\n:returns: `str`"""
     cdef readonly OptionKind option_kind
     """The option kind (PUT | CALL) for the contract.\n\n:returns: `OptionKind`"""
-    cdef readonly uint64_t activation_ns
-    """The UNIX timestamp (nanoseconds) for contract activation.\n\n:returns: `unit64_t`"""
-    cdef readonly uint64_t expiration_ns
-    """The UNIX timestamp (nanoseconds) for contract expiration.\n\n:returns: `unit64_t`"""
     cdef readonly Price strike_price
     """The strike price for the contract.\n\n:returns: `Price`"""
+    cdef readonly uint64_t activation_ns
+    """UNIX timestamp (nanoseconds) for contract activation.\n\n:returns: `unit64_t`"""
+    cdef readonly uint64_t expiration_ns
+    """UNIX timestamp (nanoseconds) for contract expiration.\n\n:returns: `unit64_t`"""
 
     @staticmethod
     cdef OptionsContract from_dict_c(dict values)

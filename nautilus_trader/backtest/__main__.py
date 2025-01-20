@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -36,6 +36,7 @@ def main(
         with fsspec.open(fsspec_url, "rb") as f:
             data = f.read().decode()
     else:
+        assert raw is not None  # Type checking
         data = raw.encode()
 
     configs = msgspec.json.decode(

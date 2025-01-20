@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -35,9 +35,11 @@ cdef class PortfolioFacade:
     cpdef dict margins_init(self, Venue venue)
     cpdef dict margins_maint(self, Venue venue)
     cpdef dict unrealized_pnls(self, Venue venue)
+    cpdef dict realized_pnls(self, Venue venue)
     cpdef dict net_exposures(self, Venue venue)
 
     cpdef Money unrealized_pnl(self, InstrumentId instrument_id)
+    cpdef Money realized_pnl(self, InstrumentId instrument_id)
     cpdef Money net_exposure(self, InstrumentId instrument_id)
     cpdef object net_position(self, InstrumentId instrument_id)
 

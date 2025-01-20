@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,12 +13,17 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Order types for the trading domain model.
+
 #![allow(dead_code)]
 
+pub mod any;
 pub mod base;
+pub mod builder;
 pub mod default;
 pub mod limit;
 pub mod limit_if_touched;
+pub mod list;
 pub mod market;
 pub mod market_if_touched;
 pub mod market_to_limit;
@@ -29,3 +34,20 @@ pub mod trailing_stop_market;
 
 #[cfg(feature = "stubs")]
 pub mod stubs;
+
+// Re-exports
+pub use crate::orders::{
+    any::{LimitOrderAny, OrderAny, PassiveOrderAny, StopOrderAny},
+    base::{Order, OrderError},
+    builder::OrderTestBuilder,
+    limit::LimitOrder,
+    limit_if_touched::LimitIfTouchedOrder,
+    list::OrderList,
+    market::MarketOrder,
+    market_if_touched::MarketIfTouchedOrder,
+    market_to_limit::MarketToLimitOrder,
+    stop_limit::StopLimitOrder,
+    stop_market::StopMarketOrder,
+    trailing_stop_limit::TrailingStopLimitOrder,
+    trailing_stop_market::TrailingStopMarketOrder,
+};

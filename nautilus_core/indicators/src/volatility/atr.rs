@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,8 +15,7 @@
 
 use std::fmt::{Debug, Display};
 
-use anyhow::Result;
-use nautilus_model::data::bar::Bar;
+use nautilus_model::data::Bar;
 
 use crate::{
     average::{MovingAverageFactory, MovingAverageType},
@@ -84,13 +83,15 @@ impl Indicator for AverageTrueRange {
 }
 
 impl AverageTrueRange {
+    /// Creates a new [`AverageTrueRange`] instance.
+    #[must_use]
     pub fn new(
         period: usize,
         ma_type: Option<MovingAverageType>,
         use_previous: Option<bool>,
         value_floor: Option<f64>,
-    ) -> Result<Self> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             period,
             ma_type: ma_type.unwrap_or(MovingAverageType::Simple),
             use_previous: use_previous.unwrap_or(true),
@@ -101,7 +102,7 @@ impl AverageTrueRange {
             ma: MovingAverageFactory::create(MovingAverageType::Simple, period),
             has_inputs: false,
             initialized: false,
-        })
+        }
     }
 
     pub fn update_raw(&mut self, high: f64, low: f64, close: f64) {
@@ -139,5 +140,151 @@ impl AverageTrueRange {
                 self.initialized = true;
             }
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Tests
+////////////////////////////////////////////////////////////////////////////////
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+    use crate::testing::approx_equal;
+
+    #[rstest]
+    fn test_name_returns_expected_string() {
+        let atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        assert_eq!(atr.name(), "AverageTrueRange");
+    }
+
+    #[rstest]
+    fn test_str_repr_returns_expected_string() {
+        let atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), Some(true), Some(0.0));
+        assert_eq!(format!("{atr}"), "AverageTrueRange(10,SIMPLE,true,0)");
+    }
+
+    #[rstest]
+    fn test_period() {
+        let atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        assert_eq!(atr.period, 10);
+    }
+
+    #[rstest]
+    fn test_initialized_without_inputs_returns_false() {
+        let atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        assert!(!atr.initialized());
+    }
+
+    #[rstest]
+    fn test_initialized_with_required_inputs_returns_true() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        for _ in 0..10 {
+            atr.update_raw(1.0, 1.0, 1.0);
+        }
+        assert!(atr.initialized());
+    }
+
+    #[rstest]
+    fn test_value_with_no_inputs_returns_zero() {
+        let atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        assert_eq!(atr.value, 0.0);
+    }
+
+    #[rstest]
+    fn test_value_with_epsilon_input() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        let epsilon = std::f64::EPSILON;
+        atr.update_raw(epsilon, epsilon, epsilon);
+        assert_eq!(atr.value, 0.0);
+    }
+
+    #[rstest]
+    fn test_value_with_one_ones_input() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        atr.update_raw(1.0, 1.0, 1.0);
+        assert_eq!(atr.value, 0.0);
+    }
+
+    #[rstest]
+    fn test_value_with_one_input() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        atr.update_raw(1.00020, 1.0, 1.00010);
+        assert!(approx_equal(atr.value, 0.0002));
+    }
+
+    #[rstest]
+    fn test_value_with_three_inputs() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        atr.update_raw(1.00020, 1.0, 1.00010);
+        atr.update_raw(1.00020, 1.0, 1.00010);
+        atr.update_raw(1.00020, 1.0, 1.00010);
+        assert!(approx_equal(atr.value, 0.0002));
+    }
+
+    #[rstest]
+    fn test_value_with_close_on_high() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        let mut high = 1.00010;
+        let mut low = 1.0;
+        for _ in 0..1000 {
+            high += 0.00010;
+            low += 0.00010;
+            let close = high;
+            atr.update_raw(high, low, close);
+        }
+        assert!(approx_equal(atr.value, 0.000_099_999_999_999_988_99));
+    }
+
+    #[rstest]
+    fn test_value_with_close_on_low() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        let mut high = 1.00010;
+        let mut low = 1.0;
+        for _ in 0..1000 {
+            high -= 0.00010;
+            low -= 0.00010;
+            let close = low;
+            atr.update_raw(high, low, close);
+        }
+        assert!(approx_equal(atr.value, 0.000_099_999_999_999_988_99));
+    }
+
+    #[rstest]
+    fn test_floor_with_ten_ones_inputs() {
+        let floor = 0.00005;
+        let mut floored_atr =
+            AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, Some(floor));
+        for _ in 0..20 {
+            floored_atr.update_raw(1.0, 1.0, 1.0);
+        }
+        assert_eq!(floored_atr.value, 5e-05);
+    }
+
+    #[rstest]
+    fn test_floor_with_exponentially_decreasing_high_inputs() {
+        let floor = 0.00005;
+        let mut floored_atr =
+            AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, Some(floor));
+        let mut high = 1.00020;
+        let low = 1.0;
+        let close = 1.0;
+        for _ in 0..20 {
+            high -= (high - low) / 2.0;
+            floored_atr.update_raw(high, low, close);
+        }
+        assert_eq!(floored_atr.value, floor);
+    }
+
+    #[rstest]
+    fn test_reset_successfully_returns_indicator_to_fresh_state() {
+        let mut atr = AverageTrueRange::new(10, Some(MovingAverageType::Simple), None, None);
+        for _ in 0..1000 {
+            atr.update_raw(1.00010, 1.0, 1.00005);
+        }
+        atr.reset();
+        assert!(!atr.initialized);
+        assert_eq!(atr.value, 0.0);
     }
 }

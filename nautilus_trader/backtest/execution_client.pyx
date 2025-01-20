@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -84,17 +84,17 @@ cdef class BacktestExecClient(ExecutionClient):
     cpdef void _start(self):
         self._log.info(f"Connecting...")
         self.is_connected = True
-        self._log.info(f"Connected.")
+        self._log.info(f"Connected")
 
     cpdef void _stop(self):
         self._log.info(f"Disconnecting...")
         self.is_connected = False
-        self._log.info(f"Disconnected.")
+        self._log.info(f"Disconnected")
 
 # -- COMMAND HANDLERS -----------------------------------------------------------------------------
 
     cpdef void submit_order(self, SubmitOrder command):
-        Condition.true(self.is_connected, "not connected")
+        Condition.is_true(self.is_connected, "not connected")
 
         self.generate_order_submitted(
             strategy_id=command.strategy_id,
@@ -106,7 +106,7 @@ cdef class BacktestExecClient(ExecutionClient):
         self._exchange.send(command)
 
     cpdef void submit_order_list(self, SubmitOrderList command):
-        Condition.true(self.is_connected, "not connected")
+        Condition.is_true(self.is_connected, "not connected")
 
         cdef Order order
         for order in command.order_list.orders:
@@ -120,21 +120,21 @@ cdef class BacktestExecClient(ExecutionClient):
         self._exchange.send(command)
 
     cpdef void modify_order(self, ModifyOrder command):
-        Condition.true(self.is_connected, "not connected")
+        Condition.is_true(self.is_connected, "not connected")
 
         self._exchange.send(command)
 
     cpdef void cancel_order(self, CancelOrder command):
-        Condition.true(self.is_connected, "not connected")
+        Condition.is_true(self.is_connected, "not connected")
 
         self._exchange.send(command)
 
     cpdef void cancel_all_orders(self, CancelAllOrders command):
-        Condition.true(self.is_connected, "not connected")
+        Condition.is_true(self.is_connected, "not connected")
 
         self._exchange.send(command)
 
     cpdef void batch_cancel_orders(self, BatchCancelOrders command):
-        Condition.true(self.is_connected, "not connected")
+        Condition.is_true(self.is_connected, "not connected")
 
         self._exchange.send(command)

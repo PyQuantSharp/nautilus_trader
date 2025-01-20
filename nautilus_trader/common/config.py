@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -25,6 +25,7 @@ import msgspec
 import pandas as pd
 from msgspec import Meta
 
+from nautilus_trader.common import Environment
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.model.data import BarType
@@ -90,6 +91,8 @@ def msgspec_encoding_hook(obj: Any) -> Any:
         return str(obj)
     if isinstance(obj, (pd.Timestamp | pd.Timedelta)):
         return obj.isoformat()
+    if isinstance(obj, Environment):
+        return obj.value
     if isinstance(obj, type) and hasattr(obj, "fully_qualified_name"):
         return obj.fully_qualified_name()
     if type(obj) in CUSTOM_ENCODINGS:
@@ -100,8 +103,10 @@ def msgspec_encoding_hook(obj: Any) -> Any:
 
 
 def msgspec_decoding_hook(obj_type: type, obj: Any) -> Any:
-    if obj_type in (Decimal, UUID4, pd.Timestamp, pd.Timedelta):
+    if obj_type in (Decimal, pd.Timestamp, pd.Timedelta):
         return obj_type(obj)
+    if obj_type == UUID4:
+        return UUID4.from_str(obj)
     if obj_type == InstrumentId:
         return InstrumentId.from_str(obj)
     if issubclass(obj_type, Identifier):
@@ -112,6 +117,8 @@ def msgspec_decoding_hook(obj_type: type, obj: Any) -> Any:
         return Price.from_str(obj)
     if obj_type == Quantity:
         return Quantity.from_str(obj)
+    if obj_type == Environment:
+        return obj_type(obj)
     if obj_type in CUSTOM_DECODINGS:
         func = CUSTOM_DECODINGS[obj_type]
         return func(obj)
@@ -247,12 +254,15 @@ class DatabaseConfig(NautilusConfig, frozen=True):
         The account username for the database connection.
     password : str, optional
         The account password for the database connection.
+        If a value is provided then it will be redacted in the string repr for this object.
     ssl : bool, default False
         If database should use an SSL enabled connection.
+    timeout : int, default 20
+        The timeout (seconds) to wait for a new connection.
 
     Notes
     -----
-    If `type` is 'redis' then requires Redis version 6.2.0 and above for correct operation.
+    If `type` is 'redis' then requires Redis version 6.2 or higher for correct operation (required for streams functionality).
 
     """
 
@@ -262,6 +272,25 @@ class DatabaseConfig(NautilusConfig, frozen=True):
     username: str | None = None
     password: str | None = None
     ssl: bool = False
+    timeout: int | None = 20
+
+    def __repr__(self) -> str:
+        redacted_password = "None"
+        if self.password:
+            if len(self.password) >= 4:
+                redacted_password = f"{self.password[:2]}...{self.password[-2:]}"
+            else:
+                redacted_password = self.password
+        return (
+            f"{type(self).__name__}("
+            f"type={self.type}, "
+            f"host={self.host}, "
+            f"port={self.port}, "
+            f"username={self.username}, "
+            f"password={redacted_password}, "
+            f"ssl={self.ssl}, "
+            f"timeout={self.timeout})"
+        )
 
 
 class MessageBusConfig(NautilusConfig, frozen=True):
@@ -285,7 +314,7 @@ class MessageBusConfig(NautilusConfig, frozen=True):
         The lookback window in minutes for automatic stream trimming.
         The actual window may extend up to one minute beyond the specified value since streams are
         trimmed at most once every minute.
-        Note that this feature requires Redis version 6.2.0 or higher; otherwise it will result
+        Note that this feature requires Redis version 6.2 or higher; otherwise it will result
         in a command syntax error.
     use_trader_prefix : bool, default True
         If a 'trader-' prefix is used for stream names.
@@ -293,12 +322,20 @@ class MessageBusConfig(NautilusConfig, frozen=True):
         If the traders ID is used for stream names.
     use_instance_id : bool, default False
         If the traders instance ID is used for stream names.
-    streams_prefix : str, default 'streams'
+    streams_prefix : str, default 'stream'
         The prefix for externally published stream names (must have a `database` config).
         If `use_trader_id` and `use_instance_id` are *both* false, then it becomes possible for
         many traders to be configured to write to the same streams.
+    stream_per_topic : bool, default True
+        If True, messages will be written to separate streams per topic.
+        If False, all messages will be written to the same stream.
+    external_streams : list[str], optional
+        The external stream keys the node will listen to for publishing deserialized message
+        payloads on the internal message bus.
     types_filter : list[type], optional
-        A list of serializable types *not* to publish externally.
+        A list of serializable types **not** to publish externally.
+    heartbeat_interval_secs : PositiveInt, optional
+        The heartbeat interval (seconds) to use for trading node health.
 
     """
 
@@ -310,8 +347,11 @@ class MessageBusConfig(NautilusConfig, frozen=True):
     use_trader_prefix: bool = True
     use_trader_id: bool = True
     use_instance_id: bool = False
-    streams_prefix: str = "streams"
+    streams_prefix: str = "stream"
+    stream_per_topic: bool = True
+    external_streams: list[str] | None = None
     types_filter: list[type] | None = None
+    heartbeat_interval_secs: PositiveInt | None = None
 
 
 class InstrumentProviderConfig(NautilusConfig, frozen=True):
@@ -322,9 +362,9 @@ class InstrumentProviderConfig(NautilusConfig, frozen=True):
     ----------
     load_all : bool, default False
         If all venue instruments should be loaded on start.
-    load_ids : FrozenSet[InstrumentId], optional
+    load_ids : frozenset[InstrumentId], optional
         The list of instrument IDs to be loaded on start (if `load_all_instruments` is False).
-    filters : frozendict, optional
+    filters : frozendict or dict[str, Any], optional
         The venue specific instrument loading filters to apply.
     filter_callable: str, optional
         A fully qualified path to a callable that takes a single argument, `instrument` and returns a bool, indicating
@@ -342,7 +382,8 @@ class InstrumentProviderConfig(NautilusConfig, frozen=True):
         )
 
     def __hash__(self):
-        return hash((self.load_all, self.load_ids, self.filters))
+        filters = frozenset(self.filters.items()) if self.filters else None
+        return hash((self.load_all, self.load_ids, filters))
 
     load_all: bool = False
     load_ids: frozenset[InstrumentId] | None = None
@@ -374,10 +415,17 @@ class ActorConfig(NautilusConfig, kw_only=True, frozen=True):
     component_id : ComponentId, optional
         The component ID. If ``None`` then the identifier will be taken from
         `type(self).__name__`.
+    log_events : bool, default True
+        If events should be logged by the actor.
+        If False, then only warning events and above are logged.
+    log_commands : bool, default True
+        If commands should be logged by the actor.
 
     """
 
     component_id: ComponentId | None = None
+    log_events: bool = True
+    log_commands: bool = True
 
 
 class ImportableActorConfig(NautilusConfig, frozen=True):
@@ -467,6 +515,9 @@ class LoggingConfig(NautilusConfig, frozen=True):
         If the logging system should be initialized via pyo3,
         this isn't recommended for backtesting as the performance is much lower
         but can be useful for seeing logs originating from Rust.
+    clear_log_file : bool, default False
+        If the log file name should be cleared before being used (e.g. for testing).
+        Only applies if `log_file_name` is not ``None``.
 
     """
 
@@ -480,6 +531,7 @@ class LoggingConfig(NautilusConfig, frozen=True):
     bypass_logging: bool = False
     print_config: bool = False
     use_pyo3: bool = False
+    clear_log_file: bool = False
 
 
 class ImportableFactoryConfig(NautilusConfig, frozen=True):

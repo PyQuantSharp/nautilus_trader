@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -307,7 +307,7 @@ async def test_modify_order_error_order_doesnt_exist(
     expected_args = tuple(
         {
             "strategy_id": StrategyId("S-001"),
-            "instrument_id": InstrumentId.from_str("1.179082386-50214-None.BETFAIR"),
+            "instrument_id": InstrumentId.from_str("1-179082386-50214-None.BETFAIR"),
             "client_order_id": ClientOrderId("O-20210410-022422-001-001-1"),
             "venue_order_id": None,
             "reason": "ORDER NOT IN CACHE",
@@ -845,13 +845,14 @@ async def test_generate_order_status_report_client_id(
     instrument_provider.add(instrument)
 
     # Act
-    report: OrderStatusReport = await exec_client.generate_order_status_report(
+    report: OrderStatusReport | None = await exec_client.generate_order_status_report(
         instrument_id=instrument.id,
         venue_order_id=VenueOrderId("1"),
         client_order_id=None,
     )
 
     # Assert
+    assert report
     assert report.order_status == OrderStatus.ACCEPTED
     assert report.price == Price(5.0, BETFAIR_PRICE_PRECISION)
     assert report.quantity == Quantity(10.0, BETFAIR_QUANTITY_PRECISION)
@@ -874,13 +875,14 @@ async def test_generate_order_status_report_venue_order_id(
     venue_order_id = VenueOrderId("323427122115")
 
     # Act
-    report: OrderStatusReport = await exec_client.generate_order_status_report(
+    report: OrderStatusReport | None = await exec_client.generate_order_status_report(
         instrument_id=instrument.id,
         venue_order_id=venue_order_id,
         client_order_id=client_order_id,
     )
 
     # Assert
+    assert report
     assert report.order_status == OrderStatus.ACCEPTED
     assert report.price == Price(5.0, BETFAIR_PRICE_PRECISION)
     assert report.quantity == Quantity(10.0, BETFAIR_QUANTITY_PRECISION)
@@ -934,7 +936,7 @@ async def test_check_cache_against_order_image_passes(
 async def test_fok_order_found_in_cache(exec_client, setup_order_state, strategy, cache):
     # Arrange
     instrument = betting_instrument(
-        market_id="1.219194342",
+        market_id="1-219194342",
         selection_id=61288616,
         selection_handicap=0.0,
     )
@@ -993,7 +995,7 @@ async def test_generate_order_status_reports_executable(exec_client):
     reports = await exec_client.generate_order_status_reports()
 
     # Assert
-    assert len(reports) == 2
+    assert len(reports) == 4
     assert reports[0].order_side == OrderSide.SELL
     assert reports[0].price == Price(5.0, BETFAIR_PRICE_PRECISION)
     assert reports[0].quantity == Quantity(10.0, BETFAIR_QUANTITY_PRECISION)
@@ -1021,7 +1023,7 @@ async def test_generate_order_status_reports_executable_limit_on_close(exec_clie
     reports = await exec_client.generate_order_status_reports()
 
     # Assert
-    assert len(reports) == 2
+    assert len(reports) == 4
 
     # Back
     assert reports[0].order_side == OrderSide.SELL

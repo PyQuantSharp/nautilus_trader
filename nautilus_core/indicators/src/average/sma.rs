@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,8 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -57,11 +56,11 @@ impl Indicator for SimpleMovingAverage {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, quote: &QuoteTick) {
+    fn handle_quote(&mut self, quote: &QuoteTick) {
         self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, trade: &TradeTick) {
+    fn handle_trade(&mut self, trade: &TradeTick) {
         self.update_raw((&trade.price).into());
     }
 
@@ -78,17 +77,17 @@ impl Indicator for SimpleMovingAverage {
 }
 
 impl SimpleMovingAverage {
-    pub fn new(period: usize, price_type: Option<PriceType>) -> Result<Self> {
-        // Inputs don't require validation, however we return a `Result`
-        // to standardize with other indicators which do need validation.
-        Ok(Self {
+    /// Creates a new [`SimpleMovingAverage`] instance.
+    #[must_use]
+    pub fn new(period: usize, price_type: Option<PriceType>) -> Self {
+        Self {
             period,
             price_type: price_type.unwrap_or(PriceType::Last),
             value: 0.0,
             count: 0,
             inputs: Vec::with_capacity(period),
             initialized: false,
-        })
+        }
     }
 }
 
@@ -117,12 +116,12 @@ impl MovingAverage for SimpleMovingAverage {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Test
+// Tests
 ////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
     use nautilus_model::{
-        data::{quote::QuoteTick, trade::TradeTick},
+        data::{QuoteTick, TradeTick},
         enums::PriceType,
     };
     use rstest::rstest;
@@ -175,9 +174,9 @@ mod tests {
     }
 
     #[rstest]
-    fn test_handle_quote_tick_single(indicator_sma_10: SimpleMovingAverage, quote_tick: QuoteTick) {
+    fn test_handle_quote_tick_single(indicator_sma_10: SimpleMovingAverage, stub_quote: QuoteTick) {
         let mut sma = indicator_sma_10;
-        sma.handle_quote_tick(&quote_tick);
+        sma.handle_quote(&stub_quote);
         assert_eq!(sma.count, 1);
         assert_eq!(sma.value, 1501.0);
     }
@@ -185,19 +184,19 @@ mod tests {
     #[rstest]
     fn test_handle_quote_tick_multi(indicator_sma_10: SimpleMovingAverage) {
         let mut sma = indicator_sma_10;
-        let tick1 = quote_tick("1500.0", "1502.0");
-        let tick2 = quote_tick("1502.0", "1504.0");
+        let tick1 = stub_quote("1500.0", "1502.0");
+        let tick2 = stub_quote("1502.0", "1504.0");
 
-        sma.handle_quote_tick(&tick1);
-        sma.handle_quote_tick(&tick2);
+        sma.handle_quote(&tick1);
+        sma.handle_quote(&tick2);
         assert_eq!(sma.count, 2);
         assert_eq!(sma.value, 1502.0);
     }
 
     #[rstest]
-    fn test_handle_trade_tick(indicator_sma_10: SimpleMovingAverage, trade_tick: TradeTick) {
+    fn test_handle_trade_tick(indicator_sma_10: SimpleMovingAverage, stub_trade: TradeTick) {
         let mut sma = indicator_sma_10;
-        sma.handle_trade_tick(&trade_tick);
+        sma.handle_trade(&stub_trade);
         assert_eq!(sma.count, 1);
         assert_eq!(sma.value, 1500.0);
     }

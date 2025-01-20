@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,9 +17,9 @@ import asyncio
 
 import msgspec
 
-from nautilus_trader.adapters.binance.common.data import BinanceCommonDataClient
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
 from nautilus_trader.adapters.binance.config import BinanceDataClientConfig
+from nautilus_trader.adapters.binance.data import BinanceCommonDataClient
 from nautilus_trader.adapters.binance.http.client import BinanceHttpClient
 from nautilus_trader.adapters.binance.spot.enums import BinanceSpotEnumParser
 from nautilus_trader.adapters.binance.spot.http.market import BinanceSpotMarketHttpAPI
@@ -38,7 +38,7 @@ from nautilus_trader.model.identifiers import InstrumentId
 
 class BinanceSpotDataClient(BinanceCommonDataClient):
     """
-    Provides a data client for the `Binance Spot/Margin` exchange.
+    Provides a data client for the Binance Spot/Margin exchange.
 
     Parameters
     ----------
@@ -56,10 +56,12 @@ class BinanceSpotDataClient(BinanceCommonDataClient):
         The instrument provider.
     base_url_ws : str
         The base URL for the WebSocket client.
-    account_type : BinanceAccountType
-        The account type for the client.
     config : BinanceDataClientConfig
         The configuration for the client.
+    account_type : BinanceAccountType, default 'SPOT'
+        The account type for the client.
+    name : str, optional
+        The custom client ID.
 
     """
 
@@ -74,8 +76,9 @@ class BinanceSpotDataClient(BinanceCommonDataClient):
         base_url_ws: str,
         config: BinanceDataClientConfig,
         account_type: BinanceAccountType = BinanceAccountType.SPOT,
-    ):
-        PyCondition.true(
+        name: str | None = None,
+    ) -> None:
+        PyCondition.is_true(
             account_type.is_spot_or_margin,
             "account_type was not SPOT, MARGIN or ISOLATED_MARGIN",
         )
@@ -97,6 +100,7 @@ class BinanceSpotDataClient(BinanceCommonDataClient):
             instrument_provider=instrument_provider,
             account_type=account_type,
             base_url_ws=base_url_ws,
+            name=name,
             config=config,
         )
 

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -39,7 +39,7 @@ cdef class MovingAverageConvergenceDivergence(Indicator):
     ma_type : MovingAverageType
         The moving average type for the calculations.
     price_type : PriceType
-        The specified price type for extracting values from quote ticks.
+        The specified price type for extracting values from quotes.
 
     Raises
     ------
@@ -60,7 +60,7 @@ cdef class MovingAverageConvergenceDivergence(Indicator):
     ):
         Condition.positive_int(fast_period, "fast_period")
         Condition.positive_int(slow_period, "slow_period")
-        Condition.true(slow_period > fast_period, "slow_period was <= fast_period")
+        Condition.is_true(slow_period > fast_period, "slow_period was <= fast_period")
 
         params=[
             fast_period,

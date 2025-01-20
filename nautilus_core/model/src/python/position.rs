@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,10 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::{
-    python::{serialization::from_dict_pyo3, to_pyvalue_err},
-    time::UnixNanos,
-};
+use nautilus_core::python::serialization::from_dict_pyo3;
 use pyo3::{
     basic::CompareOp,
     prelude::*,
@@ -24,52 +21,25 @@ use pyo3::{
 };
 use rust_decimal::prelude::ToPrimitive;
 
+use super::common::commissions_from_vec;
 use crate::{
     enums::{OrderSide, PositionSide},
-    events::order::filled::OrderFilled,
+    events::OrderFilled,
     identifiers::{
-        client_order_id::ClientOrderId, instrument_id::InstrumentId, position_id::PositionId,
-        strategy_id::StrategyId, symbol::Symbol, trade_id::TradeId, trader_id::TraderId,
-        venue::Venue, venue_order_id::VenueOrderId,
-    },
-    instruments::{
-        crypto_future::CryptoFuture, crypto_perpetual::CryptoPerpetual,
-        currency_pair::CurrencyPair, equity::Equity, futures_contract::FuturesContract,
-        options_contract::OptionsContract,
+        ClientOrderId, InstrumentId, PositionId, StrategyId, Symbol, TradeId, TraderId, Venue,
+        VenueOrderId,
     },
     position::Position,
-    types::{currency::Currency, money::Money, price::Price, quantity::Quantity},
+    python::instruments::pyobject_to_instrument_any,
+    types::{Currency, Money, Price, Quantity},
 };
 
 #[pymethods]
 impl Position {
     #[new]
     fn py_new(py: Python, instrument: PyObject, fill: OrderFilled) -> PyResult<Self> {
-        // Extract instrument from PyObject
-        let instrument_type = instrument
-            .getattr(py, "instrument_type")?
-            .extract::<String>(py)?;
-        if instrument_type == "CryptoFuture" {
-            let instrument_rust = instrument.extract::<CryptoFuture>(py)?;
-            Ok(Self::new(instrument_rust, fill).unwrap())
-        } else if instrument_type == "CryptoPerpetual" {
-            let instrument_rust = instrument.extract::<CryptoPerpetual>(py)?;
-            Ok(Self::new(instrument_rust, fill).unwrap())
-        } else if instrument_type == "CurrencyPair" {
-            let instrument_rust = instrument.extract::<CurrencyPair>(py)?;
-            Ok(Self::new(instrument_rust, fill).unwrap())
-        } else if instrument_type == "Equity" {
-            let instrument_rust = instrument.extract::<Equity>(py)?;
-            Ok(Self::new(instrument_rust, fill).unwrap())
-        } else if instrument_type == "FuturesContract" {
-            let instrument_rust = instrument.extract::<FuturesContract>(py)?;
-            Ok(Self::new(instrument_rust, fill).unwrap())
-        } else if instrument_type == "OptionsContract" {
-            let instrument_rust = instrument.extract::<OptionsContract>(py)?;
-            Ok(Self::new(instrument_rust, fill).unwrap())
-        } else {
-            Err(to_pyvalue_err("Unsupported instrument type"))
-        }
+        let instrument_any = pyobject_to_instrument_any(py, instrument)?;
+        Ok(Self::new(&instrument_any, fill))
     }
 
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
@@ -80,11 +50,11 @@ impl Position {
         }
     }
 
-    fn __str__(&self) -> String {
+    fn __repr__(&self) -> String {
         self.to_string()
     }
 
-    fn __repr__(&self) -> String {
+    fn __str__(&self) -> String {
         self.to_string()
     }
 
@@ -210,20 +180,20 @@ impl Position {
 
     #[getter]
     #[pyo3(name = "ts_init")]
-    fn py_ts_init(&self) -> UnixNanos {
-        self.ts_init
+    fn py_ts_init(&self) -> u64 {
+        self.ts_init.as_u64()
     }
 
     #[getter]
     #[pyo3(name = "ts_opened")]
-    fn py_ts_opened(&self) -> UnixNanos {
-        self.ts_opened
+    fn py_ts_opened(&self) -> u64 {
+        self.ts_opened.as_u64()
     }
 
     #[getter]
     #[pyo3(name = "ts_closed")]
-    fn py_ts_closed(&self) -> Option<UnixNanos> {
-        self.ts_closed
+    fn py_ts_closed(&self) -> Option<u64> {
+        self.ts_closed.map(std::convert::Into::into)
     }
 
     #[getter]
@@ -365,14 +335,14 @@ impl Position {
 
     #[pyo3(name = "to_dict")]
     fn py_to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
         dict.set_item("type", stringify!(Position))?;
         let events_dict: PyResult<Vec<_>> = self.events.iter().map(|e| e.py_to_dict(py)).collect();
         dict.set_item("events", events_dict?)?;
         dict.set_item("trader_id", self.trader_id.to_string())?;
         dict.set_item("strategy_id", self.strategy_id.to_string())?;
         dict.set_item("instrument_id", self.instrument_id.to_string())?;
-        dict.set_item("id", self.id.to_string())?;
+        dict.set_item("position_id", self.id.to_string())?;
         dict.set_item("account_id", self.account_id.to_string())?;
         dict.set_item("opening_order_id", self.opening_order_id.to_string())?;
         match self.closing_order_id {
@@ -401,43 +371,39 @@ impl Position {
             "settlement_currency",
             self.settlement_currency.code.to_string(),
         )?;
-        dict.set_item("ts_init", self.ts_init.to_u64())?;
-        dict.set_item("ts_opened", self.ts_opened.to_u64())?;
-        dict.set_item("ts_last", self.ts_last.to_u64())?;
+        dict.set_item("ts_init", self.ts_init.as_u64())?;
+        dict.set_item("ts_opened", self.ts_opened.as_u64())?;
+        dict.set_item("ts_last", self.ts_last.as_u64())?;
         match self.ts_closed {
-            Some(ts_closed) => dict.set_item("ts_closed", ts_closed.to_u64())?,
+            Some(ts_closed) => dict.set_item("ts_closed", ts_closed.as_u64())?,
             None => dict.set_item("ts_closed", py.None())?,
         }
         dict.set_item("duration_ns", self.duration_ns.to_u64())?;
-        dict.set_item("avg_px_open", self.avg_px_open.to_f64())?;
+        dict.set_item("avg_px_open", self.avg_px_open)?;
         match self.avg_px_close {
-            Some(avg_px_close) => dict.set_item("avg_px_close", avg_px_close.to_u64())?,
+            Some(avg_px_close) => dict.set_item("avg_px_close", avg_px_close)?,
             None => dict.set_item("avg_px_close", py.None())?,
         }
-        dict.set_item("realized_return", self.realized_return.to_f64())?;
+        dict.set_item("realized_return", self.realized_return)?;
         match self.realized_pnl {
             Some(realized_pnl) => dict.set_item("realized_pnl", realized_pnl.to_string())?,
             None => dict.set_item("realized_pnl", py.None())?,
         }
-        let venue_order_ids_list = PyList::new(
+        let venue_order_ids_list = PyList::new_bound(
             py,
             self.venue_order_ids()
                 .iter()
                 .map(std::string::ToString::to_string),
         );
         dict.set_item("venue_order_ids", venue_order_ids_list)?;
-        let trade_ids_list = PyList::new(
+        let trade_ids_list = PyList::new_bound(
             py,
             self.trade_ids.iter().map(std::string::ToString::to_string),
         );
         dict.set_item("trade_ids", trade_ids_list)?;
         dict.set_item("buy_qty", self.buy_qty.to_string())?;
         dict.set_item("sell_qty", self.sell_qty.to_string())?;
-        let commissions_dict = PyDict::new(py);
-        for (key, value) in &self.commissions {
-            commissions_dict.set_item(key.code.to_string(), value.to_string())?;
-        }
-        dict.set_item("commissions", commissions_dict)?;
+        dict.set_item("commissions", commissions_from_vec(py, self.commissions())?)?;
         Ok(dict.into())
     }
 }

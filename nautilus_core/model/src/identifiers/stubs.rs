@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,15 +13,85 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::uuid::UUID4;
+//! Default implementations and fixture functions to provide stub identifiers for testing.
+
+use nautilus_core::UUID4;
 use rstest::fixture;
 
 use crate::identifiers::{
-    account_id::AccountId, client_id::ClientId, client_order_id::ClientOrderId,
-    component_id::ComponentId, exec_algorithm_id::ExecAlgorithmId, instrument_id::InstrumentId,
-    order_list_id::OrderListId, position_id::PositionId, strategy_id::StrategyId, symbol::Symbol,
-    trade_id::TradeId, trader_id::TraderId, venue::Venue, venue_order_id::VenueOrderId,
+    AccountId, ClientId, ClientOrderId, ComponentId, ExecAlgorithmId, InstrumentId, OrderListId,
+    PositionId, StrategyId, Symbol, TradeId, TraderId, Venue, VenueOrderId,
 };
+
+impl Default for AccountId {
+    /// Creates a new default [`AccountId`] instance for testing.
+    fn default() -> Self {
+        Self::from("SIM-001")
+    }
+}
+
+impl Default for ClientId {
+    /// Creates a new default [`ClientId`] instance for testing.
+    fn default() -> Self {
+        Self::from("SIM")
+    }
+}
+
+impl Default for ClientOrderId {
+    /// Creates a new default [`ClientOrderId`] instance for testing.
+    fn default() -> Self {
+        Self::from("O-19700101-000000-001-001-1")
+    }
+}
+
+impl Default for PositionId {
+    /// Creates a new default [`PositionId`] instance for testing.
+    fn default() -> Self {
+        Self::from("P-001")
+    }
+}
+
+impl Default for StrategyId {
+    /// Creates a new default [`StrategyId`] instance for testing.
+    fn default() -> Self {
+        Self::from("S-001")
+    }
+}
+
+impl Default for Symbol {
+    /// Creates a new default [`Symbol`] instance for testing.
+    fn default() -> Self {
+        Self::from("AUD/USD")
+    }
+}
+
+impl Default for TradeId {
+    /// Creates a new default [`TradeId`] instance for testing.
+    fn default() -> Self {
+        Self::from("1")
+    }
+}
+
+impl Default for TraderId {
+    /// Creates a new default [`TraderId`] instance for testing.
+    fn default() -> Self {
+        Self::from("TRADER-001")
+    }
+}
+
+impl Default for Venue {
+    /// Creates a new default [`Venue`] instance for testing.
+    fn default() -> Self {
+        Self::from("SIM")
+    }
+}
+
+impl Default for VenueOrderId {
+    /// Creates a new default [`VenueOrderId`] instance for testing.
+    fn default() -> Self {
+        Self::from("001")
+    }
+}
 
 // ---- AccountId ----
 
@@ -51,7 +121,7 @@ pub fn client_id_dydx() -> ClientId {
 
 #[fixture]
 pub fn client_order_id() -> ClientOrderId {
-    ClientOrderId::from("O-20200814-102234-001-001-1")
+    ClientOrderId::from("O-19700101-000000-001-001-1")
 }
 
 // ---- ComponentId ----
@@ -126,6 +196,7 @@ pub fn trade_id() -> TradeId {
 }
 
 // ---- TraderId ----
+
 #[fixture]
 pub fn trader_id() -> TraderId {
     TraderId::from("TRADER-001")
@@ -144,12 +215,14 @@ pub fn venue_sim() -> Venue {
 }
 
 // ---- VenueOrderId ----
+
 #[fixture]
 pub fn venue_order_id() -> VenueOrderId {
     VenueOrderId::from("001")
 }
 
-// ---- UUID ----
+// ---- UUID4 ----
+
 #[fixture]
 pub fn uuid4() -> UUID4 {
     UUID4::from("16578139-a945-4b65-b46c-bc131a15d8e7")

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,6 +14,7 @@
 # -------------------------------------------------------------------------------------------------
 
 from cpython.datetime cimport datetime
+from cpython.datetime cimport timedelta
 from libc.stdint cimport uint64_t
 
 from nautilus_trader.accounting.accounts.base cimport Account
@@ -22,6 +23,7 @@ from nautilus_trader.cache.base cimport CacheFacade
 from nautilus_trader.cache.facade cimport CacheDatabaseFacade
 from nautilus_trader.common.actor cimport Actor
 from nautilus_trader.common.component cimport Logger
+from nautilus_trader.core.rust.model cimport AggregationSource
 from nautilus_trader.core.rust.model cimport OmsType
 from nautilus_trader.core.rust.model cimport OrderSide
 from nautilus_trader.core.rust.model cimport PositionSide
@@ -29,6 +31,7 @@ from nautilus_trader.execution.messages cimport SubmitOrder
 from nautilus_trader.execution.messages cimport SubmitOrderList
 from nautilus_trader.model.book cimport OrderBook
 from nautilus_trader.model.data cimport Bar
+from nautilus_trader.model.data cimport BarType
 from nautilus_trader.model.data cimport QuoteTick
 from nautilus_trader.model.data cimport TradeTick
 from nautilus_trader.model.identifiers cimport AccountId
@@ -39,6 +42,7 @@ from nautilus_trader.model.identifiers cimport OrderListId
 from nautilus_trader.model.identifiers cimport PositionId
 from nautilus_trader.model.identifiers cimport StrategyId
 from nautilus_trader.model.identifiers cimport Venue
+from nautilus_trader.model.identifiers cimport VenueOrderId
 from nautilus_trader.model.instruments.base cimport Instrument
 from nautilus_trader.model.instruments.synthetic cimport SyntheticInstrument
 from nautilus_trader.model.objects cimport Currency
@@ -75,7 +79,8 @@ cdef class Cache(CacheFacade):
     cdef dict _index_venue_account
     cdef dict _index_venue_orders
     cdef dict _index_venue_positions
-    cdef dict _index_order_ids
+    cdef dict _index_venue_order_ids
+    cdef dict _index_client_order_ids
     cdef dict _index_order_position
     cdef dict _index_order_strategy
     cdef dict _index_order_client
@@ -101,14 +106,12 @@ cdef class Cache(CacheFacade):
     cdef set _index_exec_algorithms
     cdef bint _drop_instruments_on_reset
 
+    cdef readonly bint has_backing
+    """If the cache has a database backing.\n\n:returns: `bool`"""
     cdef readonly int tick_capacity
     """The caches tick capacity.\n\n:returns: `int`"""
     cdef readonly int bar_capacity
     """The caches bar capacity.\n\n:returns: `int`"""
-    cdef readonly bint snapshot_orders
-    """If order state snapshots should be persisted.\n\n:returns: `bool`"""
-    cdef readonly bint snapshot_positions
-    """If position state snapshots should be persisted.\n\n:returns: `bool`"""
 
     cpdef void cache_general(self)
     cpdef void cache_currencies(self)
@@ -123,6 +126,7 @@ cdef class Cache(CacheFacade):
     cpdef bint check_residuals(self)
     cpdef void clear_index(self)
     cpdef void reset(self)
+    cpdef void dispose(self)
     cpdef void flush_db(self)
 
     cdef tuple _build_quote_table(self, Venue venue)
@@ -156,12 +160,13 @@ cdef class Cache(CacheFacade):
     cpdef void add_instrument(self, Instrument instrument)
     cpdef void add_synthetic(self, SyntheticInstrument synthetic)
     cpdef void add_account(self, Account account)
-    cpdef void add_order(self, Order order, PositionId position_id=*, ClientId client_id=*, bint override=*)
+    cpdef void add_venue_order_id(self, ClientOrderId client_order_id, VenueOrderId venue_order_id, bint overwrite=*)
+    cpdef void add_order(self, Order order, PositionId position_id=*, ClientId client_id=*, bint overwrite=*)
     cpdef void add_order_list(self, OrderList order_list)
     cpdef void add_position_id(self, PositionId position_id, Venue venue, ClientOrderId client_order_id, StrategyId strategy_id)
     cpdef void add_position(self, Position position, OmsType oms_type)
     cpdef void snapshot_position(self, Position position)
-    cpdef void snapshot_position_state(self, Position position, uint64_t ts_snapshot, bint open_only=*)
+    cpdef void snapshot_position_state(self, Position position, uint64_t ts_snapshot, Money unrealized_pnl=*, bint open_only=*)
     cpdef void snapshot_order_state(self, Order order)
 
     cpdef void update_account(self, Account account)
@@ -169,8 +174,17 @@ cdef class Cache(CacheFacade):
     cpdef void update_order_pending_cancel_local(self, Order order)
     cpdef void update_position(self, Position position)
     cpdef void update_actor(self, Actor actor)
-    cpdef void delete_actor(self, Actor actor)
     cpdef void update_strategy(self, Strategy strategy)
+    cpdef void delete_actor(self, Actor actor)
     cpdef void delete_strategy(self, Strategy strategy)
 
     cpdef void heartbeat(self, datetime timestamp)
+
+    cdef timedelta _get_timedelta(self, BarType bar_type)
+
+    cpdef list bar_types(
+        self,
+        InstrumentId instrument_id=*,
+        object price_type=*,
+        aggregation_source=*,
+    )

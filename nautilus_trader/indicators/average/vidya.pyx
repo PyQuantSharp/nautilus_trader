@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -38,7 +38,7 @@ cdef class VariableIndexDynamicAverage(MovingAverage):
     period : int
         The rolling window period for the indicator (> 0).
     price_type : PriceType
-        The specified price type for extracting values from quote ticks.
+        The specified price type for extracting values from quotes.
     cmo_ma_type : int
         The moving average type for CMO indicator.
 
@@ -56,7 +56,7 @@ cdef class VariableIndexDynamicAverage(MovingAverage):
         cmo_ma_type not None: MovingAverageType=MovingAverageType.SIMPLE,
     ):
         Condition.positive_int(period, "period")
-        Condition.true(cmo_ma_type != MovingAverageType.VARIABLE_INDEX_DYNAMIC, "cmo_ma_type was invalid (VARIABLE_INDEX_DYNAMIC)")
+        Condition.is_true(cmo_ma_type != MovingAverageType.VARIABLE_INDEX_DYNAMIC, "cmo_ma_type was invalid (VARIABLE_INDEX_DYNAMIC)")
         super().__init__(period, params=[period], price_type=price_type)
 
         self.cmo = ChandeMomentumOscillator(period, cmo_ma_type)

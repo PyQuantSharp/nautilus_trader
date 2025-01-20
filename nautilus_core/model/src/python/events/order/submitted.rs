@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,20 +13,12 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::{
-    python::{serialization::from_dict_pyo3, to_pyvalue_err},
-    time::UnixNanos,
-    uuid::UUID4,
-};
+use nautilus_core::{python::serialization::from_dict_pyo3, UUID4};
 use pyo3::{basic::CompareOp, prelude::*, types::PyDict};
-use rust_decimal::prelude::ToPrimitive;
 
 use crate::{
-    events::order::submitted::OrderSubmitted,
-    identifiers::{
-        account_id::AccountId, client_order_id::ClientOrderId, instrument_id::InstrumentId,
-        strategy_id::StrategyId, trader_id::TraderId,
-    },
+    events::OrderSubmitted,
+    identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId, TraderId},
 };
 
 #[pymethods]
@@ -40,9 +32,9 @@ impl OrderSubmitted {
         client_order_id: ClientOrderId,
         account_id: AccountId,
         event_id: UUID4,
-        ts_event: UnixNanos,
-        ts_init: UnixNanos,
-    ) -> PyResult<Self> {
+        ts_event: u64,
+        ts_init: u64,
+    ) -> Self {
         Self::new(
             trader_id,
             strategy_id,
@@ -50,10 +42,9 @@ impl OrderSubmitted {
             client_order_id,
             account_id,
             event_id,
-            ts_event,
-            ts_init,
+            ts_event.into(),
+            ts_init.into(),
         )
-        .map_err(to_pyvalue_err)
     }
 
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
@@ -65,29 +56,11 @@ impl OrderSubmitted {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "{}(trader_id={}, strategy_id={}, instrument_id={}, client_order_id={}, account_id={}, event_id={}, ts_event={}, ts_init={})",
-            stringify!(OrderSubmitted),
-            self.trader_id,
-            self.strategy_id,
-            self.instrument_id,
-            self.client_order_id,
-            self.account_id,
-            self.event_id,
-            self.ts_event,
-            self.ts_init
-        )
+        format!("{:?}", self)
     }
 
     fn __str__(&self) -> String {
-        format!(
-            "{}(instrument_id={}, client_order_id={}, account_id={}, ts_event={})",
-            stringify!(OrderSubmitted),
-            self.instrument_id,
-            self.client_order_id,
-            self.account_id,
-            self.ts_event,
-        )
+        self.to_string()
     }
 
     #[staticmethod]
@@ -98,15 +71,16 @@ impl OrderSubmitted {
 
     #[pyo3(name = "to_dict")]
     fn py_to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
+        dict.set_item("type", stringify!(OrderSubmitted))?;
         dict.set_item("trader_id", self.trader_id.to_string())?;
         dict.set_item("strategy_id", self.strategy_id.to_string())?;
         dict.set_item("instrument_id", self.instrument_id.to_string())?;
         dict.set_item("client_order_id", self.client_order_id.to_string())?;
         dict.set_item("account_id", self.account_id.to_string())?;
         dict.set_item("event_id", self.event_id.to_string())?;
-        dict.set_item("ts_event", self.ts_event.to_u64())?;
-        dict.set_item("ts_init", self.ts_init.to_u64())?;
+        dict.set_item("ts_event", self.ts_event.as_u64())?;
+        dict.set_item("ts_init", self.ts_init.as_u64())?;
         Ok(dict.into())
     }
 }

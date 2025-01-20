@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,14 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid trading venue ID.
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
 
-use anyhow::{anyhow, Result};
-use nautilus_core::correctness::check_valid_string;
+use nautilus_core::correctness::{check_valid_string, FAILED};
 use ustr::Ustr;
 
 use crate::venues::VENUE_MAP;
@@ -33,72 +34,93 @@ pub const SYNTHETIC_VENUE: &str = "SYNTH";
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct Venue {
-    /// The venue ID value.
-    pub value: Ustr,
-}
+pub struct Venue(Ustr);
 
 impl Venue {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`Venue` value")?;
+    /// Creates a new [`Venue`] instance with correctness checking.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `value` is not a valid string.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
+    }
 
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`Venue`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 
     #[must_use]
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self {
-            value: Ustr::from(s),
-        }
+    pub fn from_str_unchecked<T: AsRef<str>>(s: T) -> Self {
+        Self(Ustr::from(s.as_ref()))
     }
 
-    pub fn from_code(code: &str) -> Result<Self> {
+    #[must_use]
+    pub const fn from_ustr_unchecked(s: Ustr) -> Self {
+        Self(s)
+    }
+
+    pub fn from_code(code: &str) -> anyhow::Result<Self> {
         let map_guard = VENUE_MAP
             .lock()
-            .map_err(|e| anyhow!("Failed to acquire lock on `VENUE_MAP`: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("Error acquiring lock on `VENUE_MAP`: {e}"))?;
         map_guard
             .get(code)
             .copied()
-            .ok_or_else(|| anyhow!("Unknown venue code: {code}"))
+            .ok_or_else(|| anyhow::anyhow!("Unknown venue code: {code}"))
     }
 
     #[must_use]
     pub fn synthetic() -> Self {
         // SAFETY: Unwrap safe as using known synthetic venue constant
-        Self::new(SYNTHETIC_VENUE).unwrap()
+        Self::new(SYNTHETIC_VENUE)
     }
 
     #[must_use]
     pub fn is_synthetic(&self) -> bool {
-        self.value.as_str() == SYNTHETIC_VENUE
-    }
-}
-
-impl Default for Venue {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("SIM"),
-        }
+        self.0.as_str() == SYNTHETIC_VENUE
     }
 }
 
 impl Debug for Venue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for Venue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl From<&str> for Venue {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+        write!(f, "{}", self.0)
     }
 }
 
@@ -109,11 +131,11 @@ impl From<&str> for Venue {
 mod tests {
     use rstest::rstest;
 
-    use crate::identifiers::{stubs::*, venue::Venue};
+    use crate::identifiers::{stubs::*, Venue};
 
     #[rstest]
     fn test_string_reprs(venue_binance: Venue) {
-        assert_eq!(venue_binance.to_string(), "BINANCE");
+        assert_eq!(venue_binance.as_str(), "BINANCE");
         assert_eq!(format!("{venue_binance}"), "BINANCE");
     }
 }

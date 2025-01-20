@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,17 +19,6 @@ import pytest
 from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.persistence.funcs import class_to_filename
-from nautilus_trader.persistence.funcs import clean_windows_key
-
-
-@pytest.mark.parametrize(
-    ("s", "expected"),
-    [
-        ("Instrument\\ID:hello", "Instrument-ID-hello"),
-    ],
-)
-def test_clean_windows_key(s, expected):
-    assert clean_windows_key(s) == expected
 
 
 @pytest.mark.parametrize(

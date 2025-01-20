@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -77,7 +77,7 @@ cdef class ExchangeRateCalculator:
         Condition.not_none(to_currency, "to_currency")
         Condition.not_none(bid_quotes, "bid_quotes")
         Condition.not_none(ask_quotes, "ask_quotes")
-        Condition.true(price_type != PriceType.LAST, "price_type was invalid (LAST)")
+        Condition.is_true(price_type != PriceType.LAST, "price_type was invalid (LAST)")
 
         if from_currency == to_currency:
             return 1.0  # No conversion necessary

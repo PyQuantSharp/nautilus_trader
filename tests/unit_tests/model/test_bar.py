@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,6 +18,8 @@ from datetime import timedelta
 
 import pytest
 
+from nautilus_trader.core import nautilus_pyo3
+from nautilus_trader.model import convert_to_raw_int
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import BarSpecification
 from nautilus_trader.model.data import BarType
@@ -72,7 +74,7 @@ class TestBarSpecification:
 
         # Act
         pickled = pickle.dumps(bar_spec)
-        unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+        unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
         # Assert
         assert unpickled == bar_spec
@@ -293,7 +295,7 @@ class TestBarType:
 
         # Act
         pickled = pickle.dumps(bar_type)
-        unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+        unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
         # Assert
         assert unpickled == bar_type
@@ -343,7 +345,11 @@ class TestBarType:
 
     @pytest.mark.parametrize(
         "value",
-        ["", "AUD/USD", "AUD/USD.IDEALPRO-1-MILLISECOND-BID"],
+        [
+            "",
+            "AUD/USD",
+            "AUD/USD.IDEALPRO-1-MILLISECOND-BID",
+        ],
     )
     def test_from_str_given_various_invalid_strings_raises_value_error(self, value):
         # Arrange, Act, Assert
@@ -390,6 +396,14 @@ class TestBarType:
                     InstrumentId(Symbol("ETHUSDT-PERP"), Venue("BINANCE")),
                     BarSpecification(100, BarAggregation.TICK, PriceType.LAST),
                     AggregationSource.INTERNAL,
+                ),
+            ],
+            [
+                "TOTAL-INDEX.TRADINGVIEW-2-HOUR-LAST-EXTERNAL",
+                BarType(
+                    InstrumentId(Symbol("TOTAL-INDEX"), Venue("TRADINGVIEW")),
+                    BarSpecification(2, BarAggregation.HOUR, PriceType.LAST),
+                    AggregationSource.EXTERNAL,
                 ),
             ],
         ],
@@ -600,6 +614,41 @@ class TestBar:
             "ts_init": 0,
         }
 
+    def test_from_raw_returns_expected_bar(self):
+        # Arrange
+        open_price = 1.06210
+        high_price = 1.06355
+        low_price = 1.06205
+        close_price = 1.06320
+
+        raw_bar = [
+            BarType.from_str("EUR/USD.IDEALPRO-5-MINUTE-MID-EXTERNAL"),
+            convert_to_raw_int(open_price, 5),
+            convert_to_raw_int(high_price, 5),
+            convert_to_raw_int(low_price, 5),
+            convert_to_raw_int(close_price, 5),
+            5,
+            convert_to_raw_int(100_000, 0),
+            0,
+            1672012800000000000,
+            1672013100300000000,
+        ]
+
+        # Act
+        result = Bar.from_raw(*raw_bar)
+
+        # Assert
+        assert result == Bar(
+            BarType.from_str("EUR/USD.IDEALPRO-5-MINUTE-MID-EXTERNAL"),
+            Price.from_str("1.06210"),
+            Price.from_str("1.06355"),
+            Price.from_str("1.06205"),
+            Price.from_str("1.06320"),
+            Quantity.from_int(100_000),
+            1672012800000000000,
+            1672013100300000000,
+        )
+
     def test_from_dict_returns_expected_bar(self):
         # Arrange
         bar = TestDataStubs.bar_5decimal()
@@ -619,6 +668,32 @@ class TestBar:
 
         # Assert
         assert isinstance(bar, Bar)
+
+    def test_to_pyo3(self):
+        # Arrange
+        bar = Bar(
+            AUDUSD_1_MIN_BID,
+            Price.from_str("1.00000"),
+            Price.from_str("1.00000"),
+            Price.from_str("1.00000"),
+            Price.from_str("1.00000"),
+            Quantity.from_int(100_000),
+            1,
+            2,
+        )
+
+        # Act
+        pyo3_bar = bar.to_pyo3()
+
+        # Assert
+        assert isinstance(pyo3_bar, nautilus_pyo3.Bar)
+        assert pyo3_bar.open == nautilus_pyo3.Price.from_str("1.00000")
+        assert pyo3_bar.high == nautilus_pyo3.Price.from_str("1.00000")
+        assert pyo3_bar.low == nautilus_pyo3.Price.from_str("1.00000")
+        assert pyo3_bar.close == nautilus_pyo3.Price.from_str("1.00000")
+        assert pyo3_bar.volume == nautilus_pyo3.Quantity.from_int(100_000)
+        assert pyo3_bar.ts_event == 1
+        assert pyo3_bar.ts_init == 2
 
     def test_from_pyo3_list(self):
         # Arrange
@@ -646,7 +721,43 @@ class TestBar:
 
         # Act
         pickled = pickle.dumps(bar)
-        unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+        unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
         # Assert
         assert unpickled == bar
+
+    def test_bar_type_composite_parse_valid(self):
+        input_str = "BTCUSDT-PERP.BINANCE-2-MINUTE-LAST-INTERNAL@1-MINUTE-EXTERNAL"
+        bar_type = BarType.from_str(input_str)
+        standard = bar_type.standard()
+        composite = bar_type.composite()
+        composite_input = "BTCUSDT-PERP.BINANCE-1-MINUTE-LAST-EXTERNAL"
+
+        assert bar_type.instrument_id == InstrumentId.from_str("BTCUSDT-PERP.BINANCE")
+        assert bar_type.spec == BarSpecification(
+            step=2,
+            aggregation=BarAggregation.MINUTE,
+            price_type=PriceType.LAST,
+        )
+        assert bar_type.aggregation_source == AggregationSource.INTERNAL
+        assert bar_type == BarType.from_str(input_str)
+        assert bar_type.is_composite()
+
+        assert standard.instrument_id == InstrumentId.from_str("BTCUSDT-PERP.BINANCE")
+        assert standard.spec == BarSpecification(
+            step=2,
+            aggregation=BarAggregation.MINUTE,
+            price_type=PriceType.LAST,
+        )
+        assert standard.aggregation_source == AggregationSource.INTERNAL
+        assert standard.is_standard()
+
+        assert composite.instrument_id == InstrumentId.from_str("BTCUSDT-PERP.BINANCE")
+        assert composite.spec == BarSpecification(
+            step=1,
+            aggregation=BarAggregation.MINUTE,
+            price_type=PriceType.LAST,
+        )
+        assert composite.aggregation_source == AggregationSource.EXTERNAL
+        assert composite == BarType.from_str(composite_input)
+        assert composite.is_standard()

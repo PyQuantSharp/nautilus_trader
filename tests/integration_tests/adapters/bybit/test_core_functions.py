@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,14 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
+
 import pytest
 
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
-from nautilus_trader.adapters.bybit.schemas.symbol import BybitSymbol
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
+from nautilus_trader.adapters.bybit.common.symbol import BybitSymbol
 
 
 class TestBybitSymbol:
-    def test_symbol_missing_instrument_type(self):
+    def test_symbol_missing_product_type(self):
         with pytest.raises(ValueError):
             BybitSymbol("BTCUSD")
 
@@ -33,5 +34,5 @@ class TestBybitSymbol:
         symbol = BybitSymbol(symbol_str)
 
         assert symbol == "ETHUSDT-LINEAR"
-        assert symbol.instrument_type == BybitInstrumentType.LINEAR
+        assert symbol.product_type == BybitProductType.LINEAR
         assert symbol.raw_symbol == "ETHUSDT"

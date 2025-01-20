@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -50,6 +50,28 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
     """
     Provides a data client for the InteractiveBrokers exchange by using the `Gateway` to
     stream market data.
+
+    Parameters
+    ----------
+    loop : asyncio.AbstractEventLoop
+        The event loop for the client.
+    client : InteractiveBrokersClient
+        The nautilus InteractiveBrokersClient using ibapi.
+    msgbus : MessageBus
+        The message bus for the client.
+    cache : Cache
+        The cache for the client.
+    clock : LiveClock
+        The clock for the client.
+    instrument_provider : InteractiveBrokersInstrumentProvider
+        The instrument provider.
+    ibg_client_id : int
+        Client ID used to connect TWS/Gateway.
+    config : InteractiveBrokersDataClientConfig
+        Configuration for the client.
+    name : str, optional
+        The custom client ID.
+
     """
 
     def __init__(
@@ -62,48 +84,27 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         instrument_provider: InteractiveBrokersInstrumentProvider,
         ibg_client_id: int,
         config: InteractiveBrokersDataClientConfig,
+        name: str | None = None,
+        connection_timeout: int = 300,
+        request_timeout: int = 60,
     ) -> None:
-        """
-        Initialize a new instance of the ``InteractiveBrokersDataClient`` class.
-
-        Parameters
-        ----------
-        loop : asyncio.AbstractEventLoop
-            The event loop for the client.
-        client : InteractiveBrokersClient
-            The nautilus InteractiveBrokersClient using ibapi.
-        msgbus : MessageBus
-            The message bus for the client.
-        cache : Cache
-            The cache for the client.
-        clock : LiveClock
-            The clock for the client.
-        instrument_provider : InteractiveBrokersInstrumentProvider
-            The instrument provider.
-        ibg_client_id : int
-            Client ID used to connect TWS/Gateway.
-        config : InteractiveBrokersDataClientConfig
-            Configuration for the client.
-
-        """
         super().__init__(
             loop=loop,
-            client_id=ClientId(f"{IB_VENUE.value}-{ibg_client_id:03d}"),
+            client_id=ClientId(name or f"{IB_VENUE.value}-{ibg_client_id:03d}"),
             venue=None,
             msgbus=msgbus,
             cache=cache,
             clock=clock,
             instrument_provider=instrument_provider,
-            config=config,  # TODO: Config needs to be fully formed earlier than this
-            # config={
-            #     "name": f"{type(self).__name__}-{ibg_client_id:03d}",
-            #     "client_id": ibg_client_id,
-            # },
+            config=config,
         )
+        self._connection_timeout = connection_timeout
+        self._request_timeout = request_timeout
         self._client = client
         self._handle_revised_bars = config.handle_revised_bars
         self._use_regular_trading_hours = config.use_regular_trading_hours
         self._market_data_type = config.market_data_type
+        self._ignore_quote_tick_size_updates = config.ignore_quote_tick_size_updates
 
     @property
     def instrument_provider(self) -> InteractiveBrokersInstrumentProvider:
@@ -111,7 +112,7 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
 
     async def _connect(self):
         # Connect client
-        await self._client.wait_until_ready()
+        await self._client.wait_until_ready(self._connection_timeout)
         self._client.registered_nautilus_clients.add(self.id)
 
         # Set Market Data Type
@@ -127,17 +128,21 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         if self._client.is_running and self._client.registered_nautilus_clients == set():
             self._client.stop()
 
-    async def _subscribe(self, data_type: DataType) -> None:
+    async def _subscribe(self, data_type: DataType, params: dict[str, Any] | None = None) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_subscribe` coroutine",  # pragma: no cover
         )
 
-    async def _subscribe_instruments(self) -> None:
+    async def _subscribe_instruments(self, params: dict[str, Any] | None = None) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_subscribe_instruments` coroutine",  # pragma: no cover
         )
 
-    async def _subscribe_instrument(self, instrument_id: InstrumentId) -> None:
+    async def _subscribe_instrument(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_subscribe_instrument` coroutine",  # pragma: no cover
         )
@@ -147,7 +152,7 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         instrument_id: InstrumentId,
         book_type: BookType,
         depth: int | None = None,
-        kwargs: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_subscribe_order_book_deltas` coroutine",  # pragma: no cover
@@ -158,16 +163,20 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         instrument_id: InstrumentId,
         book_type: BookType,
         depth: int | None = None,
-        kwargs: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_subscribe_order_book_snapshots` coroutine",  # pragma: no cover
         )
 
-    async def _subscribe_quote_ticks(self, instrument_id: InstrumentId) -> None:
+    async def _subscribe_quote_ticks(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         if not (instrument := self._cache.instrument(instrument_id)):
             self._log.error(
-                f"Cannot subscribe to QuoteTicks for {instrument_id}, Instrument not found.",
+                f"Cannot subscribe to quotes for {instrument_id}: instrument not found",
             )
             return
 
@@ -175,18 +184,23 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
             instrument_id=instrument_id,
             contract=IBContract(**instrument.info["contract"]),
             tick_type="BidAsk",
+            ignore_size=self._ignore_quote_tick_size_updates,
         )
 
-    async def _subscribe_trade_ticks(self, instrument_id: InstrumentId) -> None:
+    async def _subscribe_trade_ticks(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         if not (instrument := self._cache.instrument(instrument_id)):
             self._log.error(
-                f"Cannot subscribe to TradeTicks for {instrument_id}, Instrument not found.",
+                f"Cannot subscribe to trades for {instrument_id}: instrument not found",
             )
             return
 
         if isinstance(instrument, CurrencyPair):
             self._log.error(
-                "InteractiveBrokers doesn't support Trade Ticks for CurrencyPair.",
+                "Interactive Brokers does not support trades for CurrencyPair instruments",
             )
             return
 
@@ -194,11 +208,16 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
             instrument_id=instrument_id,
             contract=IBContract(**instrument.info["contract"]),
             tick_type="AllLast",
+            ignore_size=self._ignore_quote_tick_size_updates,
         )
 
-    async def _subscribe_bars(self, bar_type: BarType) -> None:
+    async def _subscribe_bars(
+        self,
+        bar_type: BarType,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         if not (instrument := self._cache.instrument(bar_type.instrument_id)):
-            self._log.error(f"Cannot subscribe to {bar_type}, Instrument not found.")
+            self._log.error(f"Cannot subscribe to {bar_type} bars: instrument not found")
             return
 
         if bar_type.spec.timedelta.total_seconds() == 5:
@@ -215,56 +234,101 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
                 handle_revised_bars=self._handle_revised_bars,
             )
 
-    async def _subscribe_instrument_status(self, instrument_id: InstrumentId) -> None:
+    async def _subscribe_instrument_status(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         pass  # Subscribed as part of orderbook
 
-    async def _subscribe_instrument_close(self, instrument_id: InstrumentId) -> None:
+    async def _subscribe_instrument_close(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         pass  # Subscribed as part of orderbook
 
-    async def _unsubscribe(self, data_type: DataType) -> None:
+    async def _unsubscribe(self, data_type: DataType, params: dict[str, Any] | None = None) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_unsubscribe` coroutine",  # pragma: no cover
         )
 
-    async def _unsubscribe_instruments(self) -> None:
+    async def _unsubscribe_instruments(self, params: dict[str, Any] | None = None) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_unsubscribe_instruments` coroutine",  # pragma: no cover
         )
 
-    async def _unsubscribe_instrument(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_instrument(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_unsubscribe_instrument` coroutine",  # pragma: no cover
         )
 
-    async def _unsubscribe_order_book_deltas(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_order_book_deltas(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_unsubscribe_order_book_deltas` coroutine",  # pragma: no cover
         )
 
-    async def _unsubscribe_order_book_snapshots(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_order_book_snapshots(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_unsubscribe_order_book_snapshots` coroutine",  # pragma: no cover
         )
 
-    async def _unsubscribe_quote_ticks(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_quote_ticks(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         await self._client.unsubscribe_ticks(instrument_id, "BidAsk")
 
-    async def _unsubscribe_trade_ticks(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_trade_ticks(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         await self._client.unsubscribe_ticks(instrument_id, "AllLast")
 
-    async def _unsubscribe_bars(self, bar_type: BarType) -> None:
+    async def _unsubscribe_bars(
+        self,
+        bar_type: BarType,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         if bar_type.spec.timedelta == 5:
             await self._client.unsubscribe_realtime_bars(bar_type)
         else:
             await self._client.unsubscribe_historical_bars(bar_type)
 
-    async def _unsubscribe_instrument_status(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_instrument_status(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         pass  # Subscribed as part of orderbook
 
-    async def _unsubscribe_instrument_close(self, instrument_id: InstrumentId) -> None:
+    async def _unsubscribe_instrument_close(
+        self,
+        instrument_id: InstrumentId,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         pass  # Subscribed as part of orderbook
 
-    async def _request(self, data_type: DataType, correlation_id: UUID4) -> None:
+    async def _request(
+        self,
+        data_type: DataType,
+        correlation_id: UUID4,
+        params: dict[str, Any] | None = None,
+    ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_request` coroutine",  # pragma: no cover
         )
@@ -275,24 +339,26 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         correlation_id: UUID4,
         start: pd.Timestamp | None = None,
         end: pd.Timestamp | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         if start is not None:
             self._log.warning(
-                f"Requesting instrument {instrument_id} with specified `start` which has no effect.",
+                f"Requesting instrument {instrument_id} with specified `start` which has no effect",
             )
 
         if end is not None:
             self._log.warning(
-                f"Requesting instrument {instrument_id} with specified `end` which has no effect.",
+                f"Requesting instrument {instrument_id} with specified `end` which has no effect",
             )
 
         await self.instrument_provider.load_async(instrument_id)
         if instrument := self.instrument_provider.find(instrument_id):
             self._handle_data(instrument)
         else:
-            self._log.warning(f"{instrument_id} not available.")
+            self._log.warning(f"Instrument for {instrument_id} not available")
             return
-        self._handle_instrument(instrument, correlation_id)
+
+        self._handle_instrument(instrument, correlation_id, params)
 
     async def _request_instruments(
         self,
@@ -300,6 +366,7 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         correlation_id: UUID4,
         start: pd.Timestamp | None = None,
         end: pd.Timestamp | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         raise NotImplementedError(  # pragma: no cover
             "implement the `_request_instruments` coroutine",  # pragma: no cover
@@ -312,10 +379,11 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         correlation_id: UUID4,
         start: pd.Timestamp | None = None,
         end: pd.Timestamp | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         if not (instrument := self._cache.instrument(instrument_id)):
             self._log.error(
-                f"Cannot request QuoteTicks for {instrument_id}, Instrument not found.",
+                f"Cannot request quotes for {instrument_id}, instrument not found",
             )
             return
 
@@ -327,10 +395,10 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
             end,
         )
         if not ticks:
-            self._log.warning(f"QuoteTicks not received for {instrument_id}")
+            self._log.warning(f"No quote tick data received for {instrument_id}")
             return
 
-        self._handle_quote_ticks(instrument_id, ticks, correlation_id)
+        self._handle_quote_ticks(instrument_id, ticks, correlation_id, params)
 
     async def _request_trade_ticks(
         self,
@@ -339,16 +407,17 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         correlation_id: UUID4,
         start: pd.Timestamp | None = None,
         end: pd.Timestamp | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         if not (instrument := self._cache.instrument(instrument_id)):
             self._log.error(
-                f"Cannot request TradeTicks for {instrument_id}, Instrument not found.",
+                f"Cannot request trades for {instrument_id}: instrument not found",
             )
             return
 
         if isinstance(instrument, CurrencyPair):
             self._log.error(
-                "InteractiveBrokers doesn't support Trade Ticks for CurrencyPair.",
+                "Interactive Brokers does not support trades for CurrencyPair instruments",
             )
             return
 
@@ -360,10 +429,10 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
             end,
         )
         if not ticks:
-            self._log.warning(f"TradeTicks not received for {instrument_id}")
+            self._log.warning(f"No trades received for {instrument_id}")
             return
 
-        self._handle_trade_ticks(instrument_id, ticks, correlation_id)
+        self._handle_trade_ticks(instrument_id, ticks, correlation_id, params)
 
     async def _handle_ticks_request(
         self,
@@ -387,6 +456,7 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
                 tick_type,
                 end_date_time=end,
                 use_rth=self._use_regular_trading_hours,
+                timeout=self._request_timeout,
             )
             if not ticks_part:
                 break
@@ -403,16 +473,15 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         correlation_id: UUID4,
         start: pd.Timestamp | None = None,
         end: pd.Timestamp | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         if not (instrument := self._cache.instrument(bar_type.instrument_id)):
-            self._log.error(
-                f"Cannot request {bar_type}, Instrument not found.",
-            )
+            self._log.error(f"Cannot request {bar_type} bars: instrument not found")
             return
 
         if not bar_type.spec.is_time_aggregated():
             self._log.error(
-                f"Cannot request {bar_type}: only time bars are aggregated by InteractiveBrokers.",
+                f"Cannot request {bar_type} bars: only time bars are aggregated by Interactive Brokers",
             )
             return
 
@@ -434,8 +503,9 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
                 bar_type=bar_type,
                 contract=IBContract(**instrument.info["contract"]),
                 use_rth=self._use_regular_trading_hours,
-                end_date_time=end.strftime("%Y%m%d %H:%M:%S %Z"),
+                end_date_time=end,
                 duration=duration_str,
+                timeout=self._request_timeout,
             )
             bars.extend(bars_part)
             if not bars_part or start:
@@ -445,10 +515,10 @@ class InteractiveBrokersDataClient(LiveMarketDataClient):
         if bars:
             bars = list(set(bars))
             bars.sort(key=lambda x: x.ts_init)
-            self._handle_bars(bar_type, bars, bars[0], correlation_id)
+            self._handle_bars(bar_type, bars, bars[0], correlation_id, params)
             status_msg = {"id": correlation_id, "status": "Success"}
         else:
-            self._log.warning(f"Bar Data not received for {bar_type}")
+            self._log.warning(f"No bar data received for {bar_type}")
             status_msg = {"id": correlation_id, "status": "Failed"}
 
         # Publish Status event

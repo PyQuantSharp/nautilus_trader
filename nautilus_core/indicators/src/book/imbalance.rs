@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,16 +15,12 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
-use nautilus_model::{
-    orderbook::{book_mbo::OrderBookMbo, book_mbp::OrderBookMbp},
-    types::quantity::Quantity,
-};
+use nautilus_model::{orderbook::OrderBook, types::Quantity};
 
 use crate::indicator::Indicator;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.indicators")
@@ -55,11 +51,7 @@ impl Indicator for BookImbalanceRatio {
         self.initialized
     }
 
-    fn handle_book_mbo(&mut self, book: &OrderBookMbo) {
-        self.update(book.best_bid_size(), book.best_ask_size());
-    }
-
-    fn handle_book_mbp(&mut self, book: &OrderBookMbp) {
+    fn handle_book(&mut self, book: &OrderBook) {
         self.update(book.best_bid_size(), book.best_ask_size());
     }
 
@@ -72,15 +64,15 @@ impl Indicator for BookImbalanceRatio {
 }
 
 impl BookImbalanceRatio {
-    pub fn new() -> Result<Self> {
-        // Inputs don't require validation, however we return a `Result`
-        // to standardize with other indicators which do need validation.
-        Ok(Self {
+    /// Creates a new [`BookImbalanceRatio`] instance.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
             value: 0.0,
             count: 0,
             has_inputs: false,
             initialized: false,
-        })
+        }
     }
 
     pub fn update(&mut self, best_bid: Option<Quantity>, best_ask: Option<Quantity>) {
@@ -106,18 +98,16 @@ impl BookImbalanceRatio {
 #[cfg(test)]
 mod tests {
     use nautilus_model::{
-        identifiers::instrument_id::InstrumentId,
+        identifiers::InstrumentId,
         stubs::{stub_order_book_mbp, stub_order_book_mbp_appl_xnas},
     };
     use rstest::rstest;
 
     use super::*;
 
-    // TODO: Test `OrderBookMbo`: needs a good stub function
-
     #[rstest]
     fn test_initialized() {
-        let imbalance = BookImbalanceRatio::new().unwrap();
+        let imbalance = BookImbalanceRatio::new();
         let display_str = format!("{imbalance}");
         assert_eq!(display_str, "BookImbalanceRatio()");
         assert_eq!(imbalance.value, 0.0);
@@ -128,9 +118,9 @@ mod tests {
 
     #[rstest]
     fn test_one_value_input_balanced() {
-        let mut imbalance = BookImbalanceRatio::new().unwrap();
+        let mut imbalance = BookImbalanceRatio::new();
         let book = stub_order_book_mbp_appl_xnas();
-        imbalance.handle_book_mbp(&book);
+        imbalance.handle_book(&book);
 
         assert_eq!(imbalance.count, 1);
         assert_eq!(imbalance.value, 1.0);
@@ -140,9 +130,9 @@ mod tests {
 
     #[rstest]
     fn test_reset() {
-        let mut imbalance = BookImbalanceRatio::new().unwrap();
+        let mut imbalance = BookImbalanceRatio::new();
         let book = stub_order_book_mbp_appl_xnas();
-        imbalance.handle_book_mbp(&book);
+        imbalance.handle_book(&book);
         imbalance.reset();
 
         assert_eq!(imbalance.count, 0);
@@ -153,7 +143,7 @@ mod tests {
 
     #[rstest]
     fn test_one_value_input_with_bid_imbalance() {
-        let mut imbalance = BookImbalanceRatio::new().unwrap();
+        let mut imbalance = BookImbalanceRatio::new();
         let book = stub_order_book_mbp(
             InstrumentId::from("AAPL.XNAS"),
             101.0,
@@ -166,7 +156,7 @@ mod tests {
             100.0,
             10,
         );
-        imbalance.handle_book_mbp(&book);
+        imbalance.handle_book(&book);
 
         assert_eq!(imbalance.count, 1);
         assert_eq!(imbalance.value, 0.5);
@@ -176,7 +166,7 @@ mod tests {
 
     #[rstest]
     fn test_one_value_input_with_ask_imbalance() {
-        let mut imbalance = BookImbalanceRatio::new().unwrap();
+        let mut imbalance = BookImbalanceRatio::new();
         let book = stub_order_book_mbp(
             InstrumentId::from("AAPL.XNAS"),
             101.0,
@@ -189,7 +179,7 @@ mod tests {
             100.0,
             10,
         );
-        imbalance.handle_book_mbp(&book);
+        imbalance.handle_book(&book);
 
         assert_eq!(imbalance.count, 1);
         assert_eq!(imbalance.value, 0.5);
@@ -199,7 +189,7 @@ mod tests {
 
     #[rstest]
     fn test_one_value_input_with_bid_imbalance_multiple_inputs() {
-        let mut imbalance = BookImbalanceRatio::new().unwrap();
+        let mut imbalance = BookImbalanceRatio::new();
         let book = stub_order_book_mbp(
             InstrumentId::from("AAPL.XNAS"),
             101.0,
@@ -212,9 +202,9 @@ mod tests {
             100.0,
             10,
         );
-        imbalance.handle_book_mbp(&book);
-        imbalance.handle_book_mbp(&book);
-        imbalance.handle_book_mbp(&book);
+        imbalance.handle_book(&book);
+        imbalance.handle_book(&book);
+        imbalance.handle_book(&book);
 
         assert_eq!(imbalance.count, 3);
         assert_eq!(imbalance.value, 0.5);

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,26 +13,55 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::ffi::c_char;
+use std::{
+    ffi::c_char,
+    ops::{Deref, DerefMut},
+};
 
 use nautilus_core::{
     ffi::{
         parsing::{optional_bytes_to_json, u8_as_bool},
-        string::{cstr_to_str, cstr_to_ustr, optional_cstr_to_str},
+        string::{cstr_as_str, cstr_to_ustr, optional_cstr_to_str},
     },
-    uuid::UUID4,
+    UUID4,
 };
-use nautilus_model::identifiers::trader_id::TraderId;
+use nautilus_model::identifiers::TraderId;
 
 use crate::{
     enums::{LogColor, LogLevel},
     logging::{
         self, headers,
-        logger::{self, LoggerConfig},
+        logger::{self, LogGuard, LoggerConfig},
         logging_set_bypass, map_log_level_to_filter, parse_component_levels,
         writer::FileWriterConfig,
     },
 };
+
+/// C compatible Foreign Function Interface (FFI) for an underlying [`LogGuard`].
+///
+/// This struct wraps `LogGuard` in a way that makes it compatible with C function
+/// calls, enabling interaction with `LogGuard` in a C environment.
+///
+/// It implements the `Deref` trait, allowing instances of `LogGuard_API` to be
+/// dereferenced to `LogGuard`, providing access to `LogGuard`'s methods without
+/// having to manually access the underlying `LogGuard` instance.
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub struct LogGuard_API(Box<LogGuard>);
+
+impl Deref for LogGuard_API {
+    type Target = LogGuard;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for LogGuard_API {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 /// Initializes logging.
 ///
@@ -63,7 +92,7 @@ pub unsafe extern "C" fn logging_init(
     is_colored: u8,
     is_bypassed: u8,
     print_config: u8,
-) {
+) -> LogGuard_API {
     let level_stdout = map_log_level_to_filter(level_stdout);
     let level_file = map_log_level_to_filter(level_file);
 
@@ -78,16 +107,21 @@ pub unsafe extern "C" fn logging_init(
         u8_as_bool(print_config),
     );
 
-    let directory = optional_cstr_to_str(directory_ptr).map(|s| s.to_string());
-    let file_name = optional_cstr_to_str(file_name_ptr).map(|s| s.to_string());
-    let file_format = optional_cstr_to_str(file_format_ptr).map(|s| s.to_string());
+    let directory = optional_cstr_to_str(directory_ptr).map(std::string::ToString::to_string);
+    let file_name = optional_cstr_to_str(file_name_ptr).map(std::string::ToString::to_string);
+    let file_format = optional_cstr_to_str(file_format_ptr).map(std::string::ToString::to_string);
     let file_config = FileWriterConfig::new(directory, file_name, file_format);
 
     if u8_as_bool(is_bypassed) {
         logging_set_bypass();
     }
 
-    logging::init_logging(trader_id, instance_id, config, file_config);
+    LogGuard_API(Box::new(logging::init_logging(
+        trader_id,
+        instance_id,
+        config,
+        file_config,
+    )))
 }
 
 /// Creates a new log event.
@@ -104,7 +138,7 @@ pub unsafe extern "C" fn logger_log(
     message_ptr: *const c_char,
 ) {
     let component = cstr_to_ustr(component_ptr);
-    let message = cstr_to_str(message_ptr);
+    let message = cstr_as_str(message_ptr);
 
     logger::log(level, color, component, message);
 }
@@ -123,7 +157,7 @@ pub unsafe extern "C" fn logging_log_header(
     component_ptr: *const c_char,
 ) {
     let component = cstr_to_ustr(component_ptr);
-    let machine_id = cstr_to_str(machine_id_ptr);
+    let machine_id = cstr_as_str(machine_id_ptr);
     headers::log_header(trader_id, machine_id, instance_id, component);
 }
 
@@ -135,11 +169,11 @@ pub unsafe extern "C" fn logging_log_header(
 #[no_mangle]
 pub unsafe extern "C" fn logging_log_sysinfo(component_ptr: *const c_char) {
     let component = cstr_to_ustr(component_ptr);
-    headers::log_sysinfo(component)
+    headers::log_sysinfo(component);
 }
 
-/// Flushes global logger buffers.
+/// Flushes global logger buffers of any records.
 #[no_mangle]
-pub extern "C" fn logger_flush() {
-    log::logger().flush()
+pub extern "C" fn logger_drop(log_guard: LogGuard_API) {
+    drop(log_guard);
 }

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,19 +13,36 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Common test related helper functions.
+
 use std::{
+    future::Future,
     thread,
     time::{Duration, Instant},
 };
 
+use nautilus_core::UUID4;
+use nautilus_model::identifiers::TraderId;
+
+use crate::logging::{init_logging, logger::LoggerConfig, writer::FileWriterConfig};
+
+pub fn init_logger_for_testing(stdout_level: Option<log::LevelFilter>) {
+    let mut config = LoggerConfig::default();
+    config.stdout_level = stdout_level.unwrap_or(log::LevelFilter::Trace);
+    init_logging(
+        TraderId::default(),
+        UUID4::new(),
+        config,
+        FileWriterConfig::default(),
+    );
+}
+
 /// Repeatedly evaluates a condition with a delay until it becomes true or a timeout occurs.
 ///
-/// # Arguments
-///
-/// * `condition` - A closure that represents the condition to be met. This closure should return `true`
-///                 when the condition is met and `false` otherwise.
-/// * `timeout` - The maximum amount of time to wait for the condition to be met. If this duration is
-///               exceeded, the function will panic.
+/// * `condition`: A closure that represents the condition to be met. This closure should return `true`
+///                when the condition is met and `false` otherwise.
+/// * `timeout`: The maximum amount of time to wait for the condition to be met. If this duration is
+///              exceeded, the function will panic.
 ///
 /// # Panics
 ///
@@ -69,5 +86,26 @@ where
         );
 
         thread::sleep(Duration::from_millis(100));
+    }
+}
+
+pub async fn wait_until_async<F, Fut>(mut condition: F, timeout: Duration)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let start_time = Instant::now();
+
+    loop {
+        if condition().await {
+            break;
+        }
+
+        assert!(
+            start_time.elapsed() <= timeout,
+            "Timeout waiting for condition"
+        );
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }

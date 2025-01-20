@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,10 +13,20 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+#[cfg(feature = "ffi")]
 use std::env;
 
-#[allow(clippy::expect_used)] // OK in build script
+#[allow(clippy::expect_used)]
 fn main() {
+    // Ensure the build script runs on changes
+    println!("cargo:rerun-if-env-changed=HIGH_PRECISION");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_HIGH_PRECISION");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=cbindgen.toml");
+    println!("cargo:rerun-if-changed=cbindgen_cython.toml");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=../Cargo.toml");
+
     #[cfg(feature = "ffi")]
     if env::var("CARGO_FEATURE_FFI").is_ok() {
         extern crate cbindgen;

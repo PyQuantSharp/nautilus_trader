@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,9 +17,9 @@ import asyncio
 
 import msgspec
 
-from nautilus_trader.adapters.binance.common.data import BinanceCommonDataClient
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
 from nautilus_trader.adapters.binance.config import BinanceDataClientConfig
+from nautilus_trader.adapters.binance.data import BinanceCommonDataClient
 from nautilus_trader.adapters.binance.futures.enums import BinanceFuturesEnumParser
 from nautilus_trader.adapters.binance.futures.http.market import BinanceFuturesMarketHttpAPI
 from nautilus_trader.adapters.binance.futures.schemas.market import BinanceFuturesMarkPriceMsg
@@ -41,7 +41,7 @@ from nautilus_trader.model.identifiers import InstrumentId
 
 class BinanceFuturesDataClient(BinanceCommonDataClient):
     """
-    Provides a data client for the `Binance Futures` exchange.
+    Provides a data client for the Binance Futures exchange.
 
     Parameters
     ----------
@@ -59,10 +59,12 @@ class BinanceFuturesDataClient(BinanceCommonDataClient):
         The instrument provider.
     base_url_ws : str
         The base URL for the WebSocket client.
-    account_type : BinanceAccountType
-        The account type for the client.
     config : BinanceDataClientConfig
         The configuration for the client.
+    account_type : BinanceAccountType, default 'USDT_FUTURE'
+        The account type for the client.
+    name : str, optional
+        The custom client ID.
 
     """
 
@@ -77,8 +79,9 @@ class BinanceFuturesDataClient(BinanceCommonDataClient):
         base_url_ws: str,
         config: BinanceDataClientConfig,
         account_type: BinanceAccountType = BinanceAccountType.USDT_FUTURE,
-    ):
-        PyCondition.true(
+        name: str | None = None,
+    ) -> None:
+        PyCondition.is_true(
             account_type.is_futures,
             "account_type was not USDT_FUTURE or COIN_FUTURE",
         )
@@ -101,6 +104,7 @@ class BinanceFuturesDataClient(BinanceCommonDataClient):
             instrument_provider=instrument_provider,
             account_type=account_type,
             base_url_ws=base_url_ws,
+            name=name,
             config=config,
         )
 
@@ -116,9 +120,10 @@ class BinanceFuturesDataClient(BinanceCommonDataClient):
     def _handle_book_partial_update(self, raw: bytes) -> None:
         msg = self._decoder_order_book_msg.decode(raw)
         instrument_id: InstrumentId = self._get_cached_instrument_id(msg.data.s)
-        book_snapshot: OrderBookDeltas = msg.data.parse_to_order_book_snapshot(
+        book_snapshot: OrderBookDeltas = msg.data.parse_to_order_book_deltas(
             instrument_id=instrument_id,
             ts_init=self._clock.timestamp_ns(),
+            snapshot=True,
         )
         # Check if book buffer active
         book_buffer: list[OrderBookDelta | OrderBookDeltas] | None = self._book_buffer.get(

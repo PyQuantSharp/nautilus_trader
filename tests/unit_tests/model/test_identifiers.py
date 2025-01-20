@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -61,6 +61,60 @@ def test_symbol_equality() -> None:
     assert symbol1 == symbol3
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ["AUDUSD", False],
+        ["AUD/USD", False],
+        ["CL.FUT", True],
+        ["LO.OPT", True],
+        ["ES.c.0", True],
+    ],
+)
+def test_symbol_is_composite(value: str, expected: str) -> None:
+    # Arrange
+    symbol = Symbol(value)
+
+    # Act, Assert
+    assert symbol.is_composite() == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_root"),
+    [
+        ["AUDUSD", "AUDUSD"],
+        ["AUD/USD", "AUD/USD"],
+        ["CL.FUT", "CL"],
+        ["LO.OPT", "LO"],
+        ["ES.c.0", "ES"],
+    ],
+)
+def test_symbol_root(value: str, expected_root: str) -> None:
+    # Arrange
+    symbol = Symbol(value)
+
+    # Act, Assert
+    assert symbol.root() == expected_root
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_topic"),
+    [
+        ["AUDUSD", "AUDUSD"],
+        ["AUD/USD", "AUD/USD"],
+        ["CL.FUT", "CL*"],
+        ["LO.OPT", "LO*"],
+        ["ES.c.0", "ES*"],
+    ],
+)
+def test_symbol_topic(value: str, expected_topic: str) -> None:
+    # Arrange
+    symbol = Symbol(value)
+
+    # Act, Assert
+    assert symbol.topic() == expected_topic
+
+
 def test_symbol_str() -> None:
     # Arrange
     symbol = Symbol("AUD/USD")
@@ -83,7 +137,7 @@ def test_symbol_pickling() -> None:
 
     # Act
     pickled = pickle.dumps(symbol)
-    unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
     # Act, Assert
     assert symbol == unpickled
@@ -140,7 +194,7 @@ def test_venue_pickling() -> None:
 
     # Act
     pickled = pickle.dumps(venue)
-    unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
     # Act, Assert
     assert venue == unpickled
@@ -172,7 +226,7 @@ def test_instrument_id_pickling() -> None:
 
     # Act
     pickled = pickle.dumps(instrument_id)
-    unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
     # Act, Assert
     assert unpickled == instrument_id
@@ -204,15 +258,15 @@ def test_instrument_id_from_str() -> None:
     [
         [
             "BTCUSDT",
-            "Error parsing `InstrumentId` from 'BTCUSDT': Missing '.' separator between symbol and venue components",
+            "Error parsing `InstrumentId` from 'BTCUSDT': missing '.' separator between symbol and venue components",
         ],
         [
             ".USDT",
-            "Error parsing `InstrumentId` from '.USDT': Condition failed: invalid string for `Symbol` value, was empty",
+            "invalid string for 'value', was empty",  # TODO: Improve error message
         ],
         [
             "BTC.",
-            "Error parsing `InstrumentId` from 'BTC.': Condition failed: invalid string for `Venue` value, was empty",
+            "invalid string for 'value', was empty",  # TODO: Improve error message
         ],
     ],
 )

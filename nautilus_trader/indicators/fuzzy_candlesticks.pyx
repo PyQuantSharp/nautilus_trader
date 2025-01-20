@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -107,9 +107,9 @@ cdef class FuzzyCandlesticks(Indicator):
     ):
         Condition.positive_int(period, "period")
         Condition.positive(threshold1, "threshold1")
-        Condition.true(threshold2 > threshold1, "threshold2 was <= threshold1")
-        Condition.true(threshold3 > threshold2, "threshold3 was <= threshold2")
-        Condition.true(threshold4 > threshold3, "threshold4 was <= threshold3")
+        Condition.is_true(threshold2 > threshold1, "threshold2 was <= threshold1")
+        Condition.is_true(threshold3 > threshold2, "threshold3 was <= threshold2")
+        Condition.is_true(threshold4 > threshold3, "threshold4 was <= threshold3")
         super().__init__(
             params=[
                 period,

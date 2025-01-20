@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,6 +17,7 @@ from libc.stdint cimport int64_t
 from libc.stdint cimport uint32_t
 from libc.stdint cimport uint64_t
 
+from nautilus_trader.backtest.models cimport FeeModel
 from nautilus_trader.backtest.models cimport FillModel
 from nautilus_trader.cache.base cimport CacheFacade
 from nautilus_trader.common.component cimport Clock
@@ -24,9 +25,11 @@ from nautilus_trader.common.component cimport Logger
 from nautilus_trader.common.component cimport MessageBus
 from nautilus_trader.core.data cimport Data
 from nautilus_trader.core.rust.model cimport AccountType
+from nautilus_trader.core.rust.model cimport AggressorSide
 from nautilus_trader.core.rust.model cimport BookType
 from nautilus_trader.core.rust.model cimport LiquiditySide
 from nautilus_trader.core.rust.model cimport MarketStatus
+from nautilus_trader.core.rust.model cimport MarketStatusAction
 from nautilus_trader.core.rust.model cimport OmsType
 from nautilus_trader.core.rust.model cimport TimeInForce
 from nautilus_trader.execution.matching_core cimport MatchingCore
@@ -37,6 +40,7 @@ from nautilus_trader.execution.messages cimport ModifyOrder
 from nautilus_trader.model.book cimport OrderBook
 from nautilus_trader.model.data cimport Bar
 from nautilus_trader.model.data cimport BookOrder
+from nautilus_trader.model.data cimport InstrumentClose
 from nautilus_trader.model.data cimport OrderBookDelta
 from nautilus_trader.model.data cimport OrderBookDeltas
 from nautilus_trader.model.data cimport QuoteTick
@@ -76,15 +80,23 @@ cdef class OrderMatchingEngine:
     cdef OrderBook _opening_auction_book
     cdef OrderBook _closing_auction_book
     cdef FillModel _fill_model
+    cdef FeeModel _fee_model
+    cdef InstrumentClose _instrument_close
     # cdef object _auction_match_algo
-    cdef bint _bar_execution
+    cdef bint _instrument_has_expiration
     cdef bint _reject_stop_orders
     cdef bint _support_gtd_orders
     cdef bint _support_contingent_orders
     cdef bint _use_position_ids
     cdef bint _use_random_ids
     cdef bint _use_reduce_only
+    cdef bint _bar_execution
+    cdef bint _bar_adaptive_high_low_ordering
+    cdef bint _trade_execution
     cdef dict _account_ids
+    cdef dict _execution_bar_types
+    cdef dict _execution_bar_deltas
+    cdef dict _cached_filled_qty
 
     cdef readonly Venue venue
     """The venue for the matching engine.\n\n:returns: `Venue`"""
@@ -137,10 +149,21 @@ cdef class OrderMatchingEngine:
     cpdef void process_quote_tick(self, QuoteTick tick)
     cpdef void process_trade_tick(self, TradeTick tick)
     cpdef void process_bar(self, Bar bar)
-    cpdef void process_status(self, MarketStatus status)
+    cpdef void process_status(self, MarketStatusAction status)
     cpdef void process_auction_book(self, OrderBook book)
+    cpdef void process_instrument_close(self, InstrumentClose close)
     cdef void _process_trade_ticks_from_bar(self, Bar bar)
+    cdef TradeTick _create_base_trade_tick(self, Bar bar, Quantity size)
+    cdef void _process_trade_bar_open(self, Bar bar, TradeTick tick)
+    cdef void _process_trade_bar_high(self, Bar bar, TradeTick tick)
+    cdef void _process_trade_bar_low(self, Bar bar, TradeTick tick)
+    cdef void _process_trade_bar_close(self, Bar bar, TradeTick tick)
     cdef void _process_quote_ticks_from_bar(self)
+    cdef QuoteTick _create_base_quote_tick(self, Quantity bid_size, Quantity ask_size)
+    cdef void _process_quote_bar_open(self, QuoteTick tick)
+    cdef void _process_quote_bar_high(self, QuoteTick tick)
+    cdef void _process_quote_bar_low(self, QuoteTick tick)
+    cdef void _process_quote_bar_close(self, QuoteTick tick)
 
 # -- TRADING COMMANDS -----------------------------------------------------------------------------
 
@@ -170,7 +193,7 @@ cdef class OrderMatchingEngine:
 
 # -- ORDER PROCESSING -----------------------------------------------------------------------------
 
-    cpdef void iterate(self, uint64_t timestamp_ns)
+    cpdef void iterate(self, uint64_t timestamp_ns, AggressorSide aggressor_side=*)
     cpdef list determine_limit_price_and_volume(self, Order order)
     cpdef list determine_market_price_and_volume(self, Order order)
     cpdef void fill_market_order(self, Order order)
@@ -196,6 +219,7 @@ cdef class OrderMatchingEngine:
 
 # -- IDENTIFIER GENERATORS ------------------------------------------------------------------------
 
+    cdef VenueOrderId _get_venue_order_id(self, Order order)
     cdef PositionId _get_position_id(self, Order order, bint generate=*)
     cdef PositionId _generate_venue_position_id(self)
     cdef VenueOrderId _generate_venue_order_id(self)
@@ -215,7 +239,7 @@ cdef class OrderMatchingEngine:
 # -- EVENT GENERATORS -----------------------------------------------------------------------------
 
     cdef void _generate_order_rejected(self, Order order, str reason)
-    cdef void _generate_order_accepted(self, Order order)
+    cdef void _generate_order_accepted(self, Order order, VenueOrderId venue_order_id)
     cdef void _generate_order_modify_rejected(
         self,
         TraderId trader_id,
@@ -237,12 +261,13 @@ cdef class OrderMatchingEngine:
         str reason,
     )
     cpdef void _generate_order_updated(self, Order order, Quantity qty, Price price, Price trigger_price)
-    cdef void _generate_order_canceled(self, Order order)
+    cdef void _generate_order_canceled(self, Order order, VenueOrderId venue_order_id)
     cdef void _generate_order_triggered(self, Order order)
     cdef void _generate_order_expired(self, Order order)
     cdef void _generate_order_filled(
         self,
         Order order,
+        VenueOrderId venue_order_id,
         PositionId venue_position_id,
         Quantity last_qty,
         Price last_px,

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,6 +20,7 @@ from typing import Any
 import msgspec
 
 from nautilus_trader.common.config import NautilusConfig
+from nautilus_trader.common.config import PositiveFloat
 from nautilus_trader.common.config import msgspec_encoding_hook
 from nautilus_trader.common.config import resolve_config_path
 from nautilus_trader.common.config import resolve_path
@@ -35,15 +36,29 @@ class ExecEngineConfig(NautilusConfig, frozen=True):
     ----------
     load_cache : bool, default True
         If the cache should be loaded on initialization.
-    allow_cash_positions : bool, default True
-        If unleveraged spot/cash assets should generate positions.
+    snapshot_orders : bool, default False
+        If order state snapshot lists are persisted to a backing database.
+        Snapshots will be taken at every order state update (when events are applied).
+    snapshot_positions : bool, default False
+        If position state snapshot lists are persisted to a backing database.
+        Snapshots will be taken at position opened, changed and closed (when events are applied).
+        To include the unrealized PnL in the snapshot then quotes for the positions instrument must
+        be available in the cache.
+    snapshot_positions_interval_secs : PositiveFloat, optional
+        The interval (seconds) at which *additional* position state snapshots are persisted to a
+        backing database.
+        If ``None`` then no additional snapshots will be taken.
+        To include unrealized PnL in these snapshots, quotes for the position's instrument must be
+        available in the cache.
     debug : bool, default False
         If debug mode is active (will provide extra debug logging).
 
     """
 
     load_cache: bool = True
-    allow_cash_positions: bool = True
+    snapshot_orders: bool = False
+    snapshot_positions: bool = False
+    snapshot_positions_interval_secs: PositiveFloat | None = None
     debug: bool = False
 
 
@@ -56,10 +71,17 @@ class ExecAlgorithmConfig(NautilusConfig, kw_only=True, frozen=True):
     exec_algorithm_id : ExecAlgorithmId, optional
         The unique ID for the execution algorithm.
         If not ``None`` then will become the execution algorithm ID.
+    log_events : bool, default True
+        If events should be logged by the execution algorithm.
+        If False, then only warning events and above are logged.
+    log_commands : bool, default True
+        If commands should be logged by the execution algorithm.
 
     """
 
     exec_algorithm_id: ExecAlgorithmId | None = None
+    log_events: bool = True
+    log_commands: bool = True
 
 
 class ImportableExecAlgorithmConfig(NautilusConfig, frozen=True):

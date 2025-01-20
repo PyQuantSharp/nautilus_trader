@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,14 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid position ID.
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
 
-use anyhow::Result;
-use nautilus_core::correctness::check_valid_string;
+use nautilus_core::correctness::{check_valid_string, FAILED};
 use ustr::Ustr;
 
 /// Represents a valid position ID.
@@ -29,43 +30,69 @@ use ustr::Ustr;
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct PositionId {
-    /// The position ID value.
-    pub value: Ustr,
-}
+pub struct PositionId(Ustr);
 
 impl PositionId {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`PositionId` value")?;
-
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`PositionId`] instance with correctness checking.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `value` is not a valid string.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
     }
-}
 
-impl Default for PositionId {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("P-001"),
-        }
+    /// Creates a new [`PositionId`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Checks if the position ID is virtual.
+    ///
+    /// Returns `true` if the position ID starts with "P-", otherwise `false`.
+    #[must_use]
+    pub fn is_virtual(&self) -> bool {
+        self.0.starts_with("P-")
     }
 }
 
 impl Debug for PositionId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 impl Display for PositionId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl From<&str> for PositionId {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+        write!(f, "{}", self.0)
     }
 }
 
@@ -81,7 +108,7 @@ mod tests {
 
     #[rstest]
     fn test_string_reprs(position_id_test: PositionId) {
-        assert_eq!(position_id_test.to_string(), "P-123456789");
+        assert_eq!(position_id_test.as_str(), "P-123456789");
         assert_eq!(format!("{position_id_test}"), "P-123456789");
     }
 }

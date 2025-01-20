@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,16 +14,17 @@
 # -------------------------------------------------------------------------------------------------
 
 import random
-from typing import Any
 
 from nautilus_trader.common.component import Logger
 from nautilus_trader.common.component import init_logging
+from nautilus_trader.common.component import is_logging_initialized
 from nautilus_trader.common.enums import LogLevel
 
 
-def test_logging(benchmark: Any) -> None:
+def test_logging(benchmark) -> None:
     random.seed(45362718)
-    init_logging(level_stdout=LogLevel.ERROR, bypass=True)
+    if not is_logging_initialized:
+        init_logging(level_stdout=LogLevel.ERROR, bypass=True)
 
     logger = Logger(name="TEST_LOGGER")
 
@@ -67,4 +68,4 @@ def test_logging(benchmark: Any) -> None:
             # unique log messages to prevent caching during string conversion
             logger.info(f"{i}: {message}")
 
-    benchmark.pedantic(run, rounds=10, iterations=2, warmup_rounds=1)
+    benchmark(run)

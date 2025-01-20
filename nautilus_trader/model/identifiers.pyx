@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -40,7 +40,10 @@ from nautilus_trader.core.rust.model cimport position_id_new
 from nautilus_trader.core.rust.model cimport strategy_id_hash
 from nautilus_trader.core.rust.model cimport strategy_id_new
 from nautilus_trader.core.rust.model cimport symbol_hash
+from nautilus_trader.core.rust.model cimport symbol_is_composite
 from nautilus_trader.core.rust.model cimport symbol_new
+from nautilus_trader.core.rust.model cimport symbol_root
+from nautilus_trader.core.rust.model cimport symbol_topic
 from nautilus_trader.core.rust.model cimport trade_id_hash
 from nautilus_trader.core.rust.model cimport trade_id_new
 from nautilus_trader.core.rust.model cimport trade_id_to_cstr
@@ -105,7 +108,7 @@ cdef class Identifier:
 
 cdef class Symbol(Identifier):
     """
-    Represents a valid ticker symbol ID for a tradable financial market instrument.
+    Represents a valid ticker symbol ID for a tradable instrument.
 
     Parameters
     ----------
@@ -139,7 +142,7 @@ cdef class Symbol(Identifier):
     def __eq__(self, Symbol other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -151,7 +154,48 @@ cdef class Symbol(Identifier):
         return symbol
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
+
+    cpdef bint is_composite(self):
+        """
+        Returns true if the symbol string contains a period ('.').
+
+        Returns
+        -------
+        str
+
+        """
+        return <bint>symbol_is_composite(&self._mem)
+
+    cpdef str root(self):
+        """
+        Return the symbol root.
+
+        The symbol root is the substring that appears before the first period ('.')
+        in the full symbol string. It typically represents the underlying asset for
+        futures and options contracts. If no period is found, the entire symbol
+        string is considered the root.
+
+        Returns
+        -------
+        str
+
+        """
+        return cstr_to_pystr(symbol_root(&self._mem))
+
+    cpdef str topic(self):
+        """
+        Return the symbol topic.
+
+        The symbol topic is the root symbol with a wildcard '*' appended if the symbol has a root,
+        otherwise returns the full symbol string.
+
+        Returns
+        -------
+        str
+
+        """
+        return cstr_to_pystr(symbol_topic(&self._mem))
 
 
 cdef class Venue(Identifier):
@@ -182,13 +226,13 @@ cdef class Venue(Identifier):
     def __eq__(self, Venue other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
     @staticmethod
     cdef Venue from_mem_c(Venue_t mem):
@@ -294,7 +338,7 @@ cdef class InstrumentId(Identifier):
     def __eq__(self, InstrumentId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.symbol.value, other._mem.symbol.value) == 0 and strcmp(self._mem.venue.value, other._mem.venue.value) == 0
+        return strcmp(self._mem.symbol._0, other._mem.symbol._0) == 0 and strcmp(self._mem.venue._0, other._mem.venue._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -390,7 +434,7 @@ cdef class ComponentId(Identifier):
     def __eq__(self, ComponentId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -402,7 +446,7 @@ cdef class ComponentId(Identifier):
         return component_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
 
 cdef class ClientId(Identifier):
@@ -437,7 +481,7 @@ cdef class ClientId(Identifier):
     def __eq__(self, ClientId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -449,7 +493,7 @@ cdef class ClientId(Identifier):
         return client_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
 
 cdef class TraderId(Identifier):
@@ -493,7 +537,7 @@ cdef class TraderId(Identifier):
     def __eq__(self, TraderId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -505,7 +549,7 @@ cdef class TraderId(Identifier):
         return trader_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
     cpdef str get_tag(self):
         """
@@ -553,7 +597,7 @@ cdef class StrategyId(Identifier):
 
     def __init__(self, str value) -> None:
         Condition.valid_string(value, "value")
-        Condition.true(value == "EXTERNAL" or "-" in value, "value was malformed: did not contain a hyphen '-'")
+        Condition.is_true(value == "EXTERNAL" or "-" in value, "value was malformed: did not contain a hyphen '-'")
 
         self._mem = strategy_id_new(pystr_to_cstr(value))
 
@@ -566,7 +610,7 @@ cdef class StrategyId(Identifier):
     def __eq__(self, StrategyId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -582,7 +626,7 @@ cdef class StrategyId(Identifier):
         return EXTERNAL_STRATEGY_ID
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
     cpdef str get_tag(self):
         """
@@ -637,7 +681,7 @@ cdef class ExecAlgorithmId(Identifier):
     def __eq__(self, ExecAlgorithmId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -649,7 +693,7 @@ cdef class ExecAlgorithmId(Identifier):
         return exec_algorithm_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
 
 
@@ -680,7 +724,7 @@ cdef class AccountId(Identifier):
 
     def __init__(self, str value not None) -> None:
         Condition.valid_string(value, "value")
-        Condition.true("-" in value, "value was malformed: did not contain a hyphen '-'")
+        Condition.is_true("-" in value, "value was malformed: did not contain a hyphen '-'")
         self._mem = account_id_new(pystr_to_cstr(value))
 
     def __getstate__(self):
@@ -692,7 +736,7 @@ cdef class AccountId(Identifier):
     def __eq__(self, AccountId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -704,7 +748,7 @@ cdef class AccountId(Identifier):
         return account_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
     cpdef str get_issuer(self):
         """
@@ -761,7 +805,7 @@ cdef class ClientOrderId(Identifier):
     def __eq__(self, ClientOrderId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -773,29 +817,7 @@ cdef class ClientOrderId(Identifier):
         return client_order_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
-
-    cpdef bint is_this_trader(self, TraderId trader_id):
-        """
-        Return whether this client order ID is for the given trader ID instance.
-
-        Will compare the given `trader_id.get_tag()` with this identifier.
-
-        Parameters
-        ----------
-        trader_id : TraderId
-            The trader ID to compare with.
-
-        Returns
-        -------
-        bool
-            True if for this instance, else false.
-
-        """
-        cdef list parts = self.to_str().split("-", maxsplit=4)
-        if len(parts) < 4:
-            return False
-        return parts[3] == trader_id.get_tag()
+        return ustr_to_pystr(self._mem._0)
 
 
 cdef class VenueOrderId(Identifier):
@@ -826,7 +848,7 @@ cdef class VenueOrderId(Identifier):
     def __eq__(self, VenueOrderId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -838,7 +860,7 @@ cdef class VenueOrderId(Identifier):
         return venue_order_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
 
 cdef class OrderListId(Identifier):
@@ -869,7 +891,7 @@ cdef class OrderListId(Identifier):
     def __eq__(self, OrderListId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -881,7 +903,7 @@ cdef class OrderListId(Identifier):
         return order_list_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
 
 cdef class PositionId(Identifier):
@@ -912,7 +934,7 @@ cdef class PositionId(Identifier):
     def __eq__(self, PositionId other) -> bool:
         if other is None:
             raise RuntimeError("other was None in __eq__")
-        return strcmp(self._mem.value, other._mem.value) == 0
+        return strcmp(self._mem._0, other._mem._0) == 0
 
     def __hash__(self) -> int:
         return hash(self.to_str())
@@ -924,7 +946,7 @@ cdef class PositionId(Identifier):
         return position_id
 
     cdef str to_str(self):
-        return ustr_to_pystr(self._mem.value)
+        return ustr_to_pystr(self._mem._0)
 
     cdef bint is_virtual_c(self):
         return self.to_str().startswith("P-")

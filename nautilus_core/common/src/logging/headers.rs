@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,8 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::uuid::UUID4;
-use nautilus_model::identifiers::trader_id::TraderId;
+use nautilus_core::UUID4;
+use nautilus_model::identifiers::TraderId;
 use sysinfo::System;
 use ustr::Ustr;
 
@@ -30,14 +30,14 @@ pub fn log_header(trader_id: TraderId, machine_id: &str, instance_id: UUID4, com
 
     let c = component;
 
-    let kernel_version = System::kernel_version().map_or("".to_string(), |v| format!("kernel-{v} "));
-    let os_version = System::long_os_version().unwrap_or("".to_string());
+    let kernel_version = System::kernel_version().map_or(String::new(), |v| format!("kernel-{v} "));
+    let os_version = System::long_os_version().unwrap_or_default();
     let pid = std::process::id();
 
     header_sepr(c, "=================================================================");
     header_sepr(c, " NAUTILUS TRADER - Automated Algorithmic Trading Platform");
     header_sepr(c, " by Nautech Systems Pty Ltd.");
-    header_sepr(c, "Copyright (C) 2015-2024. All rights reserved.");
+    header_sepr(c, " Copyright (C) 2015-2025. All rights reserved.");
     header_sepr(c, "=================================================================");
     header_line(c, "");
     header_line(c, "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣴⣶⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀");
@@ -58,7 +58,7 @@ pub fn log_header(trader_id: TraderId, machine_id: &str, instance_id: UUID4, com
     header_sepr(c, "=================================================================");
     header_line(c, &format!("CPU architecture: {}", sys.cpus()[0].brand()));
     header_line(c, &format!("CPU(s): {} @ {} Mhz", sys.cpus().len(), sys.cpus()[0].frequency()));
-    header_line(c, &format!("OS: {}{}", kernel_version, os_version));
+    header_line(c, &format!("OS: {kernel_version}{os_version}"));
 
     log_sysinfo(component);
 
@@ -134,7 +134,7 @@ fn bytes_to_gib(b: u64) -> f64 {
 
 #[cfg(feature = "python")]
 fn python_package_version(package: &str) -> String {
-    use crate::python::versioning::get_python_package_version;
+    use nautilus_core::python::version::get_python_package_version;
 
     get_python_package_version(package)
 }
@@ -146,7 +146,7 @@ fn python_package_version(_package: &str) -> &str {
 
 #[cfg(feature = "python")]
 fn python_version() -> String {
-    use crate::python::versioning::get_python_version;
+    use nautilus_core::python::version::get_python_version;
 
     get_python_version()
 }

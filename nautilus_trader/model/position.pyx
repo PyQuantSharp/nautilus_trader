@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -32,7 +32,7 @@ from nautilus_trader.model.objects cimport Quantity
 
 cdef class Position:
     """
-    Represents a position in a financial market.
+    Represents a position in a market.
 
     The position ID may be assigned at the trading venue, or can be system
     generated depending on a strategies OMS (Order Management System) settings.
@@ -119,7 +119,7 @@ cdef class Position:
         str
 
         """
-        cdef str quantity = " " if self.quantity._mem.raw == 0 else f" {self.quantity.to_str()} "
+        cdef str quantity = " " if self.quantity._mem.raw == 0 else f" {self.quantity.to_formatted_str()} "
         return f"{position_side_to_str(self.side)}{quantity}{self.instrument_id}"
 
     cpdef dict to_dict(self):
@@ -144,18 +144,19 @@ cdef class Position:
             "signed_qty": self.signed_qty,
             "quantity": str(self.quantity),
             "peak_qty": str(self.peak_qty),
+            "ts_init": self.ts_init,
             "ts_opened": self.ts_opened,
             "ts_last": self.ts_last,
             "ts_closed": self.ts_closed if self.ts_closed > 0 else None,
             "duration_ns": self.duration_ns if self.duration_ns > 0 else None,
-            "avg_px_open": str(self.avg_px_open),
-            "avg_px_close": str(self.avg_px_close) if self.avg_px_close > 0 else None,
+            "avg_px_open": self.avg_px_open,
+            "avg_px_close": self.avg_px_close if self.avg_px_close > 0 else None,
             "quote_currency": self.quote_currency.code,
             "base_currency": self.base_currency.code if self.base_currency is not None else None,
             "settlement_currency": self.settlement_currency.code,
-            "commissions": str([c.to_str() for c in self.commissions()]) if self._commissions else None,
-            "realized_return": str(round(self.realized_return, 5)),
-            "realized_pnl": self.realized_pnl.to_str(),
+            "commissions": sorted([str(c) for c in self.commissions()]),
+            "realized_return": round(self.realized_return, 5),
+            "realized_pnl": str(self.realized_pnl),
         }
 
     cdef list client_order_ids_c(self):
@@ -178,6 +179,10 @@ cdef class Position:
 
     cdef TradeId last_trade_id_c(self):
         return self._events[-1].trade_id
+
+    cdef bint has_trade_id_c(self, TradeId trade_id):
+        Condition.not_none(trade_id, "trade_id")
+        return trade_id in self._trade_ids
 
     cdef int event_count_c(self):
         return len(self._events)
@@ -632,7 +637,7 @@ cdef class Position:
                 and fill.last_px == p_fill.last_px
                 and fill.last_qty == p_fill.last_qty
             ):
-                raise ValueError(f"Duplicate {fill.trade_id!r} in events {fill} {p_fill}")
+                raise KeyError(f"Duplicate {fill.trade_id!r} in events {fill} {p_fill}")
 
     cdef void _handle_buy_order_fill(self, OrderFilled fill):
         # Initialize realized PnL for fill

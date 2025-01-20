@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! An `OrderBookDelta` data type intended to carry book state information.
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -20,21 +22,27 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use nautilus_core::{serialization::Serializable, time::UnixNanos};
+use nautilus_core::{correctness::FAILED, serialization::Serializable, UnixNanos};
 use serde::{Deserialize, Serialize};
 
-use super::order::{BookOrder, NULL_ORDER};
-use crate::{enums::BookAction, identifiers::instrument_id::InstrumentId};
+use super::{
+    order::{BookOrder, NULL_ORDER},
+    GetTsInit,
+};
+use crate::{
+    enums::{BookAction, RecordFlag},
+    identifiers::InstrumentId,
+    types::quantity::check_positive_quantity,
+};
 
 /// Represents a single change/delta in an order book.
 #[repr(C)]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-#[cfg_attr(feature = "trivial_copy", derive(Copy))]
 pub struct OrderBookDelta {
     /// The instrument ID for the book.
     pub instrument_id: InstrumentId,
@@ -42,18 +50,57 @@ pub struct OrderBookDelta {
     pub action: BookAction,
     /// The order to apply.
     pub order: BookOrder,
-    /// A combination of packet end with matching engine status.
+    /// The record flags bit field indicating event end and data information.
     pub flags: u8,
     /// The message sequence number assigned at the venue.
     pub sequence: u64,
-    /// The UNIX timestamp (nanoseconds) when the data event occurred.
+    /// UNIX timestamp (nanoseconds) when the book event occurred.
     pub ts_event: UnixNanos,
-    /// The UNIX timestamp (nanoseconds) when the data object was initialized.
+    /// UNIX timestamp (nanoseconds) when the struct was initialized.
     pub ts_init: UnixNanos,
 }
 
 impl OrderBookDelta {
-    #[allow(clippy::too_many_arguments)]
+    /// Creates a new [`OrderBookDelta`] instance with correctness checking.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `action` is [`BookAction::Add`] or [`BookAction::Update`] and `size` is not positive (> 0).
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked(
+        instrument_id: InstrumentId,
+        action: BookAction,
+        order: BookOrder,
+        flags: u8,
+        sequence: u64,
+        ts_event: UnixNanos,
+        ts_init: UnixNanos,
+    ) -> anyhow::Result<Self> {
+        if matches!(action, BookAction::Add | BookAction::Update) {
+            check_positive_quantity(order.size.raw, "order.size.raw")?;
+        }
+
+        Ok(Self {
+            instrument_id,
+            action,
+            order,
+            flags,
+            sequence,
+            ts_event,
+            ts_init,
+        })
+    }
+
+    /// Creates a new [`OrderBookDelta`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `action` is [`BookAction::Add`] or [`BookAction::Update`] and `size` is not positive (> 0).
     #[must_use]
     pub fn new(
         instrument_id: InstrumentId,
@@ -64,7 +111,7 @@ impl OrderBookDelta {
         ts_event: UnixNanos,
         ts_init: UnixNanos,
     ) -> Self {
-        Self {
+        Self::new_checked(
             instrument_id,
             action,
             order,
@@ -72,9 +119,11 @@ impl OrderBookDelta {
             sequence,
             ts_event,
             ts_init,
-        }
+        )
+        .expect(FAILED)
     }
 
+    /// Creates a new [`OrderBookDelta`] instance with a `Clear` action and and NULL order.
     #[must_use]
     pub fn clear(
         instrument_id: InstrumentId,
@@ -86,7 +135,7 @@ impl OrderBookDelta {
             instrument_id,
             action: BookAction::Clear,
             order: NULL_ORDER,
-            flags: 32, // TODO: Flags constants
+            flags: RecordFlag::F_SNAPSHOT as u8,
             sequence,
             ts_event,
             ts_init,
@@ -142,43 +191,9 @@ impl Display for OrderBookDelta {
 
 impl Serializable for OrderBookDelta {}
 
-////////////////////////////////////////////////////////////////////////////////
-// Stubs
-////////////////////////////////////////////////////////////////////////////////
-#[cfg(feature = "stubs")]
-pub mod stubs {
-    use rstest::fixture;
-
-    use super::{BookAction, BookOrder, OrderBookDelta};
-    use crate::{
-        enums::OrderSide,
-        identifiers::instrument_id::InstrumentId,
-        types::{price::Price, quantity::Quantity},
-    };
-
-    #[fixture]
-    pub fn stub_delta() -> OrderBookDelta {
-        let instrument_id = InstrumentId::from("AAPL.XNAS");
-        let action = BookAction::Add;
-        let price = Price::from("100.00");
-        let size = Quantity::from("10");
-        let side = OrderSide::Buy;
-        let order_id = 123_456;
-        let flags = 0;
-        let sequence = 1;
-        let ts_event = 1;
-        let ts_init = 2;
-
-        let order = BookOrder::new(side, price, size, order_id);
-        OrderBookDelta::new(
-            instrument_id,
-            action,
-            order,
-            flags,
-            sequence,
-            ts_event,
-            ts_init,
-        )
+impl GetTsInit for OrderBookDelta {
+    fn ts_init(&self) -> UnixNanos {
+        self.ts_init
     }
 }
 
@@ -187,15 +202,72 @@ pub mod stubs {
 ////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
-    use nautilus_core::serialization::Serializable;
+    use nautilus_core::{serialization::Serializable, UnixNanos};
     use rstest::rstest;
 
     use crate::{
-        data::{delta::OrderBookDelta, order::BookOrder, stubs::*},
+        data::{stubs::*, BookOrder, OrderBookDelta},
         enums::{BookAction, OrderSide},
-        identifiers::instrument_id::InstrumentId,
-        types::{price::Price, quantity::Quantity},
+        identifiers::InstrumentId,
+        types::{Price, Quantity},
     };
+
+    #[rstest]
+    fn test_order_book_delta_new_with_zero_size_panics() {
+        let instrument_id = InstrumentId::from("AAPL.XNAS");
+        let action = BookAction::Add;
+        let price = Price::from("100.00");
+        let zero_size = Quantity::from(0);
+        let side = OrderSide::Buy;
+        let order_id = 123_456;
+        let flags = 0;
+        let sequence = 1;
+        let ts_event = UnixNanos::from(0);
+        let ts_init = UnixNanos::from(1);
+
+        let order = BookOrder::new(side, price, zero_size, order_id);
+
+        let result = std::panic::catch_unwind(|| {
+            let _ = OrderBookDelta::new(
+                instrument_id,
+                action,
+                order,
+                flags,
+                sequence,
+                ts_event,
+                ts_init,
+            );
+        });
+        assert!(result.is_err());
+    }
+
+    #[rstest]
+    fn test_order_book_delta_new_checked_with_zero_size_error() {
+        let instrument_id = InstrumentId::from("AAPL.XNAS");
+        let action = BookAction::Add;
+        let price = Price::from("100.00");
+        let zero_size = Quantity::from(0);
+        let side = OrderSide::Buy;
+        let order_id = 123_456;
+        let flags = 0;
+        let sequence = 1;
+        let ts_event = UnixNanos::from(0);
+        let ts_init = UnixNanos::from(1);
+
+        let order = BookOrder::new(side, price, zero_size, order_id);
+
+        let result = OrderBookDelta::new_checked(
+            instrument_id,
+            action,
+            order,
+            flags,
+            sequence,
+            ts_event,
+            ts_init,
+        );
+
+        assert!(result.is_err());
+    }
 
     #[rstest]
     fn test_new() {
@@ -218,8 +290,8 @@ mod tests {
             order,
             flags,
             sequence,
-            ts_event,
-            ts_init,
+            ts_event.into(),
+            ts_init.into(),
         );
 
         assert_eq!(delta.instrument_id, instrument_id);
@@ -241,7 +313,7 @@ mod tests {
         let ts_event = 2;
         let ts_init = 3;
 
-        let delta = OrderBookDelta::clear(instrument_id, sequence, ts_event, ts_init);
+        let delta = OrderBookDelta::clear(instrument_id, sequence, ts_event.into(), ts_init.into());
 
         assert_eq!(delta.instrument_id, instrument_id);
         assert_eq!(delta.action, BookAction::Clear);
@@ -260,7 +332,7 @@ mod tests {
         let delta = stub_delta;
         assert_eq!(
             format!("{delta}"),
-            "AAPL.XNAS,ADD,100.00,10,BUY,123456,0,1,1,2".to_string()
+            "AAPL.XNAS,ADD,BUY,100.00,10,123456,0,1,1,2".to_string()
         );
     }
 
@@ -268,7 +340,7 @@ mod tests {
     fn test_json_serialization(stub_delta: OrderBookDelta) {
         let delta = stub_delta;
         let serialized = delta.as_json_bytes().unwrap();
-        let deserialized = OrderBookDelta::from_json_bytes(serialized).unwrap();
+        let deserialized = OrderBookDelta::from_json_bytes(serialized.as_ref()).unwrap();
         assert_eq!(deserialized, delta);
     }
 
@@ -276,7 +348,7 @@ mod tests {
     fn test_msgpack_serialization(stub_delta: OrderBookDelta) {
         let delta = stub_delta;
         let serialized = delta.as_msgpack_bytes().unwrap();
-        let deserialized = OrderBookDelta::from_msgpack_bytes(serialized).unwrap();
+        let deserialized = OrderBookDelta::from_msgpack_bytes(serialized.as_ref()).unwrap();
         assert_eq!(deserialized, delta);
     }
 }

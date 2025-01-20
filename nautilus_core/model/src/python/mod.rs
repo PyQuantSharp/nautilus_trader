@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,8 +13,11 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Python bindings from `pyo3`.
+
 use pyo3::prelude::*;
 
+pub mod account;
 pub mod common;
 pub mod data;
 pub mod enums;
@@ -29,9 +32,20 @@ pub mod types;
 
 /// Loaded as nautilus_pyo3.model
 #[pymodule]
-pub fn model(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn model(_: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Types
+    m.add("HIGH_PRECISION", crate::types::fixed::HIGH_PRECISION_MODE)?;
+    m.add("FIXED_SCALAR", crate::types::fixed::FIXED_SCALAR)?;
+    m.add("FIXED_PRECISION", crate::types::fixed::FIXED_PRECISION)?;
+    m.add_class::<crate::types::currency::Currency>()?;
+    m.add_class::<crate::types::money::Money>()?;
+    m.add_class::<crate::types::price::Price>()?;
+    m.add_class::<crate::types::quantity::Quantity>()?;
+    m.add_class::<crate::types::balance::AccountBalance>()?;
+    m.add_class::<crate::types::balance::MarginBalance>()?;
     // Data
     m.add_function(wrap_pyfunction!(data::drop_cvec_pycapsule, m)?)?;
+    m.add_class::<crate::data::DataType>()?;
     m.add_class::<crate::data::bar::BarSpecification>()?;
     m.add_class::<crate::data::bar::BarType>()?;
     m.add_class::<crate::data::bar::Bar>()?;
@@ -39,8 +53,23 @@ pub fn model(_: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<crate::data::delta::OrderBookDelta>()?;
     m.add_class::<crate::data::deltas::OrderBookDeltas>()?;
     m.add_class::<crate::data::depth::OrderBookDepth10>()?;
+    m.add_class::<crate::data::greeks::BlackScholesGreeksResult>()?;
+    m.add_class::<crate::data::greeks::ImplyVolAndGreeksResult>()?;
     m.add_class::<crate::data::quote::QuoteTick>()?;
+    m.add_class::<crate::data::status::InstrumentStatus>()?;
     m.add_class::<crate::data::trade::TradeTick>()?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::data::greeks::py_black_scholes_greeks,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::data::greeks::py_imply_vol,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::data::greeks::py_imply_vol_and_greeks,
+        m
+    )?)?;
     // Enums
     m.add_class::<crate::enums::AccountType>()?;
     m.add_class::<crate::enums::AggregationSource>()?;
@@ -55,6 +84,7 @@ pub fn model(_: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<crate::enums::InstrumentCloseType>()?;
     m.add_class::<crate::enums::LiquiditySide>()?;
     m.add_class::<crate::enums::MarketStatus>()?;
+    m.add_class::<crate::enums::MarketStatusAction>()?;
     m.add_class::<crate::enums::OmsType>()?;
     m.add_class::<crate::enums::OptionKind>()?;
     m.add_class::<crate::enums::OrderSide>()?;
@@ -67,68 +97,84 @@ pub fn model(_: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<crate::enums::TrailingOffsetType>()?;
     m.add_class::<crate::enums::TriggerType>()?;
     // Identifiers
-    m.add_class::<crate::identifiers::account_id::AccountId>()?;
-    m.add_class::<crate::identifiers::client_id::ClientId>()?;
-    m.add_class::<crate::identifiers::client_order_id::ClientOrderId>()?;
-    m.add_class::<crate::identifiers::component_id::ComponentId>()?;
-    m.add_class::<crate::identifiers::exec_algorithm_id::ExecAlgorithmId>()?;
-    m.add_class::<crate::identifiers::instrument_id::InstrumentId>()?;
-    m.add_class::<crate::identifiers::order_list_id::OrderListId>()?;
-    m.add_class::<crate::identifiers::position_id::PositionId>()?;
-    m.add_class::<crate::identifiers::strategy_id::StrategyId>()?;
-    m.add_class::<crate::identifiers::symbol::Symbol>()?;
-    m.add_class::<crate::identifiers::trade_id::TradeId>()?;
-    m.add_class::<crate::identifiers::trader_id::TraderId>()?;
-    m.add_class::<crate::identifiers::venue::Venue>()?;
-    m.add_class::<crate::identifiers::venue_order_id::VenueOrderId>()?;
+    m.add_class::<crate::identifiers::AccountId>()?;
+    m.add_class::<crate::identifiers::ClientId>()?;
+    m.add_class::<crate::identifiers::ClientOrderId>()?;
+    m.add_class::<crate::identifiers::ComponentId>()?;
+    m.add_class::<crate::identifiers::ExecAlgorithmId>()?;
+    m.add_class::<crate::identifiers::InstrumentId>()?;
+    m.add_class::<crate::identifiers::OrderListId>()?;
+    m.add_class::<crate::identifiers::PositionId>()?;
+    m.add_class::<crate::identifiers::StrategyId>()?;
+    m.add_class::<crate::identifiers::Symbol>()?;
+    m.add_class::<crate::identifiers::TradeId>()?;
+    m.add_class::<crate::identifiers::TraderId>()?;
+    m.add_class::<crate::identifiers::Venue>()?;
+    m.add_class::<crate::identifiers::VenueOrderId>()?;
     // Orders
-    m.add_class::<crate::orders::limit::LimitOrder>()?;
-    m.add_class::<crate::orders::limit_if_touched::LimitIfTouchedOrder>()?;
-    m.add_class::<crate::orders::market::MarketOrder>()?;
-    m.add_class::<crate::orders::market_to_limit::MarketToLimitOrder>()?;
-    m.add_class::<crate::orders::stop_limit::StopLimitOrder>()?;
-    m.add_class::<crate::orders::stop_market::StopMarketOrder>()?;
-    m.add_class::<crate::orders::trailing_stop_limit::TrailingStopLimitOrder>()?;
-    m.add_class::<crate::orders::trailing_stop_market::TrailingStopMarketOrder>()?;
-    m.add_class::<crate::types::currency::Currency>()?;
-    m.add_class::<crate::types::money::Money>()?;
-    m.add_class::<crate::types::price::Price>()?;
-    m.add_class::<crate::types::quantity::Quantity>()?;
-    m.add_class::<crate::types::balance::AccountBalance>()?;
-    m.add_class::<crate::types::balance::MarginBalance>()?;
-    // Instruments
-    m.add_class::<crate::instruments::crypto_future::CryptoFuture>()?;
-    m.add_class::<crate::instruments::crypto_perpetual::CryptoPerpetual>()?;
-    m.add_class::<crate::instruments::currency_pair::CurrencyPair>()?;
-    m.add_class::<crate::instruments::equity::Equity>()?;
-    m.add_class::<crate::instruments::futures_contract::FuturesContract>()?;
-    m.add_class::<crate::instruments::futures_spread::FuturesSpread>()?;
-    m.add_class::<crate::instruments::options_contract::OptionsContract>()?;
-    m.add_class::<crate::instruments::options_spread::OptionsSpread>()?;
-    m.add_class::<crate::instruments::synthetic::SyntheticInstrument>()?;
-    // Order book
-    m.add_class::<crate::orderbook::book_mbo::OrderBookMbo>()?;
-    m.add_class::<crate::orderbook::book_mbp::OrderBookMbp>()?;
-    m.add_class::<crate::orderbook::level::Level>()?;
-    // Events - order
-    m.add_class::<crate::events::order::denied::OrderDenied>()?;
-    m.add_class::<crate::events::order::filled::OrderFilled>()?;
-    m.add_class::<crate::events::order::initialized::OrderInitialized>()?;
-    m.add_class::<crate::events::order::rejected::OrderRejected>()?;
-    m.add_class::<crate::events::order::triggered::OrderTriggered>()?;
-    m.add_class::<crate::events::order::submitted::OrderSubmitted>()?;
-    m.add_class::<crate::events::order::emulated::OrderEmulated>()?;
-    m.add_class::<crate::events::order::released::OrderReleased>()?;
-    m.add_class::<crate::events::order::updated::OrderUpdated>()?;
-    m.add_class::<crate::events::order::pending_update::OrderPendingUpdate>()?;
-    m.add_class::<crate::events::order::pending_cancel::OrderPendingCancel>()?;
-    m.add_class::<crate::events::order::modify_rejected::OrderModifyRejected>()?;
-    m.add_class::<crate::events::order::accepted::OrderAccepted>()?;
-    m.add_class::<crate::events::order::cancel_rejected::OrderCancelRejected>()?;
-    m.add_class::<crate::events::order::canceled::OrderCanceled>()?;
-    m.add_class::<crate::events::order::expired::OrderExpired>()?;
-    // Events - account
-    m.add_class::<crate::events::account::state::AccountState>()?;
+    m.add_class::<crate::orders::LimitOrder>()?;
+    m.add_class::<crate::orders::LimitIfTouchedOrder>()?;
+    m.add_class::<crate::orders::MarketOrder>()?;
+    m.add_class::<crate::orders::MarketToLimitOrder>()?;
+    m.add_class::<crate::orders::StopLimitOrder>()?;
+    m.add_class::<crate::orders::StopMarketOrder>()?;
+    m.add_class::<crate::orders::TrailingStopLimitOrder>()?;
+    m.add_class::<crate::orders::TrailingStopMarketOrder>()?;
+    // Position
     m.add_class::<crate::position::Position>()?;
+    // Instruments
+    m.add_class::<crate::instruments::BettingInstrument>()?;
+    m.add_class::<crate::instruments::BinaryOption>()?;
+    m.add_class::<crate::instruments::CryptoFuture>()?;
+    m.add_class::<crate::instruments::CryptoPerpetual>()?;
+    m.add_class::<crate::instruments::CurrencyPair>()?;
+    m.add_class::<crate::instruments::Equity>()?;
+    m.add_class::<crate::instruments::FuturesContract>()?;
+    m.add_class::<crate::instruments::FuturesSpread>()?;
+    m.add_class::<crate::instruments::OptionsContract>()?;
+    m.add_class::<crate::instruments::OptionsSpread>()?;
+    m.add_class::<crate::instruments::SyntheticInstrument>()?;
+    // Order book
+    m.add_class::<crate::orderbook::book::OrderBook>()?;
+    m.add_class::<crate::orderbook::level::BookLevel>()?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::orderbook::book::py_update_book_with_quote_tick,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::orderbook::book::py_update_book_with_trade_tick,
+        m
+    )?)?;
+    // Events
+    m.add_class::<crate::events::AccountState>()?;
+    m.add_class::<crate::events::OrderDenied>()?;
+    m.add_class::<crate::events::OrderFilled>()?;
+    m.add_class::<crate::events::OrderInitialized>()?;
+    m.add_class::<crate::events::OrderRejected>()?;
+    m.add_class::<crate::events::OrderTriggered>()?;
+    m.add_class::<crate::events::OrderSubmitted>()?;
+    m.add_class::<crate::events::OrderEmulated>()?;
+    m.add_class::<crate::events::OrderReleased>()?;
+    m.add_class::<crate::events::OrderUpdated>()?;
+    m.add_class::<crate::events::OrderPendingUpdate>()?;
+    m.add_class::<crate::events::OrderPendingCancel>()?;
+    m.add_class::<crate::events::OrderModifyRejected>()?;
+    m.add_class::<crate::events::OrderAccepted>()?;
+    m.add_class::<crate::events::OrderCancelRejected>()?;
+    m.add_class::<crate::events::OrderCanceled>()?;
+    m.add_class::<crate::events::OrderExpired>()?;
+    m.add_class::<crate::events::OrderSnapshot>()?;
+    m.add_class::<crate::events::PositionSnapshot>()?;
+    // Accounts
+    m.add_class::<crate::accounts::CashAccount>()?;
+    m.add_class::<crate::accounts::MarginAccount>()?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::account::transformer::cash_account_from_account_events,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::python::account::transformer::margin_account_from_account_events,
+        m
+    )?)?;
     Ok(())
 }

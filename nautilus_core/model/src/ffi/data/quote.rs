@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,38 +19,34 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use nautilus_core::{ffi::string::str_to_cstr, time::UnixNanos};
+use nautilus_core::{ffi::string::str_to_cstr, UnixNanos};
 
 use crate::{
-    data::quote::QuoteTick,
-    identifiers::instrument_id::InstrumentId,
-    types::{price::Price, quantity::Quantity},
+    data::QuoteTick,
+    identifiers::InstrumentId,
+    types::{Price, Quantity},
 };
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn quote_tick_new(
     instrument_id: InstrumentId,
-    bid_price_raw: i64,
-    ask_price_raw: i64,
-    bid_price_prec: u8,
-    ask_price_prec: u8,
-    bid_size_raw: u64,
-    ask_size_raw: u64,
-    bid_size_prec: u8,
-    ask_size_prec: u8,
+    bid_price: Price,
+    ask_price: Price,
+    bid_size: Quantity,
+    ask_size: Quantity,
     ts_event: UnixNanos,
     ts_init: UnixNanos,
 ) -> QuoteTick {
     QuoteTick::new(
         instrument_id,
-        Price::from_raw(bid_price_raw, bid_price_prec).unwrap(),
-        Price::from_raw(ask_price_raw, ask_price_prec).unwrap(),
-        Quantity::from_raw(bid_size_raw, bid_size_prec).unwrap(),
-        Quantity::from_raw(ask_size_raw, ask_size_prec).unwrap(),
+        bid_price,
+        ask_price,
+        bid_size,
+        ask_size,
         ts_event,
         ts_init,
     )
-    .unwrap()
 }
 
 #[no_mangle]
@@ -61,11 +57,8 @@ pub extern "C" fn quote_tick_eq(lhs: &QuoteTick, rhs: &QuoteTick) -> u8 {
     assert_eq!(lhs.bid_size, rhs.bid_size);
     assert_eq!(lhs.ts_event, rhs.ts_event);
     assert_eq!(lhs.ts_init, rhs.ts_init);
-    assert_eq!(
-        lhs.instrument_id.symbol.value,
-        rhs.instrument_id.symbol.value
-    );
-    assert_eq!(lhs.instrument_id.venue.value, rhs.instrument_id.venue.value);
+    assert_eq!(lhs.instrument_id.symbol, rhs.instrument_id.symbol);
+    assert_eq!(lhs.instrument_id.venue, rhs.instrument_id.venue);
     u8::from(lhs == rhs)
 }
 
@@ -78,6 +71,6 @@ pub extern "C" fn quote_tick_hash(delta: &QuoteTick) -> u64 {
 
 /// Returns a [`QuoteTick`] as a C string pointer.
 #[no_mangle]
-pub extern "C" fn quote_tick_to_cstr(tick: &QuoteTick) -> *const c_char {
-    str_to_cstr(&tick.to_string())
+pub extern "C" fn quote_tick_to_cstr(quote: &QuoteTick) -> *const c_char {
+    str_to_cstr(&quote.to_string())
 }

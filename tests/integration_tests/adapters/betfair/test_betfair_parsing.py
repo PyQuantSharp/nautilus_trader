@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -83,7 +83,7 @@ from nautilus_trader.model.data import InstrumentStatus
 from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.enums import AccountType
-from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import MarketStatusAction
 from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.enums import OrderStatus as NautilusOrderStatus
 from nautilus_trader.model.enums import TimeInForce
@@ -134,7 +134,7 @@ class TestBetfairParsingStreaming:
         result = [
             upd
             for upd in updates
-            if isinstance(upd, InstrumentStatus) and upd.status == MarketStatus.PRE_OPEN
+            if isinstance(upd, InstrumentStatus) and upd.action == MarketStatusAction.PRE_OPEN
         ]
         assert len(result) == 17
 
@@ -212,7 +212,7 @@ class TestBetfairParsingStreaming:
         assert result[0] == TradeTick.from_dict(
             {
                 "type": "TradeTick",
-                "instrument_id": "1.205822330-49808334-None.BETFAIR",
+                "instrument_id": "1-205822330-49808334-None.BETFAIR",
                 "price": "3.95",
                 "size": "46.950000",
                 "aggressor_side": "NO_AGGRESSOR",
@@ -224,7 +224,7 @@ class TestBetfairParsingStreaming:
         assert result[1].data == BetfairTicker.from_dict(
             {
                 "type": "BetfairTicker",
-                "instrument_id": "1.205822330-49808334-None.BETFAIR",
+                "instrument_id": "1-205822330-49808334-None.BETFAIR",
                 "ts_event": 0,
                 "ts_init": 0,
                 "last_traded_price": 0.2531646,
@@ -238,10 +238,10 @@ class TestBetfairParsingStreaming:
     @pytest.mark.parametrize(
         ("filename", "num_msgs"),
         [
-            ("1.166564490.bz2", 2506),
-            ("1.166811431.bz2", 17855),
-            ("1.180305278.bz2", 15169),
-            ("1.206064380.bz2", 52115),
+            ("1-166564490.bz2", 2506),
+            ("1-166811431.bz2", 17852),
+            ("1-180305278.bz2", 15165),
+            ("1-206064380.bz2", 52111),
         ],
     )
     def test_parsing_streaming_file(self, filename, num_msgs):
@@ -253,7 +253,7 @@ class TestBetfairParsingStreaming:
         assert len(updates) == num_msgs
 
     def test_parsing_streaming_file_message_counts(self):
-        mcms = BetfairDataProvider.read_mcm("1.206064380.bz2")
+        mcms = BetfairDataProvider.read_mcm("1-206064380.bz2")
         updates = [x for mcm in mcms for x in self.parser.parse(mcm)]
         counts = Counter(
             [
@@ -271,7 +271,6 @@ class TestBetfairParsingStreaming:
                 "InstrumentStatus": 260,
                 "BetfairStartingPrice": 72,
                 "InstrumentClose": 25,
-                "VenueStatus": 4,
             },
         )
         assert counts == expected
@@ -279,11 +278,11 @@ class TestBetfairParsingStreaming:
     @pytest.mark.parametrize(
         ("filename", "book_count"),
         [
-            ("1.166564490.bz2", [1077, 1307]),
-            ("1.166811431.bz2", [9374, 9348]),
-            ("1.180305278.bz2", [1714, 7695]),
+            ("1-166564490.bz2", [1077, 1307]),
+            ("1-166811431.bz2", [9374, 9348]),
+            ("1-180305278.bz2", [1714, 7695]),
             (
-                "1.206064380.bz2",
+                "1-206064380.bz2",
                 [6736, 3362, 6785, 5701, 363, 4191, 4442, 3636, 5861, 4318, 10854, 5599, 3520],
             ),
         ],
@@ -306,8 +305,8 @@ class TestBetfairParsingStreaming:
         result = [book.count for book in books.values()]
         assert result == book_count
 
-    def test_betfair_trade_sizes(self):  # noqa: C901
-        mcms = BetfairDataProvider.read_mcm("1.206064380.bz2")
+    def test_betfair_trade_sizes(self) -> None:  # noqa: C901
+        mcms = BetfairDataProvider.read_mcm("1-206064380.bz2")
         trade_ticks: dict[InstrumentId, list[TradeTick]] = defaultdict(list)
         betfair_tv: dict[int, dict[float, float]] = {}
         for mcm in mcms:
@@ -338,7 +337,7 @@ class TestBetfairParsingStreaming:
 
 
 class TestBetfairParsing:
-    def setup(self):
+    def setup(self) -> None:
         # Fixture Setup
         self.loop = asyncio.new_event_loop()
         self.clock = LiveClock()
@@ -372,7 +371,7 @@ class TestBetfairParsing:
         result = order_submit_to_place_order_params(command=command, instrument=self.instrument)
         expected = PlaceOrders.with_params(
             request_id=result.id,
-            market_id="1.179082386",
+            market_id="1-179082386",
             instructions=[
                 PlaceInstruction(
                     order_type=OrderType.LIMIT,
@@ -389,7 +388,7 @@ class TestBetfairParsing:
                     customer_order_ref="O-20210410-022422-001-001-1",
                 ),
             ],
-            customer_ref="038990c619d2b5c837a6fe91f9b7b9ed",
+            customer_ref="2d89666b1a1e4a75b1934eb3b454c757",
             market_version=None,
             customer_strategy_ref="4827311aa8c4c74",
             async_=False,
@@ -412,9 +411,9 @@ class TestBetfairParsing:
         )
         expected = ReplaceOrders.with_params(
             request_id=result.id,
-            market_id="1.179082386",
+            market_id="1-179082386",
             instructions=[ReplaceInstruction(bet_id=1, new_price=1.35)],
-            customer_ref="038990c619d2b5c837a6fe91f9b7b9ed",
+            customer_ref="2d89666b1a1e4a75b1934eb3b454c757",
             market_version=None,
             async_=False,
         )
@@ -431,9 +430,9 @@ class TestBetfairParsing:
         )
         expected = CancelOrders.with_params(
             request_id=result.id,
-            market_id="1.179082386",
+            market_id="1-179082386",
             instructions=[CancelInstruction(bet_id=228302937743, size_reduction=None)],
-            customer_ref="038990c619d2b5c837a6fe91f9b7b9ed",
+            customer_ref="2d89666b1a1e4a75b1934eb3b454c757",
         )
         assert result == expected
         assert msgspec.json.decode(msgspec.json.encode(result), type=CancelOrders) == expected
@@ -698,7 +697,7 @@ class TestBetfairParsing:
         ]
         assert len(starting_prices) == 8
         assert starting_prices[0].instrument_id == InstrumentId.from_str(
-            "1.208011084-45967562-None.BETFAIR",
+            "1-208011084-45967562-None.BETFAIR",
         )
         assert starting_prices[0].bsp == 2.0008034621107256
 
@@ -711,7 +710,7 @@ class TestBetfairParsing:
             for upd in updates
             if isinstance(upd, CustomData)
             and isinstance(upd.data, BSPOrderBookDelta)
-            and upd.data.instrument_id == InstrumentId.from_str("1.205880280-49892033-None.BETFAIR")
+            and upd.data.instrument_id == InstrumentId.from_str("1-205880280-49892033-None.BETFAIR")
         ]
         assert len(single_instrument_bsp_updates) == 1
 

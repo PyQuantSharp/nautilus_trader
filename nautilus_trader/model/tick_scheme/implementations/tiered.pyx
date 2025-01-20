@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -103,7 +103,7 @@ cdef class TieredTickScheme(TickScheme):
         """
         Condition.not_negative(n, "n")
         cdef int idx = self.find_tick_index(value)
-        Condition.true(idx + n <= self.tick_count, f"n={n} beyond ask tick bound")
+        Condition.is_true(idx + n <= self.tick_count, f"n={n} beyond ask tick bound")
         return self.ticks[idx + n]
 
     cpdef Price next_bid_price(self, double value, int n=0):
@@ -126,7 +126,7 @@ cdef class TieredTickScheme(TickScheme):
         """
         Condition.not_negative(n, "n")
         cdef int idx = self.find_tick_index(value)
-        Condition.true((idx - n) > 0, f"n={n} beyond bid tick bound")
+        Condition.is_true((idx - n) > 0, f"n={n} beyond bid tick bound")
         if self.ticks[idx].as_double() == value:
             return self.ticks[idx - n]
         return self.ticks[idx - 1 - n]

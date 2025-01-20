@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -16,7 +16,7 @@
 use std::fs;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use nautilus_model::data::{quote::QuoteTick, trade::TradeTick};
+use nautilus_model::data::{QuoteTick, TradeTick};
 use nautilus_persistence::backend::session::{DataBackendSession, QueryResult};
 
 fn single_stream_bench(c: &mut Criterion) {
@@ -24,7 +24,8 @@ fn single_stream_bench(c: &mut Criterion) {
     group.sample_size(10);
     let chunk_size = 5000;
     // about 10 M records
-    let file_path = "../../bench_data/quotes_0005.parquet";
+    // let file_path = "../../bench_data/quotes_0005.parquet";
+    let file_path = "../../bench_data/quotes_0005_high_precision.parquet";
 
     group.bench_function("persistence v2", |b| {
         b.iter_batched_ref(

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,14 +15,10 @@
 
 import asyncio
 import copy
-import platform
 import socket
 import sys
-import time
 import traceback
 from collections import deque
-from platform import python_version
-from threading import Timer as TimerThread
 from typing import Any
 from typing import Callable
 
@@ -50,6 +46,7 @@ from libc.stdint cimport uint64_t
 from libc.stdio cimport printf
 
 from nautilus_trader.common.messages cimport ComponentStateChanged
+from nautilus_trader.common.messages cimport ShutdownSystem
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.core.datetime cimport dt_to_unix_nanos
 from nautilus_trader.core.datetime cimport maybe_dt_to_unix_nanos
@@ -59,6 +56,7 @@ from nautilus_trader.core.message cimport Event
 from nautilus_trader.core.rust.common cimport ComponentState
 from nautilus_trader.core.rust.common cimport ComponentTrigger
 from nautilus_trader.core.rust.common cimport LogColor
+from nautilus_trader.core.rust.common cimport LogGuard_API
 from nautilus_trader.core.rust.common cimport LogLevel
 from nautilus_trader.core.rust.common cimport TimeEventHandler_t
 from nautilus_trader.core.rust.common cimport component_state_from_cstr
@@ -82,7 +80,7 @@ from nautilus_trader.core.rust.common cimport log_color_from_cstr
 from nautilus_trader.core.rust.common cimport log_color_to_cstr
 from nautilus_trader.core.rust.common cimport log_level_from_cstr
 from nautilus_trader.core.rust.common cimport log_level_to_cstr
-from nautilus_trader.core.rust.common cimport logger_flush
+from nautilus_trader.core.rust.common cimport logger_drop
 from nautilus_trader.core.rust.common cimport logger_log
 from nautilus_trader.core.rust.common cimport logging_clock_set_realtime_mode
 from nautilus_trader.core.rust.common cimport logging_clock_set_static_mode
@@ -93,9 +91,6 @@ from nautilus_trader.core.rust.common cimport logging_is_initialized
 from nautilus_trader.core.rust.common cimport logging_log_header
 from nautilus_trader.core.rust.common cimport logging_log_sysinfo
 from nautilus_trader.core.rust.common cimport logging_shutdown
-from nautilus_trader.core.rust.common cimport msgbus_drop
-from nautilus_trader.core.rust.common cimport msgbus_new
-from nautilus_trader.core.rust.common cimport msgbus_publish_external
 from nautilus_trader.core.rust.common cimport test_clock_advance_time
 from nautilus_trader.core.rust.common cimport test_clock_cancel_timer
 from nautilus_trader.core.rust.common cimport test_clock_cancel_timers
@@ -171,7 +166,7 @@ cdef class Clock:
 
     cpdef double timestamp(self):
         """
-        Return the current UNIX time in seconds.
+        Return the current UNIX timestamp in seconds.
 
         Returns
         -------
@@ -186,7 +181,7 @@ cdef class Clock:
 
     cpdef uint64_t timestamp_ms(self):
         """
-        Return the current UNIX time in milliseconds (ms).
+        Return the current UNIX timestamp in milliseconds (ms).
 
         Returns
         -------
@@ -199,9 +194,24 @@ cdef class Clock:
         """
         raise NotImplementedError("method `timestamp_ms` must be implemented in the subclass")  # pragma: no cover
 
+    cpdef uint64_t timestamp_us(self):
+        """
+        Return the current UNIX timestamp in microseconds (μs).
+
+        Returns
+        -------
+        uint64_t
+
+        References
+        ----------
+        https://en.wikipedia.org/wiki/Unix_time
+
+        """
+        raise NotImplementedError("method `timestamp_us` must be implemented in the subclass")  # pragma: no cover
+
     cpdef uint64_t timestamp_ns(self):
         """
-        Return the current UNIX time in nanoseconds (ns).
+        Return the current UNIX timestamp in nanoseconds (ns).
 
         Returns
         -------
@@ -248,6 +258,8 @@ cdef class Clock:
         """
         Register the given handler as the clocks default handler.
 
+        Parameters
+        ----------
         handler : Callable[[TimeEvent], None]
             The handler to register.
 
@@ -285,6 +297,7 @@ cdef class Clock:
         str name,
         datetime alert_time,
         callback: Callable[[TimeEvent], None] = None,
+        bint override = False,
     ):
         """
         Set a time alert for the given time.
@@ -301,6 +314,8 @@ cdef class Clock:
             The time for the alert.
         callback : Callable[[TimeEvent], None], optional
             The callback to receive time events.
+        override: bool
+            If override is set to True an alert with a given name can be overwritten if it exists already.
 
         Raises
         ------
@@ -319,6 +334,9 @@ cdef class Clock:
         time event will be generated (rather than being invalid and failing a condition check).
 
         """
+        if override and self.next_time_ns(name) > 0:
+            self.cancel_timer(name)
+
         self.set_time_alert_ns(
             name=name,
             alert_time_ns=dt_to_unix_nanos(alert_time),
@@ -343,7 +361,7 @@ cdef class Clock:
         name : str
             The name for the alert (must be unique for this clock).
         alert_time_ns : uint64_t
-            The UNIX time (nanoseconds) for the alert.
+            The UNIX timestamp (nanoseconds) for the alert.
         callback : Callable[[TimeEvent], None], optional
             The callback to receive time events.
 
@@ -444,9 +462,9 @@ cdef class Clock:
         interval_ns : uint64_t
             The time interval (nanoseconds) for the timer.
         start_time_ns : uint64_t
-            The start UNIX time (nanoseconds) for the timer.
+            The start UNIX timestamp (nanoseconds) for the timer.
         stop_time_ns : uint64_t
-            The stop UNIX time (nanoseconds) for the timer.
+            The stop UNIX timestamp (nanoseconds) for the timer.
         callback : Callable[[TimeEvent], None], optional
             The callback to receive time events.
 
@@ -539,13 +557,25 @@ cpdef void remove_instance_component_clocks(UUID4 instance_id):
     _COMPONENT_CLOCKS.pop(instance_id, None)
 
 
+# Global backtest force stop flag
+_FORCE_STOP = False
+
+cpdef void set_backtest_force_stop(bint value):
+    global FORCE_STOP
+    FORCE_STOP = value
+
+
+cpdef bint is_backtest_force_stop():
+    return FORCE_STOP
+
+
 cdef class TestClock(Clock):
     """
     Provides a monotonic clock for backtesting and unit testing.
 
     """
 
-    __test__ = False  # Required so pytest does not consider this a test class
+    __test__ = False  # Prevents pytest from collecting this as a test class
 
     def __init__(self):
         self._mem = test_clock_new()
@@ -567,6 +597,9 @@ cdef class TestClock(Clock):
 
     cpdef uint64_t timestamp_ms(self):
         return test_clock_timestamp_ms(&self._mem)
+
+    cpdef uint64_t timestamp_us(self):
+        return test_clock_timestamp_us(&self._mem)
 
     cpdef uint64_t timestamp_ns(self):
         return test_clock_timestamp_ns(&self._mem)
@@ -609,8 +642,8 @@ cdef class TestClock(Clock):
         if start_time_ns == 0:
             start_time_ns = ts_now
         if stop_time_ns:
-            Condition.true(stop_time_ns > ts_now, "`stop_time_ns` was < `ts_now`")
-            Condition.true(start_time_ns + interval_ns <= stop_time_ns, "`start_time_ns` + `interval_ns` was > `stop_time_ns`")
+            Condition.is_true(stop_time_ns > ts_now, "`stop_time_ns` was < `ts_now`")
+            Condition.is_true(start_time_ns + interval_ns <= stop_time_ns, "`start_time_ns` + `interval_ns` was > `stop_time_ns`")
 
         test_clock_set_timer(
             &self._mem,
@@ -641,13 +674,13 @@ cdef class TestClock(Clock):
         Parameters
         ----------
         to_time_ns : uint64_t
-            The UNIX time (nanoseconds) to set.
+            The UNIX timestamp (nanoseconds) to set.
 
         """
         test_clock_set_time(&self._mem, to_time_ns)
 
     cdef CVec advance_time_c(self, uint64_t to_time_ns, bint set_time=True):
-        Condition.true(to_time_ns >= test_clock_timestamp_ns(&self._mem), "to_time_ns was < time_ns (not monotonic)")
+        Condition.is_true(to_time_ns >= test_clock_timestamp_ns(&self._mem), "to_time_ns was < time_ns (not monotonic)")
 
         return <CVec>test_clock_advance_time(&self._mem, to_time_ns, set_time)
 
@@ -658,7 +691,7 @@ cdef class TestClock(Clock):
         Parameters
         ----------
         to_time_ns : uint64_t
-            The UNIX time (nanoseconds) to advance the clock to.
+            The UNIX timestamp (nanoseconds) to advance the clock to.
         set_time : bool
             If the clock should also be set to the given `to_time_ns`.
 
@@ -733,6 +766,9 @@ cdef class LiveClock(Clock):
     cpdef uint64_t timestamp_ms(self):
         return live_clock_timestamp_ms(&self._mem)
 
+    cpdef uint64_t timestamp_us(self):
+        return live_clock_timestamp_us(&self._mem)
+
     cpdef uint64_t timestamp_ns(self):
         return live_clock_timestamp_ns(&self._mem)
 
@@ -770,20 +806,12 @@ cdef class LiveClock(Clock):
         uint64_t stop_time_ns,
         callback: Callable[[TimeEvent], None] | None = None,
     ):
-        Condition.not_in(name, self.timer_names, "name", "self.timer_names")
+        Condition.valid_string(name, "name")
         Condition.not_in(name, self.timer_names, "name", "self.timer_names")
         Condition.positive_int(interval_ns, "interval_ns")
 
         if callback is not None:
             callback = create_pyo3_conversion_wrapper(callback)
-
-        cdef uint64_t ts_now = self.timestamp_ns()  # Call here for greater accuracy
-
-        if start_time_ns == 0:
-            start_time_ns = ts_now
-        if stop_time_ns:
-            Condition.true(stop_time_ns > ts_now, "stop_time was < ts_now")
-            Condition.true(start_time_ns + interval_ns <= stop_time_ns, "start_time + interval was > stop_time")
 
         live_clock_set_timer(
             &self._mem,
@@ -831,9 +859,9 @@ cdef class TimeEvent(Event):
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the time event occurred.
+        UNIX timestamp (nanoseconds) when the time event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     """
 
     def __init__(
@@ -871,10 +899,10 @@ cdef class TimeEvent(Event):
         return ustr_to_pystr(self._mem.name)
 
     def __eq__(self, TimeEvent other) -> bool:
-        return self.to_str() == other.to_str()
+        return self.id == other.id
 
     def __hash__(self) -> int:
-        return hash(self.to_str())
+        return hash(self.id)
 
     def __str__(self) -> str:
         return self.to_str()
@@ -911,7 +939,7 @@ cdef class TimeEvent(Event):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -923,7 +951,7 @@ cdef class TimeEvent(Event):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1023,7 +1051,19 @@ cpdef str log_level_to_str(LogLevel value):
     return cstr_to_pystr(log_level_to_cstr(value))
 
 
-cpdef void init_logging(
+cdef class LogGuard:
+    """
+    Provides a `LogGuard` which serves as a token to signal the initialization
+    of the logging system. It also ensures that the global logger is flushed
+    of any buffered records when the instance is destroyed.
+    """
+
+    def __del__(self) -> None:
+        if self._mem._0 != NULL:
+            logger_drop(self._mem)
+
+
+cpdef LogGuard init_logging(
     TraderId trader_id = None,
     str machine_id = None,
     UUID4 instance_id = None,
@@ -1040,10 +1080,11 @@ cpdef void init_logging(
     """
     Initialize the logging system.
 
-    Acts as an interface into the logging system implemented in Rust with the `log` crate.
+    Provides an interface into the logging system implemented in Rust.
 
     This function should only be called once per process, at the beginning of the application
-    run.
+    run. Subsequent calls will raise a `RuntimeError`, as there can only be one `LogGuard`
+    per initialized system.
 
     Parameters
     ----------
@@ -1076,6 +1117,15 @@ cpdef void init_logging(
     print_config : bool, default False
         If the core logging configuration should be printed to stdout on initialization.
 
+    Returns
+    -------
+    LogGuard
+
+    Raises
+    ------
+    RuntimeError
+        If the logging system has already been initialized.
+
     """
     if trader_id is None:
         trader_id = TraderId("TRADER-000")
@@ -1084,20 +1134,26 @@ cpdef void init_logging(
     if instance_id is None:
         instance_id = UUID4()
 
-    if not logging_is_initialized():
-        logging_init(
-            trader_id._mem,
-            instance_id._mem,
-            level_stdout,
-            level_file,
-            pystr_to_cstr(directory) if directory else NULL,
-            pystr_to_cstr(file_name) if file_name else NULL,
-            pystr_to_cstr(file_format) if file_format else NULL,
-            pybytes_to_cstr(msgspec.json.encode(component_levels)) if component_levels else NULL,
-            colors,
-            bypass,
-            print_config,
-        )
+    if logging_is_initialized():
+        raise RuntimeError("Logging system already initialized")
+
+    cdef LogGuard_API log_guard_api = logging_init(
+        trader_id._mem,
+        instance_id._mem,
+        level_stdout,
+        level_file,
+        pystr_to_cstr(directory) if directory else NULL,
+        pystr_to_cstr(file_name) if file_name else NULL,
+        pystr_to_cstr(file_format) if file_format else NULL,
+        pybytes_to_cstr(msgspec.json.encode(component_levels)) if component_levels else NULL,
+        colors,
+        bypass,
+        print_config,
+    )
+
+    cdef LogGuard log_guard = LogGuard.__new__(LogGuard)
+    log_guard._mem = log_guard_api
+    return log_guard
 
 
 LOGGING_PYO3 = False
@@ -1153,7 +1209,7 @@ cdef class Logger:
         LogColor color = LogColor.NORMAL,
     ):
         """
-        Log the given debug level message.
+        Log the given DEBUG level message.
 
         Parameters
         ----------
@@ -1187,7 +1243,7 @@ cdef class Logger:
         LogColor color = LogColor.NORMAL,
     ):
         """
-        Log the given information level message.
+        Log the given INFO level message.
 
         Parameters
         ----------
@@ -1222,7 +1278,7 @@ cdef class Logger:
         LogColor color = LogColor.YELLOW,
     ):
         """
-        Log the given warning level message.
+        Log the given WARNING level message.
 
         Parameters
         ----------
@@ -1257,7 +1313,7 @@ cdef class Logger:
         LogColor color = LogColor.RED,
     ):
         """
-        Log the given error level message.
+        Log the given ERROR level message.
 
         Parameters
         ----------
@@ -1879,6 +1935,28 @@ cdef class Component:
             action=None,
         )
 
+    cpdef void shutdown_system(self, str reason = None):
+        """
+        Initiate a system-wide shutdown by generating and publishing a `ShutdownSystem` command.
+
+        The command is handled by the system's `NautilusKernel`, which will invoke either `stop` (synchronously)
+        or `stop_async` (asynchronously) depending on the execution context and the presence of an active event loop.
+
+        Parameters
+        ----------
+        reason : str, optional
+            The reason for issuing the shutdown command.
+
+        """
+        cdef ShutdownSystem command = ShutdownSystem(
+            trader_id=self.trader_id,
+            component_id=self.id,
+            reason=reason,
+            command_id=UUID4(),
+            ts_init=self._clock.timestamp_ns(),
+        )
+        self._msgbus.publish("commands.system.shutdown", command)
+
 # --------------------------------------------------------------------------------------------------
 
     cdef void _trigger_fsm(
@@ -1890,13 +1968,13 @@ cdef class Component:
         try:
             self._fsm.trigger(trigger)
         except InvalidStateTrigger as e:
-            self._log.error(f"{repr(e)} state {self._fsm.state_string_c()}.")
+            self._log.error(f"{repr(e)} state {self._fsm.state_string_c()}")
             return  # Guards against invalid state
 
         if is_transitory:
-            self._log.debug(f"{self._fsm.state_string_c()}...")
+            self._log.debug(f"{self._fsm.state_string_c()}")
         else:
-            self._log.info(f"{self._fsm.state_string_c()}.")
+            self._log.info(f"{self._fsm.state_string_c()}")
 
         if action is not None:
             action()
@@ -1955,10 +2033,8 @@ cdef class MessageBus:
         The custom name for the message bus.
     serializer : Serializer, optional
         The serializer for database operations.
-    snapshot_orders : bool, default False
-        If order state snapshots should be published externally.
-    snapshot_positions : bool, default False
-        If position state snapshots should be published externally.
+    database : nautilus_pyo3.RedisMessageBusDatabase, optional
+        The backing database for the message bus.
     config : MessageBusConfig, optional
         The configuration for the message bus.
 
@@ -1980,10 +2056,9 @@ cdef class MessageBus:
         UUID4 instance_id = None,
         str name = None,
         Serializer serializer = None,
-        bint snapshot_orders: bool = False,
-        bint snapshot_positions: bool = False,
+        database: nautilus_pyo3.RedisMessageBusDatabase | None = None,
         config: Any | None = None,
-    ):
+    ) -> None:
         # Temporary fix for import error
         from nautilus_trader.common.config import MessageBusConfig
 
@@ -1998,18 +2073,17 @@ cdef class MessageBus:
 
         self.trader_id = trader_id
         self.serializer = serializer
-        self.has_backing = config.database is not None
-        self.snapshot_orders = snapshot_orders
-        self.snapshot_positions = snapshot_positions
+        self.has_backing = database is not None
 
         self._clock = clock
         self._log = Logger(name)
+        self._database = database
 
         # Validate configuration
         if config.buffer_interval_ms and config.buffer_interval_ms > 1000:
             self._log.warning(
                 f"High `buffer_interval_ms` at {config.buffer_interval_ms}, "
-                "recommended range is [10, 1000] milliseconds.",
+                "recommended range is [10, 1000] milliseconds",
             )
 
         # Configuration
@@ -2029,31 +2103,21 @@ cdef class MessageBus:
         if config.types_filter is not None:
             config.types_filter.clear()
 
-        self._mem = msgbus_new(
-            pystr_to_cstr(trader_id.value),
-            pystr_to_cstr(name) if name else NULL,
-            pystr_to_cstr(instance_id.to_str()),
-            pybytes_to_cstr(msgspec.json.encode(config)),
-        )
-
         self._endpoints: dict[str, Callable[[Any], None]] = {}
         self._patterns: dict[str, Subscription[:]] = {}
         self._subscriptions: dict[Subscription, list[str]] = {}
         self._correlation_index: dict[UUID4, Callable[[Any], None]] = {}
-        self._has_backing = config.database is not None
         self._publishable_types = tuple(_EXTERNAL_PUBLISHABLE_TYPES)
         if types_filter is not None:
             self._publishable_types = tuple(o for o in _EXTERNAL_PUBLISHABLE_TYPES if o not in types_filter)
+        self._streaming_types = set()
+        self._resolved = False
 
         # Counters
         self.sent_count = 0
         self.req_count = 0
         self.res_count = 0
         self.pub_count = 0
-
-    def __del__(self) -> None:
-        if self._mem._0 != NULL:
-            msgbus_drop(self._mem)
 
     cpdef list endpoints(self):
         """
@@ -2162,6 +2226,30 @@ cdef class MessageBus:
 
         return request_id in self._correlation_index
 
+    cpdef bint is_streaming_type(self, type cls):
+        """
+        Return whether the given type has been registered for external message streaming.
+
+        Returns
+        -------
+        bool
+            True if registered, else False.
+
+        """
+        return cls in self._streaming_types
+
+    cpdef void dispose(self):
+        """
+        Dispose of the message bus which will close the internal channel and thread.
+
+        """
+        self._log.debug("Closing message bus")
+
+        if self._database is not None:
+            self._database.close()
+
+        self._log.info("Closed message bus")
+
     cpdef void register(self, str endpoint, handler: Callable[[Any], None]):
         """
         Register the given `handler` to receive messages at the `endpoint` address.
@@ -2189,7 +2277,7 @@ cdef class MessageBus:
 
         self._endpoints[endpoint] = handler
 
-        self._log.debug(f"Added endpoint '{endpoint}' {handler}.")
+        self._log.debug(f"Added endpoint '{endpoint}' {handler}")
 
     cpdef void deregister(self, str endpoint, handler: Callable[[Any], None]):
         """
@@ -2221,7 +2309,23 @@ cdef class MessageBus:
 
         del self._endpoints[endpoint]
 
-        self._log.debug(f"Removed endpoint '{endpoint}' {handler}.")
+        self._log.debug(f"Removed endpoint '{endpoint}' {handler}")
+
+    cpdef void add_streaming_type(self, type cls):
+        """
+        Register the given type for external->internal message bus streaming.
+
+        Parameters
+        ----------
+        type : cls
+            The type to add for streaming.
+
+        """
+        Condition.not_none(cls, "cls")
+
+        self._streaming_types.add(cls)
+
+        self._log.debug(f"Added streaming type {cls}")
 
     cpdef void send(self, str endpoint, msg: Any):
         """
@@ -2241,7 +2345,7 @@ cdef class MessageBus:
         handler = self._endpoints.get(endpoint)
         if handler is None:
             self._log.error(
-                f"Cannot send message: no endpoint registered at '{endpoint}'.",
+                f"Cannot send message: no endpoint registered at '{endpoint}'",
             )
             return  # Cannot send
 
@@ -2268,7 +2372,7 @@ cdef class MessageBus:
         if request.id in self._correlation_index:
             self._log.error(
                 f"Cannot handle request: "
-                f"duplicate ID {request.id} found in correlation index.",
+                f"duplicate ID {request.id} found in correlation index",
             )
             return  # Do not handle duplicates
 
@@ -2277,7 +2381,7 @@ cdef class MessageBus:
         handler = self._endpoints.get(endpoint)
         if handler is None:
             self._log.error(
-                f"Cannot handle request: no endpoint registered at '{endpoint}'.",
+                f"Cannot handle request: no endpoint registered at '{endpoint}'",
             )
             return  # Cannot handle
 
@@ -2302,7 +2406,7 @@ cdef class MessageBus:
         if callback is None:
             self._log.error(
                 f"Cannot handle response: "
-                f"callback not found for correlation_id {response.correlation_id}.",
+                f"callback not found for correlation_id {response.correlation_id}",
             )
             return  # Cannot handle
 
@@ -2359,7 +2463,7 @@ cdef class MessageBus:
 
         # Check if already exists
         if sub in self._subscriptions:
-            self._log.debug(f"{sub} already exists.")
+            self._log.debug(f"{sub} already exists")
             return
 
         cdef list matches = []
@@ -2377,7 +2481,9 @@ cdef class MessageBus:
 
         self._subscriptions[sub] = sorted(matches)
 
-        self._log.debug(f"Added {sub}.")
+        self._resolved = False
+
+        self._log.debug(f"Added {sub}")
 
     cpdef void unsubscribe(self, str topic, handler: Callable[[Any], None]):
         """
@@ -2408,7 +2514,7 @@ cdef class MessageBus:
 
         # Check if exists
         if patterns is None:
-            self._log.warning(f"{sub} not found.")
+            self._log.warning(f"{sub} not found")
             return
 
         cdef str pattern
@@ -2420,9 +2526,11 @@ cdef class MessageBus:
 
         del self._subscriptions[sub]
 
-        self._log.debug(f"Removed {sub}.")
+        self._resolved = False
 
-    cpdef void publish(self, str topic, msg: Any):
+        self._log.debug(f"Removed {sub}")
+
+    cpdef void publish(self, str topic, msg: Any, bint external_pub = True):
         """
         Publish the given message for the given `topic`.
 
@@ -2435,21 +2543,25 @@ cdef class MessageBus:
             The topic to publish on.
         msg : object
             The message to publish.
+        external_pub : bool, default True
+            If the message should also be published externally.
 
         """
-        self.publish_c(topic, msg)
+        self.publish_c(topic, msg, external_pub)
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef void publish_c(self, str topic, msg: Any):
+    cdef void publish_c(self, str topic, msg: Any, bint external_pub = True):
         Condition.not_none(topic, "topic")
         Condition.not_none(msg, "msg")
 
         # Get all subscriptions matching topic pattern
+        # Note: cannot use truthiness on array
         cdef Subscription[:] subs = self._patterns.get(topic)
-        if subs is None or len(subs) == 0:  # Cannot use truthiness on array
+        if subs is None or (not self._resolved and len(subs) == 0):
             # Add the topic pattern and get matching subscribers
             subs = self._resolve_subscriptions(topic)
+            self._resolved = True
 
         # Send message to all matched subscribers
         cdef:
@@ -2461,16 +2573,15 @@ cdef class MessageBus:
 
         # Publish externally (if configured)
         cdef bytes payload_bytes
-        if self._has_backing and self.serializer is not None:
+        if external_pub and self._database is not None and not self._database.is_closed() and self.serializer is not None:
             if isinstance(msg, self._publishable_types):
                 if isinstance(msg, bytes):
                     payload_bytes = msg
                 else:
                     payload_bytes = self.serializer.serialize(msg)
-                msgbus_publish_external(
-                    &self._mem,
-                    pystr_to_cstr(topic),
-                    pybytes_to_cstr(payload_bytes),
+                self._database.publish(
+                    topic,
+                    payload_bytes,
                 )
 
         self.pub_count += 1
@@ -2497,7 +2608,14 @@ cdef class MessageBus:
         return subs_array
 
 
+cdef inline bint contains_wildcard(str topic_or_pattern):
+    return '?' in topic_or_pattern or '*' in topic_or_pattern
+
+
 cdef inline bint is_matching(str topic, str pattern):
+    if not contains_wildcard(topic) and not contains_wildcard(pattern):
+        return topic == pattern
+
     # Get length of string and wildcard pattern
     cdef int n = len(topic)
     cdef int m = len(pattern)
@@ -2685,7 +2803,7 @@ cdef class Throttler:
         self.recv_count = 0
         self.sent_count = 0
 
-        self._log.info("READY.")
+        self._log.info("READY")
 
     @property
     def qsize(self) -> int:
@@ -2772,12 +2890,12 @@ cdef class Throttler:
             # Buffer
             self._buffer.appendleft(msg)
             timer_target = self._process
-            self._log.warning(f"Buffering {msg}.")
+            self._log.warning(f"Buffering {msg}")
         else:
             # Drop
             self._output_drop(msg)
             timer_target = self._resume
-            self._log.warning(f"Dropped {msg}.")
+            self._log.warning(f"Dropped {msg}")
 
         if not self.is_limiting:
             self._set_timer(timer_target)

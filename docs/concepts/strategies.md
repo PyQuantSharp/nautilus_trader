@@ -1,25 +1,31 @@
 # Strategies
 
 The heart of the NautilusTrader user experience is in writing and working with
-trading strategies. Defining a trading strategy is achieved by inheriting the `Strategy` class, 
+trading strategies. Defining a trading strategy is achieved by inheriting the `Strategy` class,
 and implementing the methods required by the users trading strategy logic.
+
+Strategies can be added to Nautilus systems with any [environment context](/concepts/architecture.md#environment-contexts) and will start sending commands and receiving
+events based on their logic as soon as the system starts.
 
 Using the basic building blocks of data ingest, event handling, and order management (which we will discuss
 below), it's possible to implement any type of trading strategy including directional, momentum, re-balancing,
 pairs, market making etc.
 
-Refer to the `Strategy` in the [API Reference](../api_reference/trading.md) for a complete description
+:::info
+See the `Strategy` [API Reference](../api_reference/trading.md) for a complete description
 of all available methods.
+:::
 
 There are two main parts of a Nautilus trading strategy:
 - The strategy implementation itself, defined by inheriting the `Strategy` class
 - The _optional_ strategy configuration, defined by inheriting the `StrategyConfig` class
 
-```{note}
-Once a strategy is defined, the same source can be used for backtesting and live trading.
-```
+:::tip
+Once a strategy is defined, the same source code can be used for backtesting and live trading.
+:::
 
 The main capabilities of a strategy include:
+
 - Historical data requests
 - Live data feed subscriptions
 - Setting time alerts or timers
@@ -27,7 +33,8 @@ The main capabilities of a strategy include:
 - Portfolio access
 - Creating and managing orders and positions
 
-## Implementation
+## Strategy implementation
+
 Since a trading strategy is a class which inherits from `Strategy`, you must define
 a constructor where you can handle initialization. Minimally the base/super class needs to be initialized:
 
@@ -39,23 +46,24 @@ class MyStrategy(Strategy):
         super().__init__()  # <-- the super class must be called to initialize the strategy
 ```
 
-```{warning}
-Do not call components such as `clock` and `logger` in the `__init__` constructor (which is prior to registration).
-This is because the systems clock and MPSC channel thread for logging have not yet been setup on initialization.
-```
-
 From here, you can implement handlers as necessary to perform actions based on state transitions
 and events.
 
+:::warning
+Do not call components such as `clock` and `logger` in the `__init__` constructor (which is prior to registration).
+This is because the systems clock and logging system have not yet been initialized.
+:::
+
 ### Handlers
 
-Handlers are methods within the `Strategy` class which may perform actions based on different types of events or state changes.
-These methods are named with the prefix `on_*`. You can choose to implement any or all of these handler 
-methods depending on the specific needs of your strategy.
+Handlers are methods within the `Strategy` class which may perform actions based on different types of events or on state changes.
+These methods are named with the prefix `on_*`. You can choose to implement any or all of these handler
+methods depending on the specific goals and needs of your strategy.
 
-The purpose of having multiple handlers for similar types of events is to provide flexibility in handling granularity. 
+The purpose of having multiple handlers for similar types of events is to provide flexibility in handling granularity.
 This means that you can choose to respond to specific events with a dedicated handler, or use a more generic
-handler to react to a range of related events (using switch type logic). The call sequence is generally most specific to most general.
+handler to react to a range of related events (using typical switch statement logic).
+The handlers are called in sequence from the most specific to the most general.
 
 #### Stateful actions
 
@@ -72,25 +80,24 @@ def on_reset(self) -> None:
 def on_dispose(self) -> None:
 def on_degrade(self) -> None:
 def on_fault(self) -> None:
-def on_save(self) -> dict[str, bytes]:  # Returns user defined dictionary of state to be saved
+def on_save(self) -> dict[str, bytes]:  # Returns user-defined dictionary of state to be saved
 def on_load(self, state: dict[str, bytes]) -> None:
 ```
 
 #### Data handling
 
-These handlers deal with market data updates.
-You can use these handlers to define actions upon receiving new market data.
+These handlers receive data updates, including built-in market data and custom user-defined data.
+You can use these handlers to define actions upon receiving data object instances.
 
 ```python
-from nautilus_trader.core.data import Data
-from nautilus_trader.model.book import OrderBook
-from nautilus_trader.model.data import Bar
-from nautilus_trader.model.data import QuoteTick
-from nautilus_trader.model.data import TradeTick
-from nautilus_trader.model.data import OrderBookDeltas
-from nautilus_trader.model.data import InstrumentClose
-from nautilus_trader.model.data import InstrumentStatus
-from nautilus_trader.model.data import VenueStatus
+from nautilus_trader.core import Data
+from nautilus_trader.model import OrderBook
+from nautilus_trader.model import Bar
+from nautilus_trader.model import QuoteTick
+from nautilus_trader.model import TradeTick
+from nautilus_trader.model import OrderBookDeltas
+from nautilus_trader.model import InstrumentClose
+from nautilus_trader.model import InstrumentStatus
 from nautilus_trader.model.instruments import Instrument
 
 def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
@@ -98,17 +105,17 @@ def on_order_book(self, order_book: OrderBook) -> None:
 def on_quote_tick(self, tick: QuoteTick) -> None:
 def on_trade_tick(self, tick: TradeTick) -> None:
 def on_bar(self, bar: Bar) -> None:
-def on_venue_status(self, data: VenueStatus) -> None:
 def on_instrument(self, instrument: Instrument) -> None:
 def on_instrument_status(self, data: InstrumentStatus) -> None:
 def on_instrument_close(self, data: InstrumentClose) -> None:
 def on_historical_data(self, data: Data) -> None:
 def on_data(self, data: Data) -> None:  # Custom data passed to this handler
+def on_signal(self, signal: Data) -> None:  # Custom signals passed to this handler
 ```
 
 #### Order management
 
-Handlers in this category are triggered by events related to orders.
+These handlers receive events related to orders.
 `OrderEvent` type messages are passed to handlers in the following sequence:
 
 1. Specific handler (e.g., `on_order_accepted`, `on_order_rejected`, etc.)
@@ -155,7 +162,7 @@ def on_order_event(self, event: OrderEvent) -> None:  # All order event messages
 
 #### Position management
 
-Handlers in this category are triggered by events related to positions.
+These handlers receive events related to positions.
 `PositionEvent` type messages are passed to handlers in the following sequence:
 
 1. Specific handler (e.g., `on_position_opened`, `on_position_changed`, etc.)
@@ -218,12 +225,12 @@ def on_start(self) -> None:
 
 ### Clock and timers
 
-Strategies have access to a comprehensive `Clock` which provides a number of methods for creating
-different timestamps, as well as setting time alerts or timers.
+Strategies have access to a `Clock` which provides a number of methods for creating
+different timestamps, as well as setting time alerts or timers to trigger `TimeEvent`s.
 
-```{note}
+:::info
 See the `Clock` [API reference](../api_reference/common.md) for a complete list of available methods.
-```
+:::
 
 #### Current timestamps
 
@@ -249,7 +256,7 @@ specified alert time. In a live context, this might be slightly delayed by a few
 
 This example sets a time alert to trigger one minute from the current time:
 ```python
-self.clock.set_alert_time(
+self.clock.set_time_alert(
     name="MyTimeAlert1",
     alert_time=self.clock.utc_now() + pd.Timedelta(minutes=1),
 )
@@ -257,7 +264,7 @@ self.clock.set_alert_time(
 
 #### Timers
 
-Continuous timers can be setup which will generate a `TimeEvent` at regular intervals until the timer expires
+Continuous timers can be set up which will generate a `TimeEvent` at regular intervals until the timer expires
 or is canceled.
 
 This example sets a timer to fire once per minute, starting immediately:
@@ -270,7 +277,7 @@ self.clock.set_timer(
 
 ### Cache access
 
-The traders central `Cache` can be accessed to fetch data and execution objects (orders, positions etc).
+The trader instances central `Cache` can be accessed to fetch data and execution objects (orders, positions etc).
 There are many methods available often with filtering functionality, here we go through some basic use cases.
 
 #### Fetching data
@@ -280,7 +287,7 @@ The following example shows how data can be fetched from the cache (assuming som
 ```python
 last_quote = self.cache.quote_tick(self.instrument_id)
 last_trade = self.cache.trade_tick(self.instrument_id)
-last_bar = self.cache.bar(<SOME_BAR_TYPE>)
+last_bar = self.cache.bar(bar_type)
 ```
 
 #### Fetching execution objects
@@ -288,13 +295,15 @@ last_bar = self.cache.bar(<SOME_BAR_TYPE>)
 The following example shows how individual order and position objects can be fetched from the cache:
 
 ```python
-order = self.cache.order(<SOME_CLIENT_ORDER_ID>)
-position = self.cache.position(<SOME_POSITION_ID>)
+order = self.cache.order(client_order_id)
+position = self.cache.position(position_id)
 
 ```
 
-Refer to the `Cache` in the [API Reference](../api_reference/cache.md) for a complete description
+:::info
+See the `Cache` [API Reference](../api_reference/cache.md) for a complete description
 of all available methods.
+:::
 
 ### Portfolio access
 
@@ -306,11 +315,11 @@ The following shows a general outline of available methods.
 ```python
 import decimal
 
-from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.accounting.accounts.base import Account
-from nautilus_trader.model.objects import Currency
-from nautilus_trader.model.objects import Money
-from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model import Venue
+from nautilus_trader.model import Currency
+from nautilus_trader.model import Money
+from nautilus_trader.model import InstrumentId
 
 def account(self, venue: Venue) -> Account
 
@@ -318,9 +327,11 @@ def balances_locked(self, venue: Venue) -> dict[Currency, Money]
 def margins_init(self, venue: Venue) -> dict[Currency, Money]
 def margins_maint(self, venue: Venue) -> dict[Currency, Money]
 def unrealized_pnls(self, venue: Venue) -> dict[Currency, Money]
+def realized_pnls(self, venue: Venue) -> dict[Currency, Money]
 def net_exposures(self, venue: Venue) -> dict[Currency, Money]
 
 def unrealized_pnl(self, instrument_id: InstrumentId) -> Money
+def realized_pnl(self, instrument_id: InstrumentId) -> Money
 def net_exposure(self, instrument_id: InstrumentId) -> Money
 def net_position(self, instrument_id: InstrumentId) -> decimal.Decimal
 
@@ -330,32 +341,36 @@ def is_flat(self, instrument_id: InstrumentId) -> bool
 def is_completely_flat(self) -> bool
 ```
 
-Refer to the `Portfolio` in the [API Reference](../api_reference/portfolio.md) for a complete description
+:::info
+See the `Portfolio` [API Reference](../api_reference/portfolio.md) for a complete description
 of all available methods.
+:::
 
 #### Reports and analysis
 
-The `Portfolio` also makes a `PortfolioAnalyzer` available, which can be fed with a flexible amount of data 
+The `Portfolio` also makes a `PortfolioAnalyzer` available, which can be fed with a flexible amount of data
 (to accommodate different lookback windows). The analyzer can provide tracking for and generating of performance
 metrics and statistics.
 
-Refer to the `PortfolioAnalyzer` in the [API Reference](../api_reference/analysis.md) for a complete description
+:::info
+See the `PortfolioAnalyzer` [API Reference](../api_reference/analysis.md) for a complete description
 of all available methods.
+:::
 
-```{note}
-Also see the [Porfolio statistics](../concepts/advanced/portfolio_statistics.md) guide.
-```
+:::info
+See the [Porfolio statistics](../concepts/advanced/portfolio_statistics.md) guide.
+:::
 
 ### Trading commands
 
-NautilusTrader offers a comprehensive suite of trading commands, enabling granular order management 
-tailored for algorithmic trading. These commands are essential for executing strategies, managing risk, 
-and ensuring seamless interaction with various trading venues. In the following sections, we will 
+NautilusTrader offers a comprehensive suite of trading commands, enabling granular order management
+tailored for algorithmic trading. These commands are essential for executing strategies, managing risk,
+and ensuring seamless interaction with various trading venues. In the following sections, we will
 delve into the specifics of each command and its use cases.
 
-```{tip}
+:::info
 The [Execution](../concepts/execution.md) guide explains the flow through the system, and can be helpful to read in conjunction with the below.
-```
+:::
 
 #### Submitting orders
 
@@ -385,21 +400,21 @@ def buy(self) -> None:
         order_side=OrderSide.BUY,
         quantity=self.instrument.make_qty(self.trade_size),
         price=self.instrument.make_price(5000.00),
-        emulation_trigger=TriggerType.LAST_TRADE,
+        emulation_trigger=TriggerType.LAST_PRICE,
     )
 
     self.submit_order(order)
 ```
 
-```{note}
-It's possible to specify both order emulation, and an execution algorithm.
-```
+:::info
+You can specify both order emulation and an execution algorithm.
+:::
 
 This example submits a `MARKET` BUY order to a TWAP execution algorithm:
 ```python
 from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.enums import TimeInForce
-from nautilus_trader.model.identifiers import ExecAlgorithmId
+from nautilus_trader.model import ExecAlgorithmId
 
 
 def buy(self) -> None:
@@ -432,9 +447,9 @@ The component a `CancelOrder`, `CancelAllOrders` or `BatchCancelOrders` command 
 - If an `exec_algorithm_id` is specified (with no `emulation_trigger`), and the order is still active within the local system, the command will _firstly_ be sent to the relevant `ExecAlgorithm`
 - Otherwise, the order will _firstly_ be sent to the `ExecutionEngine`
 
-```{note}
+:::info
 Any managed GTD timer will also be canceled after the command has left the strategy.
-```
+:::
 
 The following shows how to cancel an individual order:
 ```python
@@ -468,18 +483,18 @@ Orders can be modified individually when emulated, or *open* on a venue (if supp
 If the order is already *closed* or already pending cancel, then a warning will be logged.
 If the order is currently *open* then the status will become `PENDING_UPDATE`.
 
-```{warning}
+:::warning
 At least one value must differ from the original order for the command to be valid.
-```
+:::
 
 The component a `ModifyOrder` command will flow to for execution depends on the following:
 
 - If the order is currently emulated, the command will _firstly_ be sent to the `OrderEmulator`
 - Otherwise, the order will _firstly_ be sent to the `RiskEngine`
 
-```{note}
+:::info
 Once an order is under the control of an execution algorithm, it cannot be directly modified by a strategy (only canceled).
-```
+:::
 
 The following shows how to modify the size of `LIMIT` BUY order currently *open* on a venue:
 ```python
@@ -491,12 +506,11 @@ self.modify_order(order, new_quantity)
 
 ```
 
-```{note}
+:::info
 The price and trigger price can also be modified (when emulated or supported by a venue).
+:::
 
-```
-
-## Configuration
+## Strategy configuration
 
 The main purpose of a separate configuration class is to provide total flexibility
 over where and how a trading strategy can be instantiated. This includes being able
@@ -505,7 +519,7 @@ and firing up remote live trading possible.
 
 This configuration flexibility is actually opt-in, in that you can actually choose not to have
 any strategy configuration beyond the parameters you choose to pass into your
-strategies' constructor. However, if you would like to run distributed backtests or launch
+strategies' constructor. If you would like to run distributed backtests or launch
 live trading servers remotely, then you will need to define a configuration.
 
 Here is an example configuration:
@@ -513,48 +527,71 @@ Here is an example configuration:
 ```python
 from decimal import Decimal
 from nautilus_trader.config import StrategyConfig
-from nautilus_trader.model.data import BarType
-from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model import Bar, BarType
+from nautilus_trader.model import InstrumentId
 from nautilus_trader.trading.strategy import Strategy
 
 
+# Configuration definition
 class MyStrategyConfig(StrategyConfig):
-    instrument_id: InstrumentId
-    bar_type: BarType
+    instrument_id: InstrumentId   # example value: "ETHUSDT-PERP.BINANCE"
+    bar_type: BarType             # example value: "ETHUSDT-PERP.BINANCE-15-MINUTE[LAST]-EXTERNAL"
     fast_ema_period: int = 10
     slow_ema_period: int = 20
     trade_size: Decimal
     order_id_tag: str
 
-# Here we simply add an instrument ID as a string, to 
-# parameterize the instrument the strategy will trade.
 
+# Strategy definition
 class MyStrategy(Strategy):
     def __init__(self, config: MyStrategyConfig) -> None:
+        # Always initialize the parent Strategy class
+        # After this, configuration is stored and available via `self.config`
         super().__init__(config)
 
-        # Configuration
-        self.instrument_id = InstrumentId.from_str(config.instrument_id)
+        # Custom state variables
+        self.time_started = None
+        self.count_of_processed_bars: int = 0
+
+    def on_start(self) -> None:
+        self.time_started = self.clock.utc_now()    # Remember time, when strategy started
+        self.subscribe_bars(self.config.bar_type)   # See how configuration data are exposed via `self.config`
+
+    def on_bar(self, bar: Bar):
+        self.count_of_processed_bars += 1           # Update count of processed bars
 
 
-# Once a configuration is defined and instantiated, we can pass this to our 
-# trading strategy to initialize.
-
+# Instantiate configuration with specific values. By setting:
+#   - InstrumentId - we parameterize the instrument the strategy will trade.
+#   - BarType - we parameterize bar-data, that strategy will trade.
 config = MyStrategyConfig(
     instrument_id=InstrumentId.from_str("ETHUSDT-PERP.BINANCE"),
-    bar_type=BarType.from_str("ETHUSDT-PERP.BINANCE-1000-TICK[LAST]-INTERNAL"),
+    bar_type=BarType.from_str("ETHUSDT-PERP.BINANCE-15-MINUTE[LAST]-EXTERNAL"),
     trade_size=Decimal(1),
     order_id_tag="001",
 )
 
+# Pass configuration to our trading strategy.
 strategy = MyStrategy(config=config)
-
 ```
 
-```{note}
+When implementing strategies, it's recommended to access configuration values directly through `self.config`.
+This provides clear separation between:
+
+- Configuration data (accessed via `self.config`):
+  - Contains initial settings, that define how the strategy works
+  - Example: `self.config.trade_size`, `self.config.instrument_id`
+
+- Strategy state variables (as direct attributes):
+  - Track any custom state of the strategy
+  - Example: `self.time_started`, `self.count_of_processed_bars`
+
+This separation makes code easier to understand and maintain.
+
+:::note
 Even though it often makes sense to define a strategy which will trade a single
 instrument. The number of instruments a single strategy can work with is only limited by machine resources.
-```
+:::
 
 ### Managed GTD expiry
 
@@ -575,16 +612,16 @@ If you intend running multiple instances of the same strategy, with different
 configurations (such as trading different instruments), then you will need to define
 a unique `order_id_tag` for each of these strategies (as shown above).
 
-```{note}
+:::note
 The platform has built-in safety measures in the event that two strategies share a
 duplicated strategy ID, then an exception will be raised that the strategy ID has already been registered.
-```
+:::
 
 The reason for this is that the system must be able to identify which strategy
 various commands and events belong to. A strategy ID is made up of the
 strategy class name, and the strategies `order_id_tag` separated by a hyphen. For
 example the above config would result in a strategy ID of `MyStrategy-001`.
 
-```{tip}
-See the `StrategyId` [documentation](../api_reference/model/identifiers.md) for further details.
-```
+:::note
+See the `StrategyId` [API Reference](../api_reference/model/identifiers.md) for further details.
+:::

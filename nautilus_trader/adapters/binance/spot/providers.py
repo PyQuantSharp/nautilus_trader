@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,7 +21,7 @@ from nautilus_trader.adapters.binance.common.constants import BINANCE_VENUE
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
 from nautilus_trader.adapters.binance.common.enums import BinanceSymbolFilterType
 from nautilus_trader.adapters.binance.common.schemas.market import BinanceSymbolFilter
-from nautilus_trader.adapters.binance.common.schemas.symbol import BinanceSymbol
+from nautilus_trader.adapters.binance.common.symbol import BinanceSymbol
 from nautilus_trader.adapters.binance.http.client import BinanceHttpClient
 from nautilus_trader.adapters.binance.http.error import BinanceClientError
 from nautilus_trader.adapters.binance.spot.http.market import BinanceSpotMarketHttpAPI
@@ -35,6 +35,7 @@ from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.datetime import millis_to_nanos
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import Symbol
+from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.instruments.currency_pair import CurrencyPair
 from nautilus_trader.model.objects import PRICE_MAX
 from nautilus_trader.model.objects import PRICE_MIN
@@ -47,7 +48,7 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceSpotInstrumentProvider(InstrumentProvider):
     """
-    Provides a means of loading instruments from the `Binance Spot/Margin` exchange.
+    Provides a means of loading instruments from the Binance Spot/Margin exchange.
 
     Parameters
     ----------
@@ -71,13 +72,15 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
         account_type: BinanceAccountType = BinanceAccountType.SPOT,
         is_testnet: bool = False,
         config: InstrumentProviderConfig | None = None,
-    ):
+        venue: Venue = BINANCE_VENUE,
+    ) -> None:
         super().__init__(config=config)
 
         self._clock = clock
         self._client = client
         self._account_type = account_type
         self._is_testnet = is_testnet
+        self._venue = venue
 
         self._http_wallet = BinanceSpotWalletHttpAPI(
             self._client,
@@ -133,10 +136,7 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
 
         # Check all instrument IDs
         for instrument_id in instrument_ids:
-            PyCondition.equal(instrument_id.venue, BINANCE_VENUE, "instrument_id.venue", "BINANCE")
-
-        filters_str = "..." if not filters else f" with filters {filters}..."
-        self._log.info(f"Loading instruments {instrument_ids}{filters_str}.")
+            PyCondition.equal(instrument_id.venue, self._venue, "instrument_id.venue", "BINANCE")
 
         try:
             # Get current commission rates
@@ -175,7 +175,7 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
 
     async def load_async(self, instrument_id: InstrumentId, filters: dict | None = None) -> None:
         PyCondition.not_none(instrument_id, "instrument_id")
-        PyCondition.equal(instrument_id.venue, BINANCE_VENUE, "instrument_id.venue", "BINANCE")
+        PyCondition.equal(instrument_id.venue, self._venue, "instrument_id.venue", "BINANCE")
 
         filters_str = "..." if not filters else f" with filters {filters}..."
         self._log.debug(f"Loading instrument {instrument_id}{filters_str}.")
@@ -224,21 +224,20 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
             quote_currency = symbol_info.parse_to_quote_asset()
 
             raw_symbol = Symbol(symbol_info.symbol)
-            instrument_id = InstrumentId(symbol=raw_symbol, venue=BINANCE_VENUE)
+            instrument_id = InstrumentId(symbol=raw_symbol, venue=self._venue)
 
             # Parse instrument filters
             filters: dict[BinanceSymbolFilterType, BinanceSymbolFilter] = {
                 f.filterType: f for f in symbol_info.filters
             }
-            price_filter: BinanceSymbolFilter = filters.get(BinanceSymbolFilterType.PRICE_FILTER)
-            lot_size_filter: BinanceSymbolFilter = filters.get(BinanceSymbolFilterType.LOT_SIZE)
-            min_notional_filter: BinanceSymbolFilter = filters.get(
-                BinanceSymbolFilterType.MIN_NOTIONAL,
-            )
-            # market_lot_size_filter = symbol_filters.get("MARKET_LOT_SIZE")
+            price_filter = filters[BinanceSymbolFilterType.PRICE_FILTER]
+            lot_size_filter = filters[BinanceSymbolFilterType.LOT_SIZE]
 
-            tick_size = price_filter.tickSize.rstrip("0")
-            step_size = lot_size_filter.stepSize.rstrip("0")
+            min_notional_filter = filters.get(BinanceSymbolFilterType.MIN_NOTIONAL)
+            notional_filter = filters.get(BinanceSymbolFilterType.NOTIONAL)
+
+            tick_size = price_filter.tickSize
+            step_size = lot_size_filter.stepSize
             PyCondition.in_range(float(tick_size), PRICE_MIN, PRICE_MAX, "tick_size")
             PyCondition.in_range(float(step_size), QUANTITY_MIN, QUANTITY_MAX, "step_size")
 
@@ -260,11 +259,18 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
                 QUANTITY_MAX,
                 "minQty",
             )
+
             max_quantity = Quantity(float(lot_size_filter.maxQty), precision=size_precision)
             min_quantity = Quantity(float(lot_size_filter.minQty), precision=size_precision)
+
+            max_notional = None
             min_notional = None
-            if filters.get(BinanceSymbolFilterType.MIN_NOTIONAL):
+            if min_notional_filter:
                 min_notional = Money(min_notional_filter.minNotional, currency=quote_currency)
+            elif notional_filter:
+                max_notional = Money(notional_filter.maxNotional, currency=quote_currency)
+                min_notional = Money(notional_filter.minNotional, currency=quote_currency)
+
             max_price = Price(
                 min(float(price_filter.maxPrice), 4294967296.0),
                 precision=price_precision,
@@ -292,7 +298,7 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
                 lot_size=lot_size,
                 max_quantity=max_quantity,
                 min_quantity=min_quantity,
-                max_notional=None,
+                max_notional=max_notional,
                 min_notional=min_notional,
                 max_price=max_price,
                 min_price=min_price,
@@ -311,4 +317,4 @@ class BinanceSpotInstrumentProvider(InstrumentProvider):
             self._log.debug(f"Added instrument {instrument.id}.")
         except ValueError as e:
             if self._log_warnings:
-                self._log.warning(f"Unable to parse instrument {symbol_info.symbol}, {e}.")
+                self._log.warning(f"Unable to parse instrument {symbol_info.symbol}: {e}.")

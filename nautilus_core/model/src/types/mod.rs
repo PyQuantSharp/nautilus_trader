@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,11 +13,24 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Value types for the trading domain model such as `Price`, `Quantity` and `Money`.
+
 pub mod balance;
 pub mod currency;
 pub mod fixed;
 pub mod money;
 pub mod price;
 pub mod quantity;
+
 #[cfg(feature = "stubs")]
 pub mod stubs;
+
+// Re-exports
+pub use balance::{AccountBalance, MarginBalance};
+pub use currency::Currency;
+pub use money::{Money, MONEY_MAX, MONEY_MIN};
+pub use price::{
+    Price, ERROR_PRICE, PRICE_ERROR, PRICE_MAX, PRICE_MIN, PRICE_RAW_MAX, PRICE_RAW_MIN,
+    PRICE_UNDEF,
+};
+pub use quantity::{Quantity, QUANTITY_MAX, QUANTITY_MIN, QUANTITY_UNDEF};

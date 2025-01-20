@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,6 +21,7 @@ from nautilus_trader.adapters.binance.config import BinanceDataClientConfig
 from nautilus_trader.adapters.binance.config import BinanceExecClientConfig
 from nautilus_trader.adapters.binance.factories import BinanceLiveDataClientFactory
 from nautilus_trader.adapters.binance.factories import BinanceLiveExecClientFactory
+from nautilus_trader.cache.config import CacheConfig
 from nautilus_trader.config import InstrumentProviderConfig
 from nautilus_trader.config import LiveExecEngineConfig
 from nautilus_trader.config import LoggingConfig
@@ -44,18 +45,21 @@ config_node = TradingNodeConfig(
         log_level="INFO",
         # log_level_file="DEBUG",
         # log_file_format="json",
-        use_pyo3=False,
+        use_pyo3=True,
     ),
     exec_engine=LiveExecEngineConfig(
         reconciliation=True,
-        reconciliation_lookback_mins=1440,
+        # snapshot_orders=True,
+        # snapshot_positions=True,
+        # snapshot_positions_interval_secs=5.0,
+        open_check_interval_secs=5.0,
     ),
-    # cache=CacheConfig(
-    #     database=DatabaseConfig(),
-    #     encoding="json",
-    #     timestamps_as_iso8601=True,
-    #     buffer_interval_ms=100,
-    # ),
+    cache=CacheConfig(
+        # database=DatabaseConfig(),
+        timestamps_as_iso8601=True,
+        buffer_interval_ms=100,
+        flush_on_start=False,
+    ),
     # message_bus=MessageBusConfig(
     #     database=DatabaseConfig(),
     #     encoding="json",
@@ -63,13 +67,10 @@ config_node = TradingNodeConfig(
     #     buffer_interval_ms=100,
     #     streams_prefix="quoters",
     #     use_instance_id=False,
-    #     # types_filter=[QuoteTick],
+    #     types_filter=[QuoteTick],
     #     autotrim_mins=30,
+    #     heartbeat_interval_secs=1,
     # ),
-    # heartbeat_interval=1.0,
-    # snapshot_orders=True,
-    # snapshot_positions=True,
-    # snapshot_positions_interval=5.0,
     # streaming=StreamingConfig(catalog_path="catalog"),
     data_clients={
         "BINANCE": BinanceDataClientConfig(
@@ -93,9 +94,11 @@ config_node = TradingNodeConfig(
             us=False,  # If client is for Binance US
             testnet=False,  # If client uses the testnet
             instrument_provider=InstrumentProviderConfig(load_all=True),
+            max_retries=3,
+            retry_delay=1.0,
         ),
     },
-    timeout_connection=20.0,
+    timeout_connection=30.0,
     timeout_reconciliation=10.0,
     timeout_portfolio=10.0,
     timeout_disconnection=10.0,
@@ -109,7 +112,7 @@ node = TradingNode(config=config_node)
 strat_config = VolatilityMarketMakerConfig(
     instrument_id=InstrumentId.from_str("ETHUSDT.BINANCE"),
     external_order_claims=[InstrumentId.from_str("ETHUSDT.BINANCE")],
-    bar_type=BarType.from_str("ETHUSDT.BINANCE-1-MINUTE-LAST-EXTERNAL"),
+    bar_type=BarType.from_str("ETHUSDT.BINANCE-1-MINUTE-LAST-INTERNAL"),
     atr_period=20,
     atr_multiple=6.0,
     trade_size=Decimal("0.010"),
@@ -120,7 +123,7 @@ strategy = VolatilityMarketMaker(config=strat_config)
 # Add your strategies and modules
 node.trader.add_strategy(strategy)
 
-# Register your client factories with the node (can take user defined factories)
+# Register your client factories with the node (can take user-defined factories)
 node.add_data_client_factory("BINANCE", BinanceLiveDataClientFactory)
 node.add_exec_client_factory("BINANCE", BinanceLiveExecClientFactory)
 node.build()

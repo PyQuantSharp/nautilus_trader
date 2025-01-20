@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,20 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
 from nautilus_trader.adapters.bybit.endpoints.endpoint import BybitHttpEndpoint
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 from nautilus_trader.adapters.bybit.schemas.market.server_time import BybitServerTimeResponse
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
+
+
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 
 
 class BybitServerTimeEndpoint(BybitHttpEndpoint):
@@ -42,7 +49,6 @@ class BybitServerTimeEndpoint(BybitHttpEndpoint):
         try:
             return self._get_resp_decoder.decode(raw)
         except Exception as e:
-            decoder_raw = raw.decode("utf-8")
             raise RuntimeError(
-                f"Failed to decode response server time response: {decoder_raw}",
+                f"Failed to decode response from {self.url_path}: {raw.decode()}",
             ) from e

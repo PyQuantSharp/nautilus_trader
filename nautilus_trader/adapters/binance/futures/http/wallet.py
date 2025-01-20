@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,12 +13,11 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-
 import msgspec
 
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
 from nautilus_trader.adapters.binance.common.enums import BinanceSecurityType
-from nautilus_trader.adapters.binance.common.schemas.symbol import BinanceSymbol
+from nautilus_trader.adapters.binance.common.symbol import BinanceSymbol
 from nautilus_trader.adapters.binance.futures.schemas.wallet import BinanceFuturesCommissionRate
 from nautilus_trader.adapters.binance.http.client import BinanceHttpClient
 from nautilus_trader.adapters.binance.http.endpoint import BinanceHttpEndpoint
@@ -74,15 +73,15 @@ class BinanceFuturesCommissionRateHttp(BinanceHttpEndpoint):
         symbol: BinanceSymbol
         recvWindow: str | None = None
 
-    async def get(self, parameters: GetParameters) -> BinanceFuturesCommissionRate:
+    async def get(self, params: GetParameters) -> BinanceFuturesCommissionRate:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._get_resp_decoder.decode(raw)
 
 
 class BinanceFuturesWalletHttpAPI:
     """
-    Provides access to the `Binance Futures` Wallet HTTP REST API.
+    Provides access to the Binance Futures Wallet HTTP REST API.
 
     Parameters
     ----------
@@ -130,7 +129,7 @@ class BinanceFuturesWalletHttpAPI:
         Get Futures commission rates for a given symbol.
         """
         rate = await self._endpoint_futures_commission_rate.get(
-            parameters=self._endpoint_futures_commission_rate.GetParameters(
+            params=self._endpoint_futures_commission_rate.GetParameters(
                 timestamp=self._timestamp(),
                 symbol=BinanceSymbol(symbol),
                 recvWindow=recv_window,

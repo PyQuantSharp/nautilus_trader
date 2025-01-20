@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -56,12 +56,12 @@ if __name__ == "__main__":
     # Add instruments
     instruments = [
         betting_instrument(
-            market_id="1.166811431",
+            market_id="1-166811431",
             selection_id=19248890,
             selection_handicap=0.0,
         ),
         betting_instrument(
-            market_id="1.166811431",
+            market_id="1-166811431",
             selection_id=38848248,
             selection_handicap=0.0,
         ),

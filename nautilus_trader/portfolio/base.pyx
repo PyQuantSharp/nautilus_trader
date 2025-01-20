@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -46,6 +46,10 @@ cdef class PortfolioFacade:
         """Abstract method (implement in subclass)."""
         raise NotImplementedError("method `unrealized_pnls` must be implemented in the subclass")  # pragma: no cover
 
+    cpdef dict realized_pnls(self, Venue venue):
+        """Abstract method (implement in subclass)."""
+        raise NotImplementedError("method `realized_pnls` must be implemented in the subclass")  # pragma: no cover
+
     cpdef dict net_exposures(self, Venue venue):
         """Abstract method (implement in subclass)."""
         raise NotImplementedError("method `net_exposure` must be implemented in the subclass")  # pragma: no cover
@@ -53,6 +57,10 @@ cdef class PortfolioFacade:
     cpdef Money unrealized_pnl(self, InstrumentId instrument_id):
         """Abstract method (implement in subclass)."""
         raise NotImplementedError("method `unrealized_pnl` must be implemented in the subclass")  # pragma: no cover
+
+    cpdef Money realized_pnl(self, InstrumentId instrument_id):
+        """Abstract method (implement in subclass)."""
+        raise NotImplementedError("method `realized_pnl` must be implemented in the subclass")  # pragma: no cover
 
     cpdef Money net_exposure(self, InstrumentId instrument_id):
         """Abstract method (implement in subclass)."""

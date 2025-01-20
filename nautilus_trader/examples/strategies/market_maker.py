@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -81,7 +81,7 @@ class MarketMaker(Strategy):
 
     def on_order_book_deltas(self, deltas: OrderBookDeltas) -> None:
         if not self._book:
-            self.log.error("No book being maintained.")
+            self.log.error("No book being maintained")
             return
 
         self._book.apply_deltas(deltas)
@@ -93,15 +93,15 @@ class MarketMaker(Strategy):
                 self.cancel_all_orders(self.instrument_id)
                 self._mid = Decimal(mid)
                 val = self._mid + self._adj
-                self.buy(price=val * Decimal(1.01))
-                self.sell(price=val * Decimal(0.99))
+                self.buy(price=val * Decimal("1.01"))
+                self.sell(price=val * Decimal("0.99"))
 
     def on_event(self, event: Event) -> None:
         if isinstance(event, PositionOpened | PositionChanged):
             signed_qty = event.quantity.as_decimal()
             if event.side == PositionSide.SHORT:
                 signed_qty = -signed_qty
-            self._adj = (signed_qty / self.max_size) * Decimal(0.01)
+            self._adj = (signed_qty / self.max_size) * Decimal("0.01")
         elif isinstance(event, PositionClosed):
             self._adj = Decimal(0)
 
@@ -110,7 +110,7 @@ class MarketMaker(Strategy):
         Users simple buy method (example).
         """
         if not self.instrument:
-            self.log.error("No instrument loaded.")
+            self.log.error("No instrument loaded")
             return
 
         order = self.order_factory.limit(
@@ -127,7 +127,7 @@ class MarketMaker(Strategy):
         Users simple sell method (example).
         """
         if not self.instrument:
-            self.log.error("No instrument loaded.")
+            self.log.error("No instrument loaded")
             return
 
         order = self.order_factory.limit(

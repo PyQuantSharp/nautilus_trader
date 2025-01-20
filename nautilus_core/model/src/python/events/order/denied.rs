@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,19 +17,14 @@ use std::str::FromStr;
 
 use nautilus_core::{
     python::{serialization::from_dict_pyo3, to_pyvalue_err},
-    time::UnixNanos,
-    uuid::UUID4,
+    UUID4,
 };
 use pyo3::{basic::CompareOp, prelude::*, types::PyDict};
-use rust_decimal::prelude::ToPrimitive;
 use ustr::Ustr;
 
 use crate::{
-    events::order::denied::OrderDenied,
-    identifiers::{
-        client_order_id::ClientOrderId, instrument_id::InstrumentId, strategy_id::StrategyId,
-        trader_id::TraderId,
-    },
+    events::OrderDenied,
+    identifiers::{ClientOrderId, InstrumentId, StrategyId, TraderId},
 };
 
 #[pymethods]
@@ -43,45 +38,20 @@ impl OrderDenied {
         client_order_id: ClientOrderId,
         reason: &str,
         event_id: UUID4,
-        ts_event: UnixNanos,
-        ts_init: UnixNanos,
+        ts_event: u64,
+        ts_init: u64,
     ) -> PyResult<Self> {
-        let reason = Ustr::from_str(reason).unwrap();
-        Self::new(
+        let reason = Ustr::from_str(reason).map_err(to_pyvalue_err)?;
+        Ok(Self::new(
             trader_id,
             strategy_id,
             instrument_id,
             client_order_id,
             reason,
             event_id,
-            ts_event,
-            ts_init,
-        )
-        .map_err(to_pyvalue_err)
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "{}(trader_id={}, strategy_id={}, instrument_id={}, client_order_id={}, reason={}, event_id={}, ts_init={})",
-            stringify!(OrderDenied),
-            self.trader_id,
-            self.strategy_id,
-            self.instrument_id,
-            self.client_order_id,
-            self.reason,
-            self.event_id,
-            self.ts_init
-        )
-    }
-
-    fn __str__(&self) -> String {
-        format!(
-            "{}(instrument_id={}, client_order_id={}, reason={})",
-            stringify!(OrderDenied),
-            self.instrument_id,
-            self.client_order_id,
-            self.reason,
-        )
+            ts_event.into(),
+            ts_init.into(),
+        ))
     }
 
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
@@ -92,6 +62,14 @@ impl OrderDenied {
         }
     }
 
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+
+    fn __str__(&self) -> String {
+        self.to_string()
+    }
+
     #[staticmethod]
     #[pyo3(name = "from_dict")]
     fn py_from_dict(py: Python<'_>, values: Py<PyDict>) -> PyResult<Self> {
@@ -100,15 +78,16 @@ impl OrderDenied {
 
     #[pyo3(name = "to_dict")]
     fn py_to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
+        dict.set_item("type", stringify!(OrderDenied))?;
         dict.set_item("trader_id", self.trader_id.to_string())?;
         dict.set_item("strategy_id", self.strategy_id.to_string())?;
         dict.set_item("instrument_id", self.instrument_id.to_string())?;
         dict.set_item("client_order_id", self.client_order_id.to_string())?;
         dict.set_item("reason", self.reason.to_string())?;
         dict.set_item("event_id", self.event_id.to_string())?;
-        dict.set_item("ts_event", self.ts_event.to_u64())?;
-        dict.set_item("ts_init", self.ts_init.to_u64())?;
+        dict.set_item("ts_event", self.ts_event.as_u64())?;
+        dict.set_item("ts_init", self.ts_init.as_u64())?;
         Ok(dict.into())
     }
 }

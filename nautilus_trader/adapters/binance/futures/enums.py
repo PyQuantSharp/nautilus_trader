@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 """
-Defines `Binance` Futures specific enums.
+Defines Binance Futures specific enums.
 
 References
 ----------
@@ -38,7 +38,7 @@ from nautilus_trader.model.orders import Order
 @unique
 class BinanceFuturesContractType(Enum):
     """
-    Represents a `Binance Futures` derivatives contract type.
+    Represents a Binance Futures derivatives contract type.
     """
 
     PERPETUAL = "PERPETUAL"
@@ -53,7 +53,7 @@ class BinanceFuturesContractType(Enum):
 @unique
 class BinanceFuturesContractStatus(Enum):
     """
-    Represents a `Binance Futures` contract status.
+    Represents a Binance Futures contract status.
     """
 
     PENDING_TRADING = "PENDING_TRADING"
@@ -67,20 +67,9 @@ class BinanceFuturesContractStatus(Enum):
 
 
 @unique
-class BinanceFuturesPositionSide(Enum):
-    """
-    Represents a `Binance Futures` position side.
-    """
-
-    BOTH = "BOTH"
-    LONG = "LONG"
-    SHORT = "SHORT"
-
-
-@unique
 class BinanceFuturesWorkingType(Enum):
     """
-    Represents a `Binance Futures` working type.
+    Represents a Binance Futures working type.
     """
 
     MARK_PRICE = "MARK_PRICE"
@@ -90,7 +79,7 @@ class BinanceFuturesWorkingType(Enum):
 @unique
 class BinanceFuturesMarginType(Enum):
     """
-    Represents a `Binance Futures` margin type.
+    Represents a Binance Futures margin type.
     """
 
     ISOLATED = "isolated"
@@ -100,7 +89,7 @@ class BinanceFuturesMarginType(Enum):
 @unique
 class BinanceFuturesPositionUpdateReason(Enum):
     """
-    Represents a `Binance Futures` position and balance update reason.
+    Represents a Binance Futures position and balance update reason.
     """
 
     DEPOSIT = "DEPOSIT"
@@ -125,7 +114,7 @@ class BinanceFuturesPositionUpdateReason(Enum):
 @unique
 class BinanceFuturesEventType(Enum):
     """
-    Represents a `Binance Futures` event type.
+    Represents a Binance Futures event type.
     """
 
     LISTEN_KEY_EXPIRED = "listenKeyExpired"
@@ -133,6 +122,7 @@ class BinanceFuturesEventType(Enum):
     ACCOUNT_UPDATE = "ACCOUNT_UPDATE"
     ORDER_TRADE_UPDATE = "ORDER_TRADE_UPDATE"
     ACCOUNT_CONFIG_UPDATE = "ACCOUNT_CONFIG_UPDATE"
+    TRADE_LITE = "TRADE_LITE"
 
 
 class BinanceFuturesEnumParser(BinanceEnumParser):
@@ -191,7 +181,7 @@ class BinanceFuturesEnumParser(BinanceEnumParser):
 
     def parse_binance_trigger_type(self, trigger_type: str) -> TriggerType:
         if trigger_type == BinanceFuturesWorkingType.CONTRACT_PRICE.value:
-            return TriggerType.LAST_TRADE
+            return TriggerType.LAST_PRICE
         elif trigger_type == BinanceFuturesWorkingType.MARK_PRICE.value:
             return TriggerType.MARK_PRICE
         else:

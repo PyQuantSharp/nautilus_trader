@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -43,20 +43,20 @@ cdef class DataClient(Component):
 
     cpdef list subscribed_custom_data(self)
 
-    cpdef void subscribe(self, DataType data_type)
-    cpdef void unsubscribe(self, DataType data_type)
+    cpdef void subscribe(self, DataType data_type, dict[str, object] params=*)
+    cpdef void unsubscribe(self, DataType data_type, dict[str, object] params=*)
 
     cpdef void _add_subscription(self, DataType data_type)
     cpdef void _remove_subscription(self, DataType data_type)
 
 # -- REQUEST HANDLERS -----------------------------------------------------------------------------
 
-    cpdef void request(self, DataType data_type, UUID4 correlation_id)
+    cpdef void request(self, DataType data_type, UUID4 correlation_id, dict[str, object] params=*)
 
 # -- DATA HANDLERS --------------------------------------------------------------------------------
 
     cpdef void _handle_data(self, Data data)
-    cpdef void _handle_data_response(self, DataType data_type, data, UUID4 correlation_id)
+    cpdef void _handle_data_response(self, DataType data_type, data, UUID4 correlation_id, dict params)
 
 
 cdef class MarketDataClient(DataClient):
@@ -65,7 +65,6 @@ cdef class MarketDataClient(DataClient):
     cdef set _subscriptions_quote_tick
     cdef set _subscriptions_trade_tick
     cdef set _subscriptions_bar
-    cdef set _subscriptions_venue_status
     cdef set _subscriptions_instrument_status
     cdef set _subscriptions_instrument_close
     cdef set _subscriptions_instrument
@@ -80,30 +79,27 @@ cdef class MarketDataClient(DataClient):
     cpdef list subscribed_quote_ticks(self)
     cpdef list subscribed_trade_ticks(self)
     cpdef list subscribed_bars(self)
-    cpdef list subscribed_venue_status(self)
     cpdef list subscribed_instrument_status(self)
     cpdef list subscribed_instrument_close(self)
 
-    cpdef void subscribe_instruments(self)
-    cpdef void subscribe_instrument(self, InstrumentId instrument_id)
-    cpdef void subscribe_order_book_deltas(self, InstrumentId instrument_id, BookType book_type, int depth=*, dict kwargs=*)
-    cpdef void subscribe_order_book_snapshots(self, InstrumentId instrument_id, BookType book_type, int depth=*, dict kwargs=*)
-    cpdef void subscribe_quote_ticks(self, InstrumentId instrument_id)
-    cpdef void subscribe_trade_ticks(self, InstrumentId instrument_id)
-    cpdef void subscribe_bars(self, BarType bar_type)
-    cpdef void subscribe_venue_status(self, Venue venue)
-    cpdef void subscribe_instrument_status(self, InstrumentId instrument_id)
-    cpdef void subscribe_instrument_close(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_instruments(self)
-    cpdef void unsubscribe_instrument(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_order_book_deltas(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_order_book_snapshots(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_quote_ticks(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_trade_ticks(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_bars(self, BarType bar_type)
-    cpdef void unsubscribe_instrument_status(self, InstrumentId instrument_id)
-    cpdef void unsubscribe_venue_status(self, Venue venue)
-    cpdef void unsubscribe_instrument_close(self, InstrumentId instrument_id)
+    cpdef void subscribe_instruments(self, dict[str, object] params=*)
+    cpdef void subscribe_instrument(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void subscribe_order_book_deltas(self, InstrumentId instrument_id, BookType book_type, int depth=*, dict[str, object] params=*)
+    cpdef void subscribe_order_book_snapshots(self, InstrumentId instrument_id, BookType book_type, int depth=*, dict[str, object] params=*)
+    cpdef void subscribe_quote_ticks(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void subscribe_trade_ticks(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void subscribe_bars(self, BarType bar_type, dict[str, object] params=*)
+    cpdef void subscribe_instrument_status(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void subscribe_instrument_close(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_instruments(self, dict[str, object] params=*)
+    cpdef void unsubscribe_instrument(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_order_book_deltas(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_order_book_snapshots(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_quote_ticks(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_trade_ticks(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_bars(self, BarType bar_type, dict[str, object] params=*)
+    cpdef void unsubscribe_instrument_status(self, InstrumentId instrument_id, dict[str, object] params=*)
+    cpdef void unsubscribe_instrument_close(self, InstrumentId instrument_id, dict[str, object] params=*)
 
     cpdef void _add_subscription_instrument(self, InstrumentId instrument_id)
     cpdef void _add_subscription_order_book_deltas(self, InstrumentId instrument_id)
@@ -111,7 +107,6 @@ cdef class MarketDataClient(DataClient):
     cpdef void _add_subscription_quote_ticks(self, InstrumentId instrument_id)
     cpdef void _add_subscription_trade_ticks(self, InstrumentId instrument_id)
     cpdef void _add_subscription_bars(self, BarType bar_type)
-    cpdef void _add_subscription_venue_status(self, Venue venue)
     cpdef void _add_subscription_instrument_status(self, InstrumentId instrument_id)
     cpdef void _add_subscription_instrument_close(self, InstrumentId instrument_id)
     cpdef void _remove_subscription_instrument(self, InstrumentId instrument_id)
@@ -120,7 +115,6 @@ cdef class MarketDataClient(DataClient):
     cpdef void _remove_subscription_quote_ticks(self, InstrumentId instrument_id)
     cpdef void _remove_subscription_trade_ticks(self, InstrumentId instrument_id)
     cpdef void _remove_subscription_bars(self, BarType bar_type)
-    cpdef void _remove_subscription_venue_status(self, Venue venue)
     cpdef void _remove_subscription_instrument_status(self, InstrumentId instrument_id)
     cpdef void _remove_subscription_instrument_close(self, InstrumentId instrument_id)
 
@@ -132,6 +126,7 @@ cdef class MarketDataClient(DataClient):
         UUID4 correlation_id,
         datetime start=*,
         datetime end=*,
+        dict[str, object] params=*,
     )
     cpdef void request_instruments(
         self,
@@ -139,6 +134,14 @@ cdef class MarketDataClient(DataClient):
         UUID4 correlation_id,
         datetime start=*,
         datetime end=*,
+        dict[str, object] params=*,
+    )
+    cpdef void request_order_book_snapshot(
+        self,
+        InstrumentId instrument_id,
+        int limit,
+        UUID4 correlation_id,
+        dict[str, object] params=*,
     )
     cpdef void request_quote_ticks(
         self,
@@ -147,6 +150,7 @@ cdef class MarketDataClient(DataClient):
         UUID4 correlation_id,
         datetime start=*,
         datetime end=*,
+        dict[str, object] params=*,
     )
     cpdef void request_trade_ticks(
         self,
@@ -155,6 +159,7 @@ cdef class MarketDataClient(DataClient):
         UUID4 correlation_id,
         datetime start=*,
         datetime end=*,
+        dict[str, object] params=*,
     )
     cpdef void request_bars(
         self,
@@ -163,12 +168,13 @@ cdef class MarketDataClient(DataClient):
         UUID4 correlation_id,
         datetime start=*,
         datetime end=*,
+        dict[str, object] params=*,
     )
 
 # -- DATA HANDLERS --------------------------------------------------------------------------------
 
-    cpdef void _handle_instrument(self, Instrument instrument, UUID4 correlation_id)
-    cpdef void _handle_instruments(self, Venue venue, list instruments, UUID4 correlation_id)
-    cpdef void _handle_quote_ticks(self, InstrumentId instrument_id, list ticks, UUID4 correlation_id)
-    cpdef void _handle_trade_ticks(self, InstrumentId instrument_id, list ticks, UUID4 correlation_id)
-    cpdef void _handle_bars(self, BarType bar_type, list bars, Bar partial, UUID4 correlation_id)
+    cpdef void _handle_instrument(self, Instrument instrument, UUID4 correlation_id, dict[str, object] params)
+    cpdef void _handle_instruments(self, Venue venue, list instruments, UUID4 correlation_id, dict[str, object] params)
+    cpdef void _handle_quote_ticks(self, InstrumentId instrument_id, list ticks, UUID4 correlation_id, dict[str, object] params)
+    cpdef void _handle_trade_ticks(self, InstrumentId instrument_id, list ticks, UUID4 correlation_id, dict[str, object] params)
+    cpdef void _handle_bars(self, BarType bar_type, list bars, Bar partial, UUID4 correlation_id, dict[str, object] params)

@@ -12,14 +12,17 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 anyhow = { workspace = true }
+bytes = { workspace = true }
 chrono = { workspace = true }
+heck = { workspace = true }
+indexmap = { workspace = true }
 pyo3 = { workspace = true, optional = true }
+rand = { workspace = true }
 rmp-serde = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ustr = { workspace = true }
 uuid = { workspace = true }
-heck = "0.4.1"
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -28,10 +31,22 @@ rstest = { workspace = true }
 
 [build-dependencies]
 cbindgen = { workspace = true, optional = true }
+toml = { workspace = true }
 
 [features]
+default = ["python"]
 extension-module = ["pyo3/extension-module"]
 ffi = ["cbindgen"]
 python = ["pyo3"]
-default = []
 
+[[bench]]
+name = "bench_correctness"
+harness = false
+
+[[bench]]
+name = "bench_time"
+harness = false
+
+[[bench]]
+name = "bench_uuid"
+harness = false

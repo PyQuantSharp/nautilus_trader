@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,7 +30,7 @@ from nautilus_trader.adapters.betfair.providers import load_markets_metadata
 from nautilus_trader.adapters.betfair.providers import make_instruments
 from nautilus_trader.adapters.betfair.providers import parse_market_catalog
 from nautilus_trader.common.component import LiveClock
-from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import MarketStatusAction
 from tests.integration_tests.adapters.betfair.test_kit import BetfairResponses
 from tests.integration_tests.adapters.betfair.test_kit import BetfairStreaming
 from tests.integration_tests.adapters.betfair.test_kit import BetfairTestStubs
@@ -60,6 +60,7 @@ class TestBetfairInstrumentProvider:
         markets = await load_markets(self.client, event_type_names=["Tennis"])
         assert len(markets) == 1958
 
+        # TODO: Fix symbology
         markets = await load_markets(self.client, market_ids=["1.177125728"])
         assert len(markets) == 1
 
@@ -118,8 +119,8 @@ class TestBetfairInstrumentProvider:
             results.append(data)
 
         # Assert
-        result = [r.status for r in results[8:16]]
-        expected = [MarketStatus.PRE_OPEN] * 7 + [MarketStatus.CLOSED]
+        result = [r.action for r in results[8:16]]
+        expected = [MarketStatusAction.PRE_OPEN] * 7 + [MarketStatusAction.CLOSE]
         assert result == expected
 
     def test_list_market_catalogue_parsing(self):
@@ -133,15 +134,15 @@ class TestBetfairInstrumentProvider:
         # Assert
         result = [ins.id.value for ins in instruments]
         expected = [
-            "1.221718403-20075720-None.BETFAIR",
-            "1.221718403-10733147-None.BETFAIR",
-            "1.221718403-38666189-None.BETFAIR",
-            "1.221718403-11781146-None.BETFAIR",
-            "1.221718403-36709273-None.BETFAIR",
-            "1.221718403-51130740-None.BETFAIR",
-            "1.221718403-63132709-None.BETFAIR",
-            "1.221718403-18508590-None.BETFAIR",
-            "1.221718403-41921465-None.BETFAIR",
+            "1-221718403-20075720-None.BETFAIR",
+            "1-221718403-10733147-None.BETFAIR",
+            "1-221718403-38666189-None.BETFAIR",
+            "1-221718403-11781146-None.BETFAIR",
+            "1-221718403-36709273-None.BETFAIR",
+            "1-221718403-51130740-None.BETFAIR",
+            "1-221718403-63132709-None.BETFAIR",
+            "1-221718403-18508590-None.BETFAIR",
+            "1-221718403-41921465-None.BETFAIR",
         ]
 
         assert result == expected

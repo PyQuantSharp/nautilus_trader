@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -36,6 +36,7 @@ from nautilus_trader.model.enums import AggregationSource
 from nautilus_trader.model.enums import AggressorSide
 from nautilus_trader.model.enums import BookAction
 from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import RecordFlag
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.objects import Price
@@ -147,15 +148,16 @@ class BinanceDepth(msgspec.Struct, frozen=True):
             for o in self.asks or []
         ]
 
-        deltas = [OrderBookDelta.clear(instrument_id, ts_init, ts_init, self.lastUpdateId)]
+        deltas = [OrderBookDelta.clear(instrument_id, self.lastUpdateId, ts_init, ts_init)]
         deltas += [
             OrderBookDelta(
                 instrument_id,
                 BookAction.ADD,
                 o,
-                ts_init,
-                ts_init,
+                flags=0,
                 sequence=self.lastUpdateId or 0,
+                ts_event=ts_init,  # No event timestamp
+                ts_init=ts_init,
             )
             for o in bids + asks
         ]
@@ -264,7 +266,7 @@ class BinanceKline(msgspec.Struct, array_like=True):
             count=self.trades_count,
             taker_buy_base_volume=Decimal(self.taker_base_volume),
             taker_buy_quote_volume=Decimal(self.taker_quote_volume),
-            ts_event=millis_to_nanos(self.open_time),
+            ts_event=millis_to_nanos(self.close_time),
             ts_init=ts_init,
         )
 
@@ -335,7 +337,7 @@ class BinanceTickerBook(msgspec.Struct, frozen=True):
 
 class BinanceDataMsgWrapper(msgspec.Struct):
     """
-    Provides a wrapper for data WebSocket messages from `Binance`.
+    Provides a wrapper for data WebSocket messages from Binance.
     """
 
     stream: str | None = None
@@ -354,9 +356,10 @@ class BinanceOrderBookDelta(msgspec.Struct, array_like=True):
         self,
         instrument_id: InstrumentId,
         side: OrderSide,
+        flags: int,
+        sequence: int,
         ts_event: int,
         ts_init: int,
-        update_id: int,
     ) -> OrderBookDelta:
         size = Quantity.from_str(self.size)
         order = BookOrder(
@@ -370,16 +373,16 @@ class BinanceOrderBookDelta(msgspec.Struct, array_like=True):
             instrument_id=instrument_id,
             action=BookAction.UPDATE if size > 0 else BookAction.DELETE,
             order=order,
+            flags=flags,
+            sequence=sequence,
             ts_event=ts_event,
             ts_init=ts_init,
-            flags=0,
-            sequence=update_id,
         )
 
 
 class BinanceOrderBookData(msgspec.Struct, frozen=True):
     """
-    WebSocket message 'inner struct' for `Binance` Partial & Diff.
+    WebSocket message 'inner struct' for Binance Partial & Diff.
 
     Book Depth Streams.
 
@@ -401,57 +404,58 @@ class BinanceOrderBookData(msgspec.Struct, frozen=True):
         self,
         instrument_id: InstrumentId,
         ts_init: int,
+        snapshot: bool = False,
     ) -> OrderBookDeltas:
         ts_event: int = millis_to_nanos(self.T) if self.T is not None else millis_to_nanos(self.E)
 
-        bid_deltas: list[OrderBookDelta] = [
-            delta.parse_to_order_book_delta(
-                instrument_id,
-                OrderSide.BUY,
-                ts_event,
-                ts_init,
-                self.u,
+        deltas: list[OrderBookDelta] = []
+
+        if snapshot:
+            deltas.append(OrderBookDelta.clear(instrument_id, 0, ts_event, ts_init))
+
+        bids_len = len(self.b)
+        asks_len = len(self.a)
+
+        for idx, bid in enumerate(self.b):
+            flags = 0
+            if idx == bids_len - 1 and asks_len == 0:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
+            delta = bid.parse_to_order_book_delta(
+                instrument_id=instrument_id,
+                side=OrderSide.BUY,
+                flags=RecordFlag.SNAPSHOT if snapshot else flags,
+                sequence=self.u,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
-            for delta in self.b
-        ]
-        ask_deltas: list[OrderBookDelta] = [
-            delta.parse_to_order_book_delta(
-                instrument_id,
-                OrderSide.SELL,
-                ts_event,
-                ts_init,
-                self.u,
+            deltas.append(delta)
+
+        for idx, ask in enumerate(self.a):
+            flags = 0
+            if idx == asks_len - 1:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
+            delta = ask.parse_to_order_book_delta(
+                instrument_id=instrument_id,
+                side=OrderSide.SELL,
+                flags=RecordFlag.SNAPSHOT if snapshot else flags,
+                sequence=self.u,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
-            for delta in self.a
-        ]
+            deltas.append(delta)
 
-        return OrderBookDeltas(instrument_id=instrument_id, deltas=bid_deltas + ask_deltas)
-
-    def parse_to_order_book_snapshot(
-        self,
-        instrument_id: InstrumentId,
-        ts_init: int,
-    ) -> OrderBookDeltas:
-        ts_event: int = millis_to_nanos(self.T)
-        bids: list[BookOrder] = [
-            BookOrder(OrderSide.BUY, Price.from_str(o.price), Quantity.from_str(o.size), 0)
-            for o in self.b
-        ]
-        asks: list[BookOrder] = [
-            BookOrder(OrderSide.SELL, Price.from_str(o.price), Quantity.from_str(o.size), 0)
-            for o in self.a
-        ]
-
-        deltas = [OrderBookDelta.clear(instrument_id, ts_init, ts_event)]
-        deltas += [
-            OrderBookDelta(instrument_id, BookAction.ADD, o, ts_event, ts_init) for o in bids + asks
-        ]
         return OrderBookDeltas(instrument_id=instrument_id, deltas=deltas)
 
 
 class BinanceOrderBookMsg(msgspec.Struct, frozen=True):
     """
-    WebSocket message from `Binance` Partial & Diff.
+    WebSocket message from Binance Partial & Diff.
 
     Book Depth Streams.
 
@@ -463,7 +467,7 @@ class BinanceOrderBookMsg(msgspec.Struct, frozen=True):
 
 class BinanceQuoteData(msgspec.Struct, frozen=True):
     """
-    WebSocket message from `Binance` Individual Symbol Book Ticker Streams.
+    WebSocket message from Binance Individual Symbol Book Ticker Streams.
     """
 
     s: str  # symbol
@@ -492,7 +496,7 @@ class BinanceQuoteData(msgspec.Struct, frozen=True):
 
 class BinanceQuoteMsg(msgspec.Struct, frozen=True):
     """
-    WebSocket message from `Binance` Individual Symbol Book Ticker Streams.
+    WebSocket message from Binance Individual Symbol Book Ticker Streams.
     """
 
     stream: str
@@ -501,7 +505,7 @@ class BinanceQuoteMsg(msgspec.Struct, frozen=True):
 
 class BinanceAggregatedTradeData(msgspec.Struct, frozen=True):
     """
-    WebSocket message from `Binance` Aggregate Trade Streams.
+    WebSocket message from Binance Aggregate Trade Streams.
     """
 
     e: str  # Event type
@@ -542,7 +546,7 @@ class BinanceAggregatedTradeMsg(msgspec.Struct, frozen=True):
 
 class BinanceTickerData(msgspec.Struct, kw_only=True, frozen=True):
     """
-    WebSocket message from `Binance` 24hr Ticker.
+    WebSocket message from Binance 24hr Ticker.
 
     Fields
     ------
@@ -639,7 +643,7 @@ class BinanceTickerMsg(msgspec.Struct, frozen=True):
 
 class BinanceCandlestick(msgspec.Struct, frozen=True):
     """
-    WebSocket message 'inner struct' for `Binance` Kline/Candlestick Streams.
+    WebSocket message 'inner struct' for Binance Kline/Candlestick Streams.
 
     Fields
     ------
@@ -721,7 +725,7 @@ class BinanceCandlestickData(msgspec.Struct, frozen=True):
 
 class BinanceCandlestickMsg(msgspec.Struct, frozen=True):
     """
-    WebSocket message for `Binance` Kline/Candlestick Streams.
+    WebSocket message for Binance Kline/Candlestick Streams.
     """
 
     stream: str

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,6 +21,7 @@ import pytest
 from nautilus_trader.backtest.exchange import SimulatedExchange
 from nautilus_trader.backtest.execution_client import BacktestExecClient
 from nautilus_trader.backtest.models import FillModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
@@ -46,6 +47,7 @@ from nautilus_trader.model.identifiers import AccountId
 from nautilus_trader.model.identifiers import OrderListId
 from nautilus_trader.model.identifiers import PositionId
 from nautilus_trader.model.identifiers import Venue
+from nautilus_trader.model.identifiers import VenueOrderId
 from nautilus_trader.model.objects import Money
 from nautilus_trader.model.objects import Quantity
 from nautilus_trader.model.orders.list import OrderList
@@ -127,15 +129,16 @@ class TestOrderEmulatorWithOrderLists:
             starting_balances=[Money(200, ETH), Money(1_000_000, USDT)],
             default_leverage=Decimal(10),
             leverages={},
-            instruments=[ETHUSDT_PERP_BINANCE],
             modules=[],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
             support_contingent_orders=False,
         )
+        self.exchange.add_instrument(ETHUSDT_PERP_BINANCE)
 
         self.exec_client = BacktestExecClient(
             exchange=self.exchange,
@@ -173,7 +176,7 @@ class TestOrderEmulatorWithOrderLists:
             order_side=OrderSide.BUY,
             quantity=ETHUSDT_PERP_BINANCE.make_qty(10),
             trigger_price=ETHUSDT_PERP_BINANCE.make_price(5000.0),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         stop2 = self.strategy.order_factory.stop_market(
@@ -181,7 +184,7 @@ class TestOrderEmulatorWithOrderLists:
             order_side=OrderSide.BUY,
             quantity=ETHUSDT_PERP_BINANCE.make_qty(10),
             trigger_price=ETHUSDT_PERP_BINANCE.make_price(5010.0),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         stop3 = self.strategy.order_factory.stop_market(
@@ -189,7 +192,7 @@ class TestOrderEmulatorWithOrderLists:
             order_side=OrderSide.BUY,
             quantity=ETHUSDT_PERP_BINANCE.make_qty(10),
             trigger_price=ETHUSDT_PERP_BINANCE.make_price(5020.0),
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
         )
 
         order_list = OrderList(
@@ -906,6 +909,7 @@ class TestOrderEmulatorWithOrderLists:
                 bracket.orders[2],
                 instrument=ETHUSDT_PERP_BINANCE,
                 account_id=self.account_id,
+                venue_order_id=VenueOrderId("2"),
             ),
         )
 
@@ -975,6 +979,7 @@ class TestOrderEmulatorWithOrderLists:
                 bracket.orders[1],
                 instrument=ETHUSDT_PERP_BINANCE,
                 account_id=self.account_id,
+                venue_order_id=VenueOrderId("2"),
                 last_qty=Quantity.from_int(5),
             ),
         )
@@ -1049,6 +1054,7 @@ class TestOrderEmulatorWithOrderLists:
                 bracket.orders[1],
                 instrument=ETHUSDT_PERP_BINANCE,
                 account_id=self.account_id,
+                venue_order_id=VenueOrderId("2"),
                 last_qty=Quantity.from_int(5),
             ),
         )

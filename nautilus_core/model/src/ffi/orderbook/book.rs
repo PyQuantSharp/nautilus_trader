@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,18 +20,18 @@ use std::{
 
 use nautilus_core::ffi::{cvec::CVec, string::str_to_cstr};
 
-use super::{container::OrderBookContainer, level::Level_API};
+use super::level::BookLevel_API;
 use crate::{
     data::{
-        delta::OrderBookDelta, deltas::OrderBookDeltas_API, depth::OrderBookDepth10,
-        order::BookOrder, quote::QuoteTick, trade::TradeTick,
+        BookOrder, OrderBookDelta, OrderBookDeltas_API, OrderBookDepth10, QuoteTick, TradeTick,
     },
     enums::{BookType, OrderSide},
-    identifiers::instrument_id::InstrumentId,
-    types::{price::Price, quantity::Quantity},
+    identifiers::InstrumentId,
+    orderbook::{analysis::book_check_integrity, OrderBook},
+    types::{Price, Quantity},
 };
 
-/// Provides a C compatible Foreign Function Interface (FFI) for an underlying `OrderBook`.
+/// C compatible Foreign Function Interface (FFI) for an underlying `OrderBook`.
 ///
 /// This struct wraps `OrderBook` in a way that makes it compatible with C function
 /// calls, enabling interaction with `OrderBook` in a C environment.
@@ -41,10 +41,10 @@ use crate::{
 /// having to manually access the underlying `OrderBook` instance.
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct OrderBook_API(Box<OrderBookContainer>);
+pub struct OrderBook_API(Box<OrderBook>);
 
 impl Deref for OrderBook_API {
-    type Target = OrderBookContainer;
+    type Target = OrderBook;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -59,7 +59,7 @@ impl DerefMut for OrderBook_API {
 
 #[no_mangle]
 pub extern "C" fn orderbook_new(instrument_id: InstrumentId, book_type: BookType) -> OrderBook_API {
-    OrderBook_API(Box::new(OrderBookContainer::new(instrument_id, book_type)))
+    OrderBook_API(Box::new(OrderBook::new(instrument_id, book_type)))
 }
 
 #[no_mangle]
@@ -84,95 +84,103 @@ pub extern "C" fn orderbook_book_type(book: &OrderBook_API) -> BookType {
 
 #[no_mangle]
 pub extern "C" fn orderbook_sequence(book: &OrderBook_API) -> u64 {
-    book.sequence()
+    book.sequence
 }
 
 #[no_mangle]
 pub extern "C" fn orderbook_ts_last(book: &OrderBook_API) -> u64 {
-    book.ts_last()
+    book.ts_last.into()
 }
 
 #[no_mangle]
 pub extern "C" fn orderbook_count(book: &OrderBook_API) -> u64 {
-    book.count()
+    book.count
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_add(
     book: &mut OrderBook_API,
     order: BookOrder,
-    ts_event: u64,
+    flags: u8,
     sequence: u64,
+    ts_event: u64,
 ) {
-    book.add(order, ts_event, sequence);
+    book.add(order, flags, sequence, ts_event.into());
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_update(
     book: &mut OrderBook_API,
     order: BookOrder,
-    ts_event: u64,
+    flags: u8,
     sequence: u64,
+    ts_event: u64,
 ) {
-    book.update(order, ts_event, sequence);
+    book.update(order, flags, sequence, ts_event.into());
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_delete(
     book: &mut OrderBook_API,
     order: BookOrder,
-    ts_event: u64,
+    flags: u8,
     sequence: u64,
+    ts_event: u64,
 ) {
-    book.delete(order, ts_event, sequence);
+    book.delete(order, flags, sequence, ts_event.into());
 }
 
 #[no_mangle]
-pub extern "C" fn orderbook_clear(book: &mut OrderBook_API, ts_event: u64, sequence: u64) {
-    book.clear(ts_event, sequence);
+pub extern "C" fn orderbook_clear(book: &mut OrderBook_API, sequence: u64, ts_event: u64) {
+    book.clear(sequence, ts_event.into());
 }
 
 #[no_mangle]
-pub extern "C" fn orderbook_clear_bids(book: &mut OrderBook_API, ts_event: u64, sequence: u64) {
-    book.clear_bids(ts_event, sequence);
+pub extern "C" fn orderbook_clear_bids(book: &mut OrderBook_API, sequence: u64, ts_event: u64) {
+    book.clear_bids(sequence, ts_event.into());
 }
 
 #[no_mangle]
-pub extern "C" fn orderbook_clear_asks(book: &mut OrderBook_API, ts_event: u64, sequence: u64) {
-    book.clear_asks(ts_event, sequence);
+pub extern "C" fn orderbook_clear_asks(book: &mut OrderBook_API, sequence: u64, ts_event: u64) {
+    book.clear_asks(sequence, ts_event.into());
 }
 
 #[no_mangle]
-pub extern "C" fn orderbook_apply_delta(book: &mut OrderBook_API, delta: OrderBookDelta) {
+pub extern "C" fn orderbook_apply_delta(book: &mut OrderBook_API, delta: &OrderBookDelta) {
     book.apply_delta(delta);
 }
 
 #[no_mangle]
 pub extern "C" fn orderbook_apply_deltas(book: &mut OrderBook_API, deltas: &OrderBookDeltas_API) {
     // Clone will actually copy the contents of the `deltas` vec
-    book.apply_deltas(deltas.deref().clone());
+    book.apply_deltas(deltas.deref());
 }
 
 #[no_mangle]
-pub extern "C" fn orderbook_apply_depth(book: &mut OrderBook_API, depth: OrderBookDepth10) {
+pub extern "C" fn orderbook_apply_depth(book: &mut OrderBook_API, depth: &OrderBookDepth10) {
     book.apply_depth(depth);
 }
 
 #[no_mangle]
 pub extern "C" fn orderbook_bids(book: &mut OrderBook_API) -> CVec {
-    book.bids()
-        .iter()
-        .map(|l| Level_API::new(l.to_owned().clone()))
-        .collect::<Vec<Level_API>>()
+    book.bids
+        .levels
+        .values()
+        .map(|level| BookLevel_API::new(level.clone()))
+        .collect::<Vec<BookLevel_API>>()
         .into()
 }
 
 #[no_mangle]
 pub extern "C" fn orderbook_asks(book: &mut OrderBook_API) -> CVec {
-    book.asks()
-        .iter()
-        .map(|l| Level_API::new(l.to_owned().clone()))
-        .collect::<Vec<Level_API>>()
+    book.asks
+        .levels
+        .values()
+        .map(|level| BookLevel_API::new(level.clone()))
+        .collect::<Vec<BookLevel_API>>()
         .into()
 }
 
@@ -187,24 +195,28 @@ pub extern "C" fn orderbook_has_ask(book: &mut OrderBook_API) -> u8 {
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_best_bid_price(book: &mut OrderBook_API) -> Price {
     book.best_bid_price()
         .expect("Error: No bid orders for best bid price")
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_best_ask_price(book: &mut OrderBook_API) -> Price {
     book.best_ask_price()
         .expect("Error: No ask orders for best ask price")
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_best_bid_size(book: &mut OrderBook_API) -> Quantity {
     book.best_bid_size()
         .expect("Error: No bid orders for best bid size")
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_best_ask_size(book: &mut OrderBook_API) -> Quantity {
     book.best_ask_size()
         .expect("Error: No ask orders for best ask size")
@@ -223,6 +235,7 @@ pub extern "C" fn orderbook_midpoint(book: &mut OrderBook_API) -> f64 {
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_get_avg_px_for_quantity(
     book: &mut OrderBook_API,
     qty: Quantity,
@@ -232,6 +245,7 @@ pub extern "C" fn orderbook_get_avg_px_for_quantity(
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_get_quantity_for_price(
     book: &mut OrderBook_API,
     price: Price,
@@ -240,24 +254,37 @@ pub extern "C" fn orderbook_get_quantity_for_price(
     book.get_quantity_for_price(price, order_side)
 }
 
+/// Updates the order book with a quote tick.
+///
+/// # Panics
+///
+/// This function panics:
+/// - If book type is not `L1_MBP`.
 #[no_mangle]
-pub extern "C" fn orderbook_update_quote_tick(book: &mut OrderBook_API, tick: &QuoteTick) {
-    book.update_quote_tick(tick);
+pub extern "C" fn orderbook_update_quote_tick(book: &mut OrderBook_API, quote: &QuoteTick) {
+    book.update_quote_tick(quote).unwrap();
+}
+
+/// Updates the order book with a trade tick.
+///
+/// # Panics
+///
+/// This function panics:
+/// - If book type is not `L1_MBP`.
+#[no_mangle]
+pub extern "C" fn orderbook_update_trade_tick(book: &mut OrderBook_API, trade: &TradeTick) {
+    book.update_trade_tick(trade).unwrap();
 }
 
 #[no_mangle]
-pub extern "C" fn orderbook_update_trade_tick(book: &mut OrderBook_API, tick: &TradeTick) {
-    book.update_trade_tick(tick);
-}
-
-#[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn orderbook_simulate_fills(book: &OrderBook_API, order: BookOrder) -> CVec {
     book.simulate_fills(&order).into()
 }
 
 #[no_mangle]
 pub extern "C" fn orderbook_check_integrity(book: &OrderBook_API) -> u8 {
-    u8::from(book.check_integrity().is_ok())
+    u8::from(book_check_integrity(book).is_ok())
 }
 
 // TODO: This struct implementation potentially leaks memory

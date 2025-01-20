@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,6 +22,7 @@ from nautilus_trader.common.component import TestClock
 from nautilus_trader.common.enums import ComponentState
 from nautilus_trader.common.factories import OrderFactory
 from nautilus_trader.common.messages import ComponentStateChanged
+from nautilus_trader.common.messages import ShutdownSystem
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.execution.messages import CancelOrder
 from nautilus_trader.execution.messages import ModifyOrder
@@ -146,7 +147,7 @@ class TestMsgSpecSerializer:
         order = self.order_factory.market(
             AUDUSD_SIM.id,
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
         )
 
         # Act
@@ -161,10 +162,10 @@ class TestMsgSpecSerializer:
         order = self.order_factory.limit(
             AUDUSD_SIM.id,
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             Price(1.00000, precision=5),
             TimeInForce.DAY,
-            display_qty=Quantity(50000, precision=0),
+            display_qty=Quantity(50_000, precision=0),
         )
 
         # Act
@@ -182,10 +183,11 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             price=Price(1.00000, precision=5),
             time_in_force=TimeInForce.GTD,
             expire_time_ns=1_000_000_000 * 60,
+            tags=["tag-01", "tag-02", "tag-03"],
             init_id=UUID4(),
             ts_init=0,
         )
@@ -205,7 +207,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             trigger_price=Price(1.00000, precision=5),
             trigger_type=TriggerType.DEFAULT,
             time_in_force=TimeInForce.GTC,
@@ -229,7 +231,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             trigger_price=Price(1.00000, precision=5),
             trigger_type=TriggerType.DEFAULT,
             time_in_force=TimeInForce.GTD,
@@ -253,7 +255,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             price=Price(1.00000, precision=5),
             trigger_price=Price(1.00010, precision=5),
             trigger_type=TriggerType.BID_ASK,
@@ -278,7 +280,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             time_in_force=TimeInForce.GTD,  # <-- invalid
             expire_time_ns=1_000_000_000 * 60,
             init_id=UUID4(),
@@ -300,7 +302,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             trigger_price=Price(1.00000, precision=5),
             trigger_type=TriggerType.DEFAULT,
             time_in_force=TimeInForce.GTD,
@@ -324,7 +326,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             price=Price(1.00000, precision=5),
             trigger_price=Price(1.00010, precision=5),
             trigger_type=TriggerType.BID_ASK,
@@ -349,10 +351,10 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             price=Price(1.00000, precision=5),
             trigger_price=Price(1.00010, precision=5),
-            trigger_type=TriggerType.LAST_TRADE,
+            trigger_type=TriggerType.LAST_PRICE,
             time_in_force=TimeInForce.GTD,
             expire_time_ns=1_000_000_000 * 60,
             init_id=UUID4(),
@@ -374,7 +376,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             trigger_price=Price(1.00000, precision=5),
             trigger_type=TriggerType.DEFAULT,
             trailing_offset=Decimal("0.00010"),
@@ -400,7 +402,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             trigger_price=None,
             trigger_type=TriggerType.DEFAULT,
             trailing_offset=Decimal("0.00010"),
@@ -426,7 +428,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             price=Price(1.00000, precision=5),
             trigger_price=Price(1.00010, precision=5),
             trigger_type=TriggerType.MARK_PRICE,
@@ -454,7 +456,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             price=None,
             trigger_price=None,
             trigger_type=TriggerType.MARK_PRICE,
@@ -479,7 +481,7 @@ class TestMsgSpecSerializer:
         order = self.order_factory.market(
             AUDUSD_SIM.id,
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             exec_algorithm_id=ExecAlgorithmId("VWAP"),
         )
 
@@ -510,7 +512,7 @@ class TestMsgSpecSerializer:
         bracket = self.order_factory.bracket(
             AUDUSD_SIM.id,
             OrderSide.BUY,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             sl_trigger_price=Price(0.99900, precision=5),
             tp_price=Price(1.00010, precision=5),
         )
@@ -543,7 +545,7 @@ class TestMsgSpecSerializer:
             AUDUSD_SIM.id,
             ClientOrderId("O-123456"),
             VenueOrderId("001"),
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             Price(1.00001, precision=5),
             None,
             UUID4(),
@@ -581,6 +583,23 @@ class TestMsgSpecSerializer:
         print(b64encode(serialized))
         print(command)
 
+    def test_serialize_and_deserialize_shutdown_system_commands(self):
+        # Arrange
+        command = ShutdownSystem(
+            trader_id=TestIdStubs.trader_id(),
+            component_id=ComponentId("Controller"),
+            reason="Maintenance",
+            command_id=UUID4(),
+            ts_init=0,
+        )
+
+        # Act
+        serialized = self.serializer.serialize(command)
+        deserialized = self.serializer.deserialize(serialized)
+
+        # Assert
+        assert deserialized == command
+
     def test_serialize_and_deserialize_component_state_changed_events(self):
         # Arrange
         event = ComponentStateChanged(
@@ -610,15 +629,15 @@ class TestMsgSpecSerializer:
             reported=True,
             balances=[
                 AccountBalance(
-                    Money(1525000, USD),
-                    Money(25000, USD),
-                    Money(1500000, USD),
+                    Money(1_525_000, USD),
+                    Money(25_000, USD),
+                    Money(1_500_000, USD),
                 ),
             ],
             margins=[
                 MarginBalance(
                     Money(5000, USD),
-                    Money(20000, USD),
+                    Money(20_000, USD),
                     AUDUSD_SIM.id,
                 ),
             ],
@@ -672,7 +691,7 @@ class TestMsgSpecSerializer:
             ClientOrderId("O-123456"),
             OrderSide.SELL,
             OrderType.MARKET,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             TimeInForce.FOK,
             post_only=False,
             reduce_only=True,
@@ -687,7 +706,7 @@ class TestMsgSpecSerializer:
             exec_algorithm_id=ExecAlgorithmId("VWAP"),
             exec_algorithm_params={"period": 60},
             exec_spawn_id=ClientOrderId("O-1"),
-            tags="ENTRY",
+            tags=["ENTRY"],
             event_id=UUID4(),
             ts_init=0,
         )
@@ -713,7 +732,7 @@ class TestMsgSpecSerializer:
             ClientOrderId("O-123456"),
             OrderSide.SELL,
             OrderType.LIMIT,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             TimeInForce.DAY,
             post_only=True,
             reduce_only=False,
@@ -754,7 +773,7 @@ class TestMsgSpecSerializer:
             ClientOrderId("O-123456"),
             OrderSide.SELL,
             OrderType.STOP_MARKET,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             TimeInForce.DAY,
             post_only=False,
             reduce_only=True,
@@ -797,7 +816,7 @@ class TestMsgSpecSerializer:
             ClientOrderId("O-123456"),
             OrderSide.SELL,
             OrderType.STOP_LIMIT,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             TimeInForce.DAY,
             post_only=True,
             reduce_only=True,
@@ -812,7 +831,7 @@ class TestMsgSpecSerializer:
             exec_algorithm_id=ExecAlgorithmId("VWAP"),
             exec_algorithm_params={"period": 60},
             exec_spawn_id=ClientOrderId("O-1"),
-            tags="entry,bulk",
+            tags=["entry", "bulk"],
             event_id=UUID4(),
             ts_init=0,
         )
@@ -824,7 +843,7 @@ class TestMsgSpecSerializer:
         # Assert
         assert deserialized == event
         assert deserialized.options == options
-        assert deserialized.tags == "entry,bulk"
+        assert deserialized.tags == ["entry", "bulk"]
 
     def test_serialize_and_deserialize_order_denied_events(self):
         # Arrange
@@ -1060,7 +1079,7 @@ class TestMsgSpecSerializer:
             ClientOrderId("O-123456"),
             VenueOrderId("1"),
             self.account_id,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             Price(0.80010, precision=5),
             Price(0.80050, precision=5),
             UUID4(),
@@ -1130,7 +1149,7 @@ class TestMsgSpecSerializer:
             PositionId("T123456"),
             OrderSide.SELL,
             OrderType.MARKET,
-            Quantity(50000, precision=0),
+            Quantity(50_000, precision=0),
             Price(1.00000, precision=5),
             AUDUSD_SIM.quote_currency,
             Money(0, USD),
@@ -1160,7 +1179,7 @@ class TestMsgSpecSerializer:
             PositionId("T123456"),
             OrderSide.SELL,
             OrderType.MARKET,
-            Quantity(100000, precision=0),
+            Quantity(100_000, precision=0),
             Price(1.00000, precision=5),
             AUDUSD_SIM.quote_currency,
             Money(0, USD),

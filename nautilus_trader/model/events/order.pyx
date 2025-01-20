@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -169,7 +169,7 @@ cdef class OrderEvent(Event):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -181,7 +181,7 @@ cdef class OrderEvent(Event):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -232,29 +232,28 @@ cdef class OrderInitialized(OrderEvent):
         order parameters.
     emulation_trigger : EmulationTrigger
         The emulation trigger for the order.
-    trigger_instrument_id : InstrumentId, optional with no default so ``None`` must be passed explicitly
+    trigger_instrument_id : InstrumentId or ``None``
         The emulation trigger instrument ID for the order (if ``None`` then will be the `instrument_id`).
     contingency_type : ContingencyType
         The order contingency type.
-    order_list_id : OrderListId, optional with no default so ``None`` must be passed explicitly
+    order_list_id : OrderListId or ``None``
         The order list ID associated with the order.
-    linked_order_ids : list[ClientOrderId], optional with no default so ``None`` must be passed explicitly
+    linked_order_ids : list[ClientOrderId] or ``None``
         The order linked client order ID(s).
-    parent_order_id : ClientOrderId, optional with no default so ``None`` must be passed explicitly
+    parent_order_id : ClientOrderId or ``None``
         The orders parent client order ID.
-    exec_algorithm_id : ExecAlgorithmId, optional with no default so ``None`` must be passed explicitly
+    exec_algorithm_id : ExecAlgorithmId or ``None``
         The execution algorithm ID for the order.
     exec_algorithm_params : dict[str, Any], optional
         The execution algorithm parameters for the order.
-    exec_spawn_id : ClientOrderId, optional with no default so ``None`` must be passed explicitly
+    exec_spawn_id : ClientOrderId or ``None``
         The execution algorithm spawning primary client order ID.
-    tags : str, optional with no default so ``None`` must be passed explicitly
-        The custom user tags for the order. These are optional and can
-        contain any arbitrary delimiter if required.
+    tags : list[str] or ``None``
+        The custom user tags for the order.
     event_id : UUID4
         The event ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
 
@@ -279,17 +278,17 @@ cdef class OrderInitialized(OrderEvent):
         bint post_only,
         bint reduce_only,
         bint quote_quantity,
-        dict options not None,
+        dict[str, object] options not None,
         TriggerType emulation_trigger,
         InstrumentId trigger_instrument_id: InstrumentId | None,
         ContingencyType contingency_type,
         OrderListId order_list_id: OrderListId | None,
-        list linked_order_ids: list[ClientOrderId] | None,
+        list[ClientOrderId] linked_order_ids: list[ClientOrderId] | None,
         ClientOrderId parent_order_id: ClientOrderId | None,
         ExecAlgorithmId exec_algorithm_id: ExecAlgorithmId | None,
-        dict exec_algorithm_params: dict[str, Any] | None,
+        dict[str, object] exec_algorithm_params: dict[str, object] | None,
         ClientOrderId exec_spawn_id: ClientOrderId | None,
-        str tags: str | None,
+        list[str] tags: list[str] | None,
         UUID4 event_id not None,
         uint64_t ts_init,
         bint reconciliation=False,
@@ -343,7 +342,7 @@ cdef class OrderInitialized(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"side={order_side_to_str(self.side)}, "
             f"type={order_type_to_str(self.order_type)}, "
-            f"quantity={self.quantity.to_str()}, "
+            f"quantity={self.quantity.to_formatted_str()}, "
             f"time_in_force={time_in_force_to_str(self.time_in_force)}, "
             f"post_only={self.post_only}, "
             f"reduce_only={self.reduce_only}, "
@@ -374,7 +373,7 @@ cdef class OrderInitialized(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"side={order_side_to_str(self.side)}, "
             f"type={order_type_to_str(self.order_type)}, "
-            f"quantity={self.quantity.to_str()}, "
+            f"quantity={self.quantity.to_formatted_str()}, "
             f"time_in_force={time_in_force_to_str(self.time_in_force)}, "
             f"post_only={self.post_only}, "
             f"reduce_only={self.reduce_only}, "
@@ -496,7 +495,7 @@ cdef class OrderInitialized(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -508,7 +507,7 @@ cdef class OrderInitialized(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -522,10 +521,18 @@ cdef class OrderInitialized(OrderEvent):
         Condition.not_none(values, "values")
         cdef str trigger_instrument_id = values["trigger_instrument_id"]
         cdef str order_list_id_str = values["order_list_id"]
-        cdef str linked_order_ids_str = values["linked_order_ids"]
         cdef str parent_order_id_str = values["parent_order_id"]
         cdef str exec_algorithm_id_str = values["exec_algorithm_id"]
         cdef str exec_spawn_id_str = values["exec_spawn_id"]
+
+        linked_order_ids = values["linked_order_ids"]
+        tags = values["tags"]
+
+        if isinstance(linked_order_ids, str):
+            linked_order_ids = linked_order_ids.split(",")
+        if isinstance(tags, str):
+            tags = tags.split(",")
+
         return OrderInitialized(
             trader_id=TraderId(values["trader_id"]),
             strategy_id=StrategyId(values["strategy_id"]),
@@ -539,17 +546,17 @@ cdef class OrderInitialized(OrderEvent):
             reduce_only=values["reduce_only"],
             quote_quantity=values["quote_quantity"],
             options=values["options"],
-            emulation_trigger=trigger_type_from_str(values["emulation_trigger"]),
+            emulation_trigger=trigger_type_from_str(values["emulation_trigger"]) if values["emulation_trigger"] is not None else TriggerType.NO_TRIGGER,
             trigger_instrument_id=InstrumentId.from_str_c(trigger_instrument_id) if trigger_instrument_id is not None else None,
             contingency_type=contingency_type_from_str(values["contingency_type"]),
             order_list_id=OrderListId(order_list_id_str) if order_list_id_str is not None else None,
-            linked_order_ids=[ClientOrderId(o_str) for o_str in linked_order_ids_str.split(",")] if linked_order_ids_str is not None else None,
+            linked_order_ids=[ClientOrderId(o_str) for o_str in linked_order_ids] if linked_order_ids is not None else None,
             parent_order_id=ClientOrderId(parent_order_id_str) if parent_order_id_str is not None else None,
             exec_algorithm_id=ExecAlgorithmId(exec_algorithm_id_str) if exec_algorithm_id_str is not None else None,
             exec_algorithm_params=values["exec_algorithm_params"],
             exec_spawn_id=ClientOrderId(exec_spawn_id_str) if exec_spawn_id_str is not None else None,
-            tags=values["tags"],
-            event_id=UUID4(values["event_id"]),
+            tags=tags,
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
         )
@@ -576,14 +583,15 @@ cdef class OrderInitialized(OrderEvent):
             "trigger_instrument_id": obj.trigger_instrument_id.value if obj.trigger_instrument_id is not None else None,
             "contingency_type": contingency_type_to_str(obj.contingency_type),
             "order_list_id": obj.order_list_id.value if obj.order_list_id is not None else None,
-            "linked_order_ids": ",".join([o.value for o in obj.linked_order_ids]) if obj.linked_order_ids is not None else None,  # noqa
+            "linked_order_ids": [o.value for o in obj.linked_order_ids] if obj.linked_order_ids is not None else None,
             "parent_order_id": obj.parent_order_id.value if obj.parent_order_id is not None else None,
             "exec_algorithm_id": obj.exec_algorithm_id.value if obj.exec_algorithm_id is not None else None,
             "exec_algorithm_params": obj.exec_algorithm_params,
             "exec_spawn_id": obj.exec_spawn_id.value if obj.exec_spawn_id is not None else None,
-            "tags": obj.tags,
+            "tags": obj.tags if obj.tags is not None else None,
             "event_id": obj.id.value,
             "ts_init": obj.ts_init,
+            "ts_event": obj.ts_init,
             "reconciliation": obj.reconciliation,
         }
 
@@ -639,12 +647,8 @@ cdef class OrderDenied(OrderEvent):
     event_id : UUID4
         The event ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
-    Raises
-    ------
-    ValueError
-        If `denied_reason` is not a valid_string.
     """
 
     def __init__(
@@ -653,18 +657,16 @@ cdef class OrderDenied(OrderEvent):
         StrategyId strategy_id not None,
         InstrumentId instrument_id not None,
         ClientOrderId client_order_id not None,
-        str reason not None,
+        str reason,
         UUID4 event_id not None,
         uint64_t ts_init,
     ):
-        Condition.valid_string(reason, "denied_reason")
-
         self._mem = order_denied_new(
             trader_id._mem,
             strategy_id._mem,
             instrument_id._mem,
             client_order_id._mem,
-            pystr_to_cstr(reason),
+            pystr_to_cstr(reason or str(None)),
             event_id._mem,
             ts_init,
             ts_init,
@@ -681,7 +683,7 @@ cdef class OrderDenied(OrderEvent):
             f"{type(self).__name__}("
             f"instrument_id={self.instrument_id}, "
             f"client_order_id={self.client_order_id}, "
-            f"reason={self.reason})"
+            f"reason='{self.reason}')"
         )
 
     def __repr__(self) -> str:
@@ -691,7 +693,7 @@ cdef class OrderDenied(OrderEvent):
             f"strategy_id={self.strategy_id}, "
             f"instrument_id={self.instrument_id}, "
             f"client_order_id={self.client_order_id}, "
-            f"reason={self.reason}, "
+            f"reason='{self.reason}', "
             f"event_id={self.id}, "
             f"ts_init={self.ts_init})"
         )
@@ -810,7 +812,7 @@ cdef class OrderDenied(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -822,7 +824,7 @@ cdef class OrderDenied(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -840,7 +842,7 @@ cdef class OrderDenied(OrderEvent):
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             client_order_id=ClientOrderId(values["client_order_id"]),
             reason=values["reason"],
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -855,7 +857,7 @@ cdef class OrderDenied(OrderEvent):
             "client_order_id": obj.client_order_id.value,
             "reason": obj.reason,
             "event_id": obj.id.value,
-            "ts_event": obj.ts_init,
+            "ts_event": obj.ts_event,
             "ts_init": obj.ts_init,
         }
 
@@ -906,7 +908,7 @@ cdef class OrderEmulated(OrderEvent):
     event_id : UUID4
         The event ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     """
 
@@ -1055,7 +1057,7 @@ cdef class OrderEmulated(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -1067,7 +1069,7 @@ cdef class OrderEmulated(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1084,7 +1086,7 @@ cdef class OrderEmulated(OrderEvent):
             strategy_id=StrategyId(values["strategy_id"]),
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             client_order_id=ClientOrderId(values["client_order_id"]),
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -1151,7 +1153,7 @@ cdef class OrderReleased(OrderEvent):
     event_id : UUID4
         The event ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     """
 
@@ -1316,7 +1318,7 @@ cdef class OrderReleased(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -1328,7 +1330,7 @@ cdef class OrderReleased(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1346,7 +1348,7 @@ cdef class OrderReleased(OrderEvent):
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             client_order_id=ClientOrderId(values["client_order_id"]),
             released_price=Price.from_str_c(values["released_price"]),
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_init=values["ts_init"],
         )
 
@@ -1415,9 +1417,9 @@ cdef class OrderSubmitted(OrderEvent):
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order submitted event occurred.
+        UNIX timestamp (nanoseconds) when the order submitted event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     """
 
     def __init__(
@@ -1572,7 +1574,7 @@ cdef class OrderSubmitted(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -1584,7 +1586,7 @@ cdef class OrderSubmitted(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1602,7 +1604,7 @@ cdef class OrderSubmitted(OrderEvent):
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
             client_order_id=ClientOrderId(values["client_order_id"]),
             account_id=AccountId(values["account_id"]),
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
         )
@@ -1675,9 +1677,9 @@ cdef class OrderAccepted(OrderEvent):
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order accepted event occurred.
+        UNIX timestamp (nanoseconds) when the order accepted event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
 
@@ -1844,7 +1846,7 @@ cdef class OrderAccepted(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -1856,7 +1858,7 @@ cdef class OrderAccepted(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -1875,7 +1877,7 @@ cdef class OrderAccepted(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(values["venue_order_id"]),
             account_id=AccountId(values["account_id"]),
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -1944,21 +1946,17 @@ cdef class OrderRejected(OrderEvent):
         The client order ID.
     account_id : AccountId
         The account ID (with the venue).
-    reason : datetime
+    reason : str
         The order rejected reason.
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order rejected event occurred.
+        UNIX timestamp (nanoseconds) when the order rejected event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
 
-    Raises
-    ------
-    ValueError
-        If `reason` is not a valid string.
     """
 
     def __init__(
@@ -1968,21 +1966,19 @@ cdef class OrderRejected(OrderEvent):
         InstrumentId instrument_id not None,
         ClientOrderId client_order_id not None,
         AccountId account_id not None,
-        str reason not None,
+        str reason,
         UUID4 event_id not None,
         uint64_t ts_event,
         uint64_t ts_init,
         bint reconciliation=False,
     ):
-        Condition.valid_string(reason, "reason")
-
         self._mem = order_rejected_new(
             trader_id._mem,
             strategy_id._mem,
             instrument_id._mem,
             client_order_id._mem,
             account_id._mem,
-            pystr_to_cstr(reason),
+            pystr_to_cstr(reason or "None"),
             event_id._mem,
             ts_event,
             ts_init,
@@ -2133,7 +2129,7 @@ cdef class OrderRejected(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -2145,7 +2141,7 @@ cdef class OrderRejected(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -2164,7 +2160,7 @@ cdef class OrderRejected(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             account_id=AccountId(values["account_id"]),
             reason=values["reason"],
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -2231,16 +2227,16 @@ cdef class OrderCanceled(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when order canceled event occurred.
+        UNIX timestamp (nanoseconds) when order canceled event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
     """
@@ -2401,7 +2397,7 @@ cdef class OrderCanceled(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -2413,7 +2409,7 @@ cdef class OrderCanceled(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -2434,7 +2430,7 @@ cdef class OrderCanceled(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -2501,16 +2497,16 @@ cdef class OrderExpired(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order expired event occurred.
+        UNIX timestamp (nanoseconds) when the order expired event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
     """
@@ -2671,7 +2667,7 @@ cdef class OrderExpired(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -2683,7 +2679,7 @@ cdef class OrderExpired(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -2704,7 +2700,7 @@ cdef class OrderExpired(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -2773,16 +2769,16 @@ cdef class OrderTriggered(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order triggered event occurred.
+        UNIX timestamp (nanoseconds) when the order triggered event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
     """
@@ -2943,7 +2939,7 @@ cdef class OrderTriggered(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -2955,7 +2951,7 @@ cdef class OrderTriggered(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -2976,7 +2972,7 @@ cdef class OrderTriggered(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -3044,16 +3040,16 @@ cdef class OrderPendingUpdate(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order pending update event occurred.
+        UNIX timestamp (nanoseconds) when the order pending update event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
     """
@@ -3214,7 +3210,7 @@ cdef class OrderPendingUpdate(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -3226,7 +3222,7 @@ cdef class OrderPendingUpdate(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -3247,7 +3243,7 @@ cdef class OrderPendingUpdate(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -3315,16 +3311,16 @@ cdef class OrderPendingCancel(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order pending cancel event occurred.
+        UNIX timestamp (nanoseconds) when the order pending cancel event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
     """
@@ -3485,7 +3481,7 @@ cdef class OrderPendingCancel(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -3497,7 +3493,7 @@ cdef class OrderPendingCancel(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -3518,7 +3514,7 @@ cdef class OrderPendingCancel(OrderEvent):
             client_order_id=ClientOrderId(values["client_order_id"]),
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -3586,25 +3582,21 @@ cdef class OrderModifyRejected(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     reason : str
         The order update rejected reason.
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order update rejected event occurred.
+        UNIX timestamp (nanoseconds) when the order update rejected event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
 
-    Raises
-    ------
-    ValueError
-        If `reason` is not a valid string.
     """
 
     def __init__(
@@ -3615,21 +3607,19 @@ cdef class OrderModifyRejected(OrderEvent):
         ClientOrderId client_order_id not None,
         VenueOrderId venue_order_id: VenueOrderId | None,
         AccountId account_id: AccountId | None,
-        str reason not None,
+        str reason,
         UUID4 event_id not None,
         uint64_t ts_event,
         uint64_t ts_init,
         bint reconciliation=False,
     ):
-        Condition.valid_string(reason, "reason")
-
         self._strategy_id = strategy_id
         self._trader_id = trader_id
         self._instrument_id = instrument_id
         self._client_order_id = client_order_id
         self._venue_order_id = venue_order_id
         self._account_id = account_id
-        self._reason = reason
+        self._reason = reason or str(None)
         self._event_id = event_id
         self._ts_event = ts_event
         self._ts_init = ts_init
@@ -3648,7 +3638,7 @@ cdef class OrderModifyRejected(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"venue_order_id={self.venue_order_id}, "
             f"account_id={self.account_id}, "
-            f"reason={self.reason}, "
+            f"reason='{self.reason}', "
             f"ts_event={self.ts_event})"
         )
 
@@ -3661,7 +3651,7 @@ cdef class OrderModifyRejected(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"venue_order_id={self.venue_order_id}, "
             f"account_id={self.account_id}, "
-            f"reason={self.reason}, "
+            f"reason='{self.reason}', "
             f"event_id={self.id}, "
             f"ts_event={self.ts_event}, "
             f"ts_init={self.ts_init})"
@@ -3781,7 +3771,7 @@ cdef class OrderModifyRejected(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -3793,7 +3783,7 @@ cdef class OrderModifyRejected(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -3815,7 +3805,7 @@ cdef class OrderModifyRejected(OrderEvent):
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
             reason=values["reason"],
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -3884,25 +3874,21 @@ cdef class OrderCancelRejected(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     reason : str
         The order cancel rejected reason.
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order cancel rejected event occurred.
+        UNIX timestamp (nanoseconds) when the order cancel rejected event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
 
-    Raises
-    ------
-    ValueError
-        If `reason` is not a valid string.
     """
 
     def __init__(
@@ -3913,21 +3899,19 @@ cdef class OrderCancelRejected(OrderEvent):
         ClientOrderId client_order_id not None,
         VenueOrderId venue_order_id: VenueOrderId | None,
         AccountId account_id: AccountId | None,
-        str reason not None,
+        str reason,
         UUID4 event_id not None,
         uint64_t ts_event,
         uint64_t ts_init,
         bint reconciliation=False,
     ):
-        Condition.valid_string(reason, "reason")
-
         self._strategy_id = strategy_id
         self._trader_id = trader_id
         self._instrument_id = instrument_id
         self._client_order_id = client_order_id
         self._venue_order_id = venue_order_id
         self._account_id = account_id
-        self._reason = reason
+        self._reason = reason or str(None)
         self._event_id = event_id
         self._ts_event = ts_event
         self._ts_init = ts_init
@@ -3946,7 +3930,7 @@ cdef class OrderCancelRejected(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"venue_order_id={self.venue_order_id}, "
             f"account_id={self.account_id}, "
-            f"reason={self.reason}, "
+            f"reason='{self.reason}', "
             f"ts_event={self.ts_event})"
         )
 
@@ -3959,7 +3943,7 @@ cdef class OrderCancelRejected(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"venue_order_id={self.venue_order_id}, "
             f"account_id={self.account_id}, "
-            f"reason={self.reason}, "
+            f"reason='{self.reason}', "
             f"event_id={self.id}, "
             f"ts_event={self.ts_event}, "
             f"ts_init={self.ts_init})"
@@ -4079,7 +4063,7 @@ cdef class OrderCancelRejected(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -4091,7 +4075,7 @@ cdef class OrderCancelRejected(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -4113,7 +4097,7 @@ cdef class OrderCancelRejected(OrderEvent):
             venue_order_id=VenueOrderId(v) if v is not None else None,
             account_id=AccountId(a) if a is not None else None,
             reason=values["reason"],
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -4181,22 +4165,22 @@ cdef class OrderUpdated(OrderEvent):
         The instrument ID.
     client_order_id : ClientOrderId
         The client order ID.
-    venue_order_id : VenueOrderId, optional with no default so ``None`` must be passed explicitly
+    venue_order_id : VenueOrderId or ``None``
         The venue order ID (assigned by the venue).
-    account_id : AccountId, optional with no default so ``None`` must be passed explicitly
+    account_id : AccountId or ``None``
         The account ID (with the venue).
     quantity : Quantity
         The orders current quantity.
-    price : Price, optional with no default so ``None`` must be passed explicitly
+    price : Price or ``None``
         The orders current price.
-    trigger_price : Price, optional with no default so ``None`` must be passed explicitly
+    trigger_price : Price or ``None``
         The orders current trigger.
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order updated event occurred.
+        UNIX timestamp (nanoseconds) when the order updated event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     reconciliation : bool, default False
         If the event was generated during reconciliation.
 
@@ -4252,9 +4236,9 @@ cdef class OrderUpdated(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"venue_order_id={self.venue_order_id}, "
             f"account_id={self.account_id}, "
-            f"quantity={self.quantity.to_str()}, "
-            f"price={self.price}, "
-            f"trigger_price={self.trigger_price}, "
+            f"quantity={self.quantity.to_formatted_str() if self.quantity else None}, "
+            f"price={self.price.to_formatted_str() if self.price else None}, "
+            f"trigger_price={self.trigger_price.to_formatted_str() if self.trigger_price else None}, "
             f"ts_event={self.ts_event})"
         )
 
@@ -4267,9 +4251,9 @@ cdef class OrderUpdated(OrderEvent):
             f"client_order_id={self.client_order_id}, "
             f"venue_order_id={self.venue_order_id}, "
             f"account_id={self.account_id}, "
-            f"quantity={self.quantity.to_str()}, "
-            f"price={self.price}, "
-            f"trigger_price={self.trigger_price}, "
+            f"quantity={self.quantity.to_formatted_str() if self.quantity else None}, "
+            f"price={self.price.to_formatted_str() if self.price else None}, "
+            f"trigger_price={self.trigger_price.to_formatted_str() if self.trigger_price else None}, "
             f"event_id={self.id}, "
             f"ts_event={self.ts_event}, "
             f"ts_init={self.ts_init})"
@@ -4377,7 +4361,7 @@ cdef class OrderUpdated(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -4389,7 +4373,7 @@ cdef class OrderUpdated(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -4415,7 +4399,7 @@ cdef class OrderUpdated(OrderEvent):
             quantity=Quantity.from_str_c(values["quantity"]),
             price=Price.from_str_c(p) if p is not None else None,
             trigger_price=Price.from_str_c(t) if t is not None else None,
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             reconciliation=values.get("reconciliation", False),
@@ -4491,11 +4475,11 @@ cdef class OrderFilled(OrderEvent):
         The account ID (with the venue).
     trade_id : TradeId
         The trade match ID (assigned by the venue).
-    position_id : PositionId, optional with no default so ``None`` must be passed explicitly
+    position_id : PositionId or ``None``
         The position ID associated with the order fill (assigned by the venue).
     order_side : OrderSide {``BUY``, ``SELL``}
         The execution order side.
-    order_side : OrderType
+    order_type : OrderType
         The execution order type.
     last_qty : Quantity
         The fill quantity for this execution.
@@ -4510,9 +4494,9 @@ cdef class OrderFilled(OrderEvent):
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the order filled event occurred.
+        UNIX timestamp (nanoseconds) when the order filled event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     info : dict[str, object], optional
         The additional fill information.
     reconciliation : bool, default False
@@ -4550,7 +4534,7 @@ cdef class OrderFilled(OrderEvent):
         dict info = None,
     ):
         Condition.not_equal(order_side, OrderSide.NO_ORDER_SIDE, "order_side", "NONE")
-        Condition.positive(last_qty, "last_qty")
+        Condition.positive_int(last_qty._mem.raw, "last_qty")
 
         if info is None:
             info = {}
@@ -4594,9 +4578,9 @@ cdef class OrderFilled(OrderEvent):
             f"position_id={self.position_id}, "
             f"order_side={order_side_to_str(self.order_side)}, "
             f"order_type={order_type_to_str(self.order_type)}, "
-            f"last_qty={self.last_qty}, "
-            f"last_px={self.last_px} {self.currency.code}, "
-            f"commission={self.commission.to_str()}, "
+            f"last_qty={self.last_qty.to_formatted_str()}, "
+            f"last_px={self.last_px.to_formatted_str()} {self.currency.code}, "
+            f"commission={self.commission.to_formatted_str()}, "
             f"liquidity_side={liquidity_side_to_str(self.liquidity_side)}, "
             f"ts_event={self.ts_event})"
         )
@@ -4614,9 +4598,9 @@ cdef class OrderFilled(OrderEvent):
             f"position_id={self.position_id}, "
             f"order_side={order_side_to_str(self.order_side)}, "
             f"order_type={order_type_to_str(self.order_type)}, "
-            f"last_qty={self.last_qty}, "
-            f"last_px={self.last_px} {self.currency.code}, "
-            f"commission={self.commission.to_str()}, "
+            f"last_qty={self.last_qty.to_formatted_str()}, "
+            f"last_px={self.last_px.to_formatted_str()} {self.currency.code}, "
+            f"commission={self.commission.to_formatted_str()}, "
             f"liquidity_side={liquidity_side_to_str(self.liquidity_side)}, "
             f"event_id={self.id}, "
             f"ts_event={self.ts_event}, "
@@ -4725,7 +4709,7 @@ cdef class OrderFilled(OrderEvent):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -4737,7 +4721,7 @@ cdef class OrderFilled(OrderEvent):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -4766,7 +4750,7 @@ cdef class OrderFilled(OrderEvent):
             currency=Currency.from_str_c(values["currency"]),
             commission=Money.from_str_c(values["commission"]),
             liquidity_side=liquidity_side_from_str(values["liquidity_side"]),
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             info=values["info"],
@@ -4791,7 +4775,7 @@ cdef class OrderFilled(OrderEvent):
             "last_qty": str(obj.last_qty),
             "last_px": str(obj.last_px),
             "currency": obj.currency.code,
-            "commission": obj.commission.to_str(),
+            "commission": str(obj.commission),
             "liquidity_side": liquidity_side_to_str(obj.liquidity_side),
             "event_id": obj.id.value,
             "ts_event": obj.ts_event,

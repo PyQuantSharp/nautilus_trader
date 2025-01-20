@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -16,10 +16,12 @@
 import copy
 import functools
 from decimal import Decimal
+from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from ibapi.common import BarData
 from ibapi.common import HistoricalTickLast
@@ -81,16 +83,73 @@ async def test_subscribe(ib_client):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_historical_subscription_not_called(ib_client):
+    # Arrange
+    ib_client._request_id_seq = 999
+    ib_client.subscribe_historical_bars = MagicMock()
+    subscription_method = ib_client.subscribe_historical_bars
+    cancellation_method = MagicMock()
+    name = "test_subscription"
+    args = (1, 2, 3)
+    kwargs = {"a": 1, "b": 2}
+
+    # Act
+    subscription = await ib_client._subscribe(
+        name,
+        subscription_method,
+        cancellation_method,
+        *args,
+        **kwargs,
+    )
+
+    # Assert
+    subscription_method.assert_not_called()
+    assert isinstance(subscription, Subscription)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_subscription_always_returned(ib_client):
+    # Arrange
+    ib_client._request_id_seq = 999
+    ib_client.subscribe_historical_bars = MagicMock()
+    subscription_method = ib_client.subscribe_historical_bars
+    cancellation_method = MagicMock()
+    name = "test_subscription"
+    args = (1, 2, 3)
+    kwargs = {"a": 1, "b": 2}
+    await ib_client._subscribe(
+        name,
+        subscription_method,
+        cancellation_method,
+        *args,
+        **kwargs,
+    )
+
+    # Act
+    subscription = await ib_client._subscribe(
+        name,
+        subscription_method,
+        cancellation_method,
+        *args,
+        **kwargs,
+    )
+
+    # Assert
+    assert isinstance(subscription, Subscription)
+
+
+@pytest.mark.asyncio
 async def test_subscribe_ticks(ib_client):
     # Arrange
     ib_client._request_id_seq = 999
     instrument_id = IBTestContractStubs.aapl_instrument().id
     contract = IBTestContractStubs.aapl_equity_ib_contract()
     tick_type = "BidAsk"
+    ignore_size = True
     ib_client._eclient.reqTickByTickData = Mock()
 
     # Act
-    await ib_client.subscribe_ticks(instrument_id, contract, tick_type)
+    await ib_client.subscribe_ticks(instrument_id, contract, tick_type, ignore_size)
 
     # Assert
     ib_client._eclient.reqTickByTickData.assert_called_once_with(
@@ -109,9 +168,10 @@ async def test_unsubscribe_ticks(ib_client):
     instrument_id = IBTestContractStubs.aapl_instrument().id
     contract = IBTestContractStubs.aapl_equity_ib_contract()
     tick_type = "BidAsk"
+    ignore_size = True
     ib_client._eclient.reqTickByTickData = Mock()
     ib_client._eclient.cancelTickByTickData = Mock()
-    await ib_client.subscribe_ticks(instrument_id, contract, tick_type)
+    await ib_client.subscribe_ticks(instrument_id, contract, tick_type, ignore_size)
 
     # Act
     await ib_client.unsubscribe_ticks(instrument_id, tick_type)
@@ -231,7 +291,7 @@ async def test_get_historical_bars(ib_client):
     bar_type = BarType.from_str("AAPL.SMART-5-SECOND-BID-EXTERNAL")
     contract = IBTestContractStubs.aapl_equity_ib_contract()
     use_rth = True
-    end_date_time = "20240101-010000"
+    end_date_time = pd.Timestamp("20240101-010000+0000")
     duration = "5 S"
     ib_client._eclient.reqHistoricalData = Mock()
 
@@ -249,7 +309,7 @@ async def test_get_historical_bars(ib_client):
     ib_client._eclient.reqHistoricalData.assert_called_once_with(
         reqId=999,
         contract=contract,
-        endDateTime=end_date_time,
+        endDateTime=end_date_time.strftime("%Y%m%d %H:%M:%S %Z"),
         durationStr=duration,
         barSizeSetting="5 secs",
         whatToShow="BID",
@@ -295,7 +355,8 @@ async def test_get_historical_ticks(ib_client):
     )
 
 
-def test_ib_bar_to_nautilus_bar(ib_client):
+@pytest.mark.asyncio
+async def test_ib_bar_to_nautilus_bar(ib_client):
     # Arrange
     bar_type_str = "AAPL.NASDAQ-5-SECOND-BID-INTERNAL"
     bar_type = BarType.from_str(bar_type_str)
@@ -312,7 +373,7 @@ def test_ib_bar_to_nautilus_bar(ib_client):
     ib_client._cache.add_instrument(IBTestContractStubs.aapl_instrument())
 
     # Act
-    result = ib_client._ib_bar_to_nautilus_bar(bar_type, bar, ts_init, is_revision=False)
+    result = await ib_client._ib_bar_to_nautilus_bar(bar_type, bar, ts_init, is_revision=False)
 
     # Assert
     assert result.bar_type == BarType.from_str(bar_type_str)
@@ -326,7 +387,8 @@ def test_ib_bar_to_nautilus_bar(ib_client):
     assert result.is_revision is False
 
 
-def test_process_bar_data(ib_client):
+@pytest.mark.asyncio
+async def test_process_bar_data(ib_client):
     # Arrange
     bar_type_str = "AAPL.NASDAQ-5-SECOND-BID-INTERNAL"
     previous_bar = BarData()
@@ -345,7 +407,7 @@ def test_process_bar_data(ib_client):
     bar.date = "1704067205"
 
     # Act
-    result = ib_client._process_bar_data(
+    result = await ib_client._process_bar_data(
         bar_type_str,
         bar,
         handle_revised_bars=False,
@@ -366,7 +428,8 @@ def test_process_bar_data(ib_client):
 
 
 # @pytest.mark.skip(reason="WIP")
-def test_process_trade_ticks(ib_client):
+@pytest.mark.asyncio
+async def test_process_trade_ticks(ib_client):
     # Arrange
     mock_request = Mock(spec=Request)
     mock_request.name = ["AAPL.NASDAQ"]
@@ -386,7 +449,7 @@ def test_process_trade_ticks(ib_client):
     ticks = [trade_tick_1, trade_tick_2]
 
     # Act
-    ib_client._process_trade_ticks(request_id, ticks)
+    await ib_client._process_trade_ticks(request_id, ticks)
 
     # Assert
     assert len(mock_request.result) == 2
@@ -410,24 +473,25 @@ def test_process_trade_ticks(ib_client):
     assert result_2.ts_init == 1704067205000000000
 
 
-def test_tickByTickBidAsk(ib_client):
+@pytest.mark.asyncio
+async def test_tickByTickBidAsk(ib_client):
     # Arrange
     ib_client._clock.set_time(1704067205000000000)
     mock_subscription = Mock(spec=Subscription)
     mock_subscription.name = ["AAPL.NASDAQ"]
     ib_client._subscriptions = Mock()
     ib_client._subscriptions.get.return_value = mock_subscription
-    ib_client._handle_data = Mock()
+    ib_client._handle_data = AsyncMock()
 
     # Act
-    ib_client.tickByTickBidAsk(
-        1,
-        1704067200,
-        100.01,
-        100.02,
-        Decimal(100),
-        Decimal(200),
-        TickAttribBidAsk(),
+    await ib_client.process_tick_by_tick_bid_ask(
+        req_id=1,
+        time=1704067200,
+        bid_price=100.01,
+        ask_price=100.02,
+        bid_size=Decimal(100),
+        ask_size=Decimal(200),
+        tick_attrib_bid_ask=TickAttribBidAsk(),
     )
 
     # Assert
@@ -443,25 +507,26 @@ def test_tickByTickBidAsk(ib_client):
     ib_client._handle_data.assert_called_once_with(quote_tick)
 
 
-def test_tickByTickAllLast(ib_client):
+@pytest.mark.asyncio
+async def test_tickByTickAllLast(ib_client):
     # Arrange
     ib_client._clock.set_time(1704067205000000000)
     mock_subscription = Mock(spec=Subscription)
     mock_subscription.name = ["AAPL.NASDAQ"]
     ib_client._subscriptions = Mock()
     ib_client._subscriptions.get.return_value = mock_subscription
-    ib_client._handle_data = Mock()
+    ib_client._handle_data = AsyncMock()
 
     # Act
-    ib_client.tickByTickAllLast(
-        1,
-        "Last",
-        1704067200,
-        100.01,
-        Decimal(100),
-        TickAttribLast(),
-        "",
-        "",
+    await ib_client.process_tick_by_tick_all_last(
+        req_id=1,
+        tick_type="Last",
+        time=1704067200,
+        price=100.01,
+        size=Decimal(100),
+        tick_attrib_last=TickAttribLast(),
+        exchange="",
+        special_conditions="",
     )
 
     # Assert
@@ -477,7 +542,8 @@ def test_tickByTickAllLast(ib_client):
     ib_client._handle_data.assert_called_once_with(trade_tick)
 
 
-def test_realtimeBar(ib_client):
+@pytest.mark.asyncio
+async def test_realtimeBar(ib_client):
     # Arrange
     ib_client._clock.set_time(1704067205000000000)
     mock_subscription = Mock(spec=Subscription)
@@ -485,19 +551,19 @@ def test_realtimeBar(ib_client):
     mock_subscription.name = bar_type_str
     ib_client._subscriptions = Mock()
     ib_client._subscriptions.get.return_value = mock_subscription
-    ib_client._handle_data = Mock()
+    ib_client._handle_data = AsyncMock()
 
     # Act
-    ib_client.realtimeBar(
-        1,
-        1704067200,
-        100.01,
-        101.00,
-        99.01,
-        100.50,
-        Decimal(100),
-        Decimal(-1),
-        Decimal(-1),
+    await ib_client.process_realtime_bar(
+        req_id=1,
+        time=1704067200,
+        open_=100.01,
+        high=101.00,
+        low=99.01,
+        close=100.50,
+        volume=Decimal(100),
+        wap=Decimal(-1),
+        count=Decimal(-1),
     )
 
     # Assert
@@ -513,3 +579,31 @@ def test_realtimeBar(ib_client):
         is_revision=False,
     )
     ib_client._handle_data.assert_called_once_with(bar)
+
+
+@pytest.mark.asyncio
+async def test_get_price_retrieval(ib_client):
+    """
+    Test case for retrieving price data.
+    """
+    # Arrange
+    # Set up the request ID and mock the necessary methods
+    ib_client._request_id_seq = 999
+    contract = IBTestContractStubs.aapl_equity_ib_contract()
+    tick_type = "MidPoint"
+    ib_client._eclient.reqMktData = MagicMock()
+
+    # Act
+    # Call the method to get the price
+    await ib_client.get_price(contract, tick_type)
+
+    # Assert
+    # Verify that the market data request was made with the correct parameters
+    ib_client._eclient.reqMktData.assert_called_once_with(
+        999,
+        contract,
+        tick_type,
+        False,
+        False,
+        [],
+    )

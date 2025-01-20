@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -38,7 +38,7 @@ cdef class EfficiencyRatio(Indicator):
     """
 
     def __init__(self, int period):
-        Condition.true(period >= 2, "period was < 2")
+        Condition.is_true(period >= 2, "period was < 2")
         super().__init__(params=[period])
 
         self.period = period

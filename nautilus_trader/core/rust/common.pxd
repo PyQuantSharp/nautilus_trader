@@ -90,47 +90,35 @@ cdef extern from "../includes/common.h":
 
     # The log level for log messages.
     cpdef enum LogLevel:
-        # A level lower than all other log levels (off).
+        # The **OFF** log level. A level lower than all other log levels (off).
         OFF # = 0,
-        # The **DEBUG** debug log level.
-        DEBUG # = 10,
-        # The **INFO** info log level.
-        INFO # = 20,
-        # The **WARNING** warning log level.
-        WARNING # = 30,
-        # The **ERROR** error log level.
-        ERROR # = 40,
+        # The **TRACE** log level. Only available in Rust for debug/development builds.
+        TRACE # = 1,
+        # The **DEBUG** log level.
+        DEBUG # = 2,
+        # The **INFO** log level.
+        INFO # = 3,
+        # The **WARNING** log level.
+        WARNING # = 4,
+        # The **ERROR** log level.
+        ERROR # = 5,
 
+    # A real-time clock which uses system time.
+    #
+    # Timestamps are guaranteed to be unique and monotonically increasing.
     cdef struct LiveClock:
         pass
 
-    # Provides a generic message bus to facilitate various messaging patterns.
-    #
-    # The bus provides both a producer and consumer API for Pub/Sub, Req/Rep, as
-    # well as direct point-to-point messaging to registered endpoints.
-    #
-    # Pub/Sub wildcard patterns for hierarchical topics are possible:
-    #  - `*` asterisk represents one or more characters in a pattern.
-    #  - `?` question mark represents a single character in a pattern.
-    #
-    # Given a topic and pattern potentially containing wildcard characters, i.e.
-    # `*` and `?`, where `?` can match any single character in the topic, and `*`
-    # can match any number of characters including zero characters.
-    #
-    # The asterisk in a wildcard matches any character zero or more times. For
-    # example, `comp*` matches anything beginning with `comp` which means `comp`,
-    # `complete`, and `computer` are all matched.
-    #
-    # A question mark matches a single character once. For example, `c?mp` matches
-    # `camp` and `comp`. The question mark can also be used more than once.
-    # For example, `c??p` would match both of the above examples and `coop`.
-    cdef struct MessageBus:
+    cdef struct LogGuard:
         pass
 
+    # A static test clock.
+    #
+    # Stores the current timestamp internally which can be advanced.
     cdef struct TestClock:
         pass
 
-    # Provides a C compatible Foreign Function Interface (FFI) for an underlying [`TestClock`].
+    # C compatible Foreign Function Interface (FFI) for an underlying [`TestClock`].
     #
     # This struct wraps `TestClock` in a way that makes it compatible with C function
     # calls, enabling interaction with `TestClock` in a C environment.
@@ -141,7 +129,7 @@ cdef extern from "../includes/common.h":
     cdef struct TestClock_API:
         TestClock *_0;
 
-    # Provides a C compatible Foreign Function Interface (FFI) for an underlying [`LiveClock`].
+    # C compatible Foreign Function Interface (FFI) for an underlying [`LiveClock`].
     #
     # This struct wraps `LiveClock` in a way that makes it compatible with C function
     # calls, enabling interaction with `LiveClock` in a C environment.
@@ -153,31 +141,39 @@ cdef extern from "../includes/common.h":
     cdef struct LiveClock_API:
         LiveClock *_0;
 
-    # Provides a C compatible Foreign Function Interface (FFI) for an underlying [`MessageBus`].
+    # C compatible Foreign Function Interface (FFI) for an underlying [`LogGuard`].
     #
-    # This struct wraps `MessageBus` in a way that makes it compatible with C function
-    # calls, enabling interaction with `MessageBus` in a C environment.
+    # This struct wraps `LogGuard` in a way that makes it compatible with C function
+    # calls, enabling interaction with `LogGuard` in a C environment.
     #
-    # It implements the `Deref` trait, allowing instances of `MessageBus_API` to be
-    # dereferenced to `MessageBus`, providing access to `TestClock`'s methods without
-    # having to manually access the underlying `MessageBus` instance.
-    cdef struct MessageBus_API:
-        MessageBus *_0;
+    # It implements the `Deref` trait, allowing instances of `LogGuard_API` to be
+    # dereferenced to `LogGuard`, providing access to `LogGuard`'s methods without
+    # having to manually access the underlying `LogGuard` instance.
+    cdef struct LogGuard_API:
+        LogGuard *_0;
 
     # Represents a time event occurring at the event timestamp.
+    #
+    # A `TimeEvent` carries metadata such as the event's name, a unique event ID,
+    # and timestamps indicating when the event was scheduled to occur and when it was initialized.
     cdef struct TimeEvent_t:
-        # The event name.
+        # The event name, identifying the nature or purpose of the event.
         char* name;
-        # The event ID.
+        # The unique identifier for the event.
         UUID4_t event_id;
-        # The message category
+        # UNIX timestamp (nanoseconds) when the event occurred.
         uint64_t ts_event;
-        # The UNIX timestamp (nanoseconds) when the object was initialized.
+        # UNIX timestamp (nanoseconds) when the instance was initialized.
         uint64_t ts_init;
 
-    # Represents a time event and its associated handler.
+    # Legacy time event handler for Cython/FFI inter-operatbility
+    #
+    # TODO: Remove once Cython is deprecated
+    #
+    # `TimeEventHandler` associates a `TimeEvent` with a callback function that is triggered
+    # when the event's timestamp is reached.
     cdef struct TimeEventHandler_t:
-        # The event.
+        # The time event.
         TimeEvent_t event;
         # The callable raw pointer.
         char *callback_ptr;
@@ -200,7 +196,7 @@ cdef extern from "../includes/common.h":
     # Sets the global logging clock to static mode.
     void logging_clock_set_static_mode();
 
-    # Sets the global logging clock static time with the given UNIX time (nanoseconds).
+    # Sets the global logging clock static time with the given UNIX timestamp (nanoseconds).
     void logging_clock_set_static_time(uint64_t time_ns);
 
     TestClock_API test_clock_new();
@@ -290,6 +286,12 @@ cdef extern from "../includes/common.h":
     #
     # - Assumes `name_ptr` is a valid C string pointer.
     # - Assumes `callback_ptr` is a valid `PyCallable` pointer.
+    #
+    # # Panics
+    #
+    # This function panics:
+    # - If `name` is not a valid string.
+    # - If `callback_ptr` is NULL and no default callback has been assigned on the clock.
     void live_clock_set_time_alert(LiveClock_API *clock,
                                    const char *name_ptr,
                                    uint64_t alert_time_ns,
@@ -299,6 +301,12 @@ cdef extern from "../includes/common.h":
     #
     # - Assumes `name_ptr` is a valid C string pointer.
     # - Assumes `callback_ptr` is a valid `PyCallable` pointer.
+    #
+    # # Panics
+    #
+    # This function panics:
+    # - If `name` is not a valid string.
+    # - If `callback_ptr` is NULL and no default callback has been assigned on the clock.
     void live_clock_set_timer(LiveClock_API *clock,
                               const char *name_ptr,
                               uint64_t interval_ns,
@@ -370,17 +378,17 @@ cdef extern from "../includes/common.h":
     # - Assume `file_name_ptr` is either NULL or a valid C string pointer.
     # - Assume `file_format_ptr` is either NULL or a valid C string pointer.
     # - Assume `component_level_ptr` is either NULL or a valid C string pointer.
-    void logging_init(TraderId_t trader_id,
-                      UUID4_t instance_id,
-                      LogLevel level_stdout,
-                      LogLevel level_file,
-                      const char *directory_ptr,
-                      const char *file_name_ptr,
-                      const char *file_format_ptr,
-                      const char *component_levels_ptr,
-                      uint8_t is_colored,
-                      uint8_t is_bypassed,
-                      uint8_t print_config);
+    LogGuard_API logging_init(TraderId_t trader_id,
+                              UUID4_t instance_id,
+                              LogLevel level_stdout,
+                              LogLevel level_file,
+                              const char *directory_ptr,
+                              const char *file_name_ptr,
+                              const char *file_format_ptr,
+                              const char *component_levels_ptr,
+                              uint8_t is_colored,
+                              uint8_t is_bypassed,
+                              uint8_t print_config);
 
     # Creates a new log event.
     #
@@ -411,139 +419,8 @@ cdef extern from "../includes/common.h":
     # - Assumes `component_ptr` is a valid C string pointer.
     void logging_log_sysinfo(const char *component_ptr);
 
-    # Flushes global logger buffers.
-    void logger_flush();
-
-    # # Safety
-    #
-    # - Assumes `trader_id_ptr` is a valid C string pointer.
-    # - Assumes `name_ptr` is a valid C string pointer.
-    MessageBus_API msgbus_new(const char *trader_id_ptr,
-                              const char *name_ptr,
-                              const char *instance_id_ptr,
-                              const char *config_ptr);
-
-    void msgbus_drop(MessageBus_API bus);
-
-    TraderId_t msgbus_trader_id(const MessageBus_API *bus);
-
-    PyObject *msgbus_endpoints(const MessageBus_API *bus);
-
-    PyObject *msgbus_topics(const MessageBus_API *bus);
-
-    PyObject *msgbus_correlation_ids(const MessageBus_API *bus);
-
-    # # Safety
-    #
-    # - Assumes `pattern_ptr` is a valid C string pointer.
-    uint8_t msgbus_has_subscribers(const MessageBus_API *bus, const char *pattern_ptr);
-
-    PyObject *msgbus_subscription_handler_ids(const MessageBus_API *bus);
-
-    PyObject *msgbus_subscriptions(const MessageBus_API *bus);
-
-    # # Safety
-    #
-    # - Assumes `endpoint_ptr` is a valid C string pointer.
-    uint8_t msgbus_is_registered(const MessageBus_API *bus, const char *endpoint_ptr);
-
-    # # Safety
-    #
-    # - Assumes `topic_ptr` is a valid C string pointer.
-    # - Assumes `handler_id_ptr` is a valid C string pointer.
-    # - Assumes `py_callable_ptr` points to a valid Python callable.
-    uint8_t msgbus_is_subscribed(const MessageBus_API *bus,
-                                 const char *topic_ptr,
-                                 const char *handler_id_ptr);
-
-    # # Safety
-    #
-    # - Assumes `endpoint_ptr` is a valid C string pointer.
-    uint8_t msgbus_is_pending_response(const MessageBus_API *bus, const UUID4_t *request_id);
-
-    uint64_t msgbus_sent_count(const MessageBus_API *bus);
-
-    uint64_t msgbus_req_count(const MessageBus_API *bus);
-
-    uint64_t msgbus_res_count(const MessageBus_API *bus);
-
-    uint64_t msgbus_pub_count(const MessageBus_API *bus);
-
-    # # Safety
-    #
-    # - Assumes `endpoint_ptr` is a valid C string pointer.
-    # - Assumes `handler_id_ptr` is a valid C string pointer.
-    # - Assumes `py_callable_ptr` points to a valid Python callable.
-    const char *msgbus_register(MessageBus_API *bus,
-                                const char *endpoint_ptr,
-                                const char *handler_id_ptr);
-
-    # # Safety
-    #
-    # - Assumes `endpoint_ptr` is a valid C string pointer.
-    void msgbus_deregister(MessageBus_API bus, const char *endpoint_ptr);
-
-    # # Safety
-    #
-    # - Assumes `topic_ptr` is a valid C string pointer.
-    # - Assumes `handler_id_ptr` is a valid C string pointer.
-    # - Assumes `py_callable_ptr` points to a valid Python callable.
-    const char *msgbus_subscribe(MessageBus_API *bus,
-                                 const char *topic_ptr,
-                                 const char *handler_id_ptr,
-                                 uint8_t priority);
-
-    # # Safety
-    #
-    # - Assumes `topic_ptr` is a valid C string pointer.
-    # - Assumes `handler_id_ptr` is a valid C string pointer.
-    # - Assumes `py_callable_ptr` points to a valid Python callable.
-    void msgbus_unsubscribe(MessageBus_API *bus, const char *topic_ptr, const char *handler_id_ptr);
-
-    # # Safety
-    #
-    # - Assumes `endpoint_ptr` is a valid C string pointer.
-    # - Returns a NULL pointer if endpoint is not registered.
-    const char *msgbus_endpoint_callback(const MessageBus_API *bus, const char *endpoint_ptr);
-
-    # # Safety
-    #
-    # - Assumes `pattern_ptr` is a valid C string pointer.
-    CVec msgbus_matching_callbacks(MessageBus_API *bus, const char *pattern_ptr);
-
-    # # Safety
-    #
-    # - Assumes `endpoint_ptr` is a valid C string pointer.
-    # - Potentially returns a pointer to `Py_None`.
-    const char *msgbus_request_callback(MessageBus_API *bus,
-                                        const char *endpoint_ptr,
-                                        UUID4_t request_id,
-                                        const char *handler_id_ptr);
-
-    # # Safety
-    #
-    # - Potentially returns a pointer to `Py_None`.
-    const char *msgbus_response_callback(MessageBus_API *bus, const UUID4_t *correlation_id);
-
-    # # Safety
-    #
-    # - Potentially returns a pointer to `Py_None`.
-    const char *msgbus_correlation_id_handler(MessageBus_API *bus, const UUID4_t *correlation_id);
-
-    # # Safety
-    #
-    # - Assumes `topic_ptr` is a valid C string pointer.
-    # - Assumes `pattern_ptr` is a valid C string pointer.
-    uint8_t msgbus_is_matching(const char *topic_ptr, const char *pattern_ptr);
-
-    # # Safety
-    #
-    # - Assumes `topic_ptr` is a valid C string pointer.
-    # - Assumes `handler_id_ptr` is a valid C string pointer.
-    # - Assumes `py_callable_ptr` points to a valid Python callable.
-    void msgbus_publish_external(MessageBus_API *bus,
-                                 const char *topic_ptr,
-                                 const char *payload_ptr);
+    # Flushes global logger buffers of any records.
+    void logger_drop(LogGuard_API log_guard);
 
     # # Safety
     #

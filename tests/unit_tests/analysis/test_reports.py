@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+import numpy as np
 import pandas as pd
 
 from nautilus_trader.accounting.accounts.margin import MarginAccount
@@ -157,9 +158,9 @@ class TestReportProvider:
         assert report.iloc[0]["side"] == "BUY"
         assert report.iloc[0]["type"] == "LIMIT"
         assert report.iloc[0]["quantity"] == "1500000"
-        assert report.iloc[0]["avg_px"] == "0.80011"
-        assert report.iloc[0]["slippage"] == "9.99999999995449e-06"
-        assert report.iloc[1]["avg_px"] is None
+        assert report.iloc[0]["avg_px"] == 0.80011
+        assert report.iloc[0]["slippage"] == 9.99999999995449e-06
+        assert np.isnan(report.iloc[1]["avg_px"])
 
     def test_generate_order_fills_report(self):
         # Arrange
@@ -227,15 +228,15 @@ class TestReportProvider:
         assert report.iloc[0]["side"] == "BUY"
         assert report.iloc[0]["type"] == "LIMIT"
         assert report.iloc[0]["quantity"] == "1500000"
-        assert report.iloc[0]["avg_px"] == "0.80011"
-        assert report.iloc[0]["slippage"] == "9.99999999995449e-06"
+        assert report.iloc[0]["avg_px"] == 0.80011
+        assert report.iloc[0]["slippage"] == 9.99999999995449e-06
         assert report.index[1] == order3.client_order_id.value
         assert report.iloc[1]["instrument_id"] == "AUD/USD.SIM"
         assert report.iloc[1]["side"] == "SELL"
         assert report.iloc[1]["type"] == "LIMIT"
         assert report.iloc[1]["quantity"] == "1500000"
         assert report.iloc[1]["filled_qty"] == "500000"
-        assert report.iloc[1]["avg_px"] == "0.80011"
+        assert report.iloc[1]["avg_px"] == 0.80011
 
     def test_generate_fills_report(self):
         # Arrange
@@ -251,7 +252,7 @@ class TestReportProvider:
 
         partially_filled1 = TestEventStubs.order_filled(
             order1,
-            trade_id=TradeId("E-19700101-0000-000-001-1"),
+            trade_id=TradeId("E-19700101-000000-000-001-1"),
             instrument=AUDUSD_SIM,
             position_id=PositionId("P-1"),
             strategy_id=StrategyId("S-1"),
@@ -261,7 +262,7 @@ class TestReportProvider:
 
         partially_filled2 = TestEventStubs.order_filled(
             order1,
-            trade_id=TradeId("E-19700101-0000-000-001-2"),
+            trade_id=TradeId("E-19700101-000000-000-001-2"),
             instrument=AUDUSD_SIM,
             position_id=PositionId("P-1"),
             strategy_id=StrategyId("S-1"),
@@ -342,8 +343,8 @@ class TestReportProvider:
         assert report.iloc[0]["entry"] == "BUY"
         assert report.iloc[0]["side"] == "FLAT"
         assert report.iloc[0]["peak_qty"] == "100000"
-        assert report.iloc[0]["avg_px_open"] == "1.0001"
-        assert report.iloc[0]["avg_px_close"] == "1.0001"
+        assert report.iloc[0]["avg_px_open"] == 1.0001
+        assert report.iloc[0]["avg_px_close"] == 1.0001
         assert report.iloc[0]["ts_opened"] == UNIX_EPOCH
         assert pd.isna(report.iloc[0]["ts_closed"])
-        assert report.iloc[0]["realized_return"] == "0.0"
+        assert report.iloc[0]["realized_return"] == 0.0

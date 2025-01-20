@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,16 +13,22 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-from typing import Any, Generic, TypeVar
+from typing import Any, Final, Generic, TypeVar
 
 import msgspec
 
 
 T = TypeVar("T")
 
+BYBIT_PONG: Final[str] = "pong"
+
 
 class BybitListResult(Generic[T], msgspec.Struct):
     list: list[T]
+
+
+class BybitListResultWithCursor(BybitListResult[T]):
+    nextPageCursor: str | None = None
 
 
 def bybit_coin_result(object_type: Any):
@@ -51,17 +57,6 @@ class SpotPriceFilter(msgspec.Struct):
     tickSize: str
 
 
-class LotSizeFilter(msgspec.Struct):
-    # Maximum order quantity
-    maxOrderQty: str
-    # Minimum order quantity
-    minOrderQty: str
-    # The step to increase/reduce order quantity
-    qtyStep: str
-    # Maximum order qty for PostOnly order
-    postOnlyMaxOrderQty: str | None = None
-
-
 class SpotLotSizeFilter(msgspec.Struct):
     basePrecision: str
     quotePrecision: str
@@ -71,6 +66,23 @@ class SpotLotSizeFilter(msgspec.Struct):
     maxOrderAmt: str
 
 
-class BybitWsSubscriptionMsg(msgspec.Struct):
-    success: bool
-    op: str
+class LinearLotSizeFilter(msgspec.Struct):
+    # Maximum order quantity
+    maxOrderQty: str
+    # Minimum order quantity
+    minOrderQty: str
+    # The step to increase/reduce order quantity
+    qtyStep: str
+    # Maximum order qty for PostOnly order
+    postOnlyMaxOrderQty: str
+    maxMktOrderQty: str
+    minNotionalValue: str
+
+
+class OptionLotSizeFilter(msgspec.Struct):
+    # Maximum order quantity
+    maxOrderQty: str
+    # Minimum order quantity
+    minOrderQty: str
+    # The step to increase/reduce order quantity
+    qtyStep: str

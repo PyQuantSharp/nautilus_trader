@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,6 +19,10 @@ from decimal import Decimal
 
 import pytest
 
+from nautilus_trader.model import convert_to_raw_int
+from nautilus_trader.model.objects import FIXED_PRECISION
+from nautilus_trader.model.objects import PRICE_MAX
+from nautilus_trader.model.objects import PRICE_MIN
 from nautilus_trader.model.objects import Price
 
 
@@ -44,32 +48,40 @@ class TestPrice:
     def test_instantiate_with_precision_over_maximum_raises_overflow_error(self):
         # Arrange, Act, Assert
         with pytest.raises(ValueError):
-            Price(1.0, precision=10)
+            Price(1.0, precision=FIXED_PRECISION + 1)
 
     def test_instantiate_with_value_exceeding_positive_limit_raises_value_error(self):
         # Arrange, Act, Assert
         with pytest.raises(ValueError):
-            Price(9_223_372_036 + 1, precision=0)
+            Price(PRICE_MAX + 1, precision=0)
 
     def test_instantiate_with_value_exceeding_negative_limit_raises_value_error(self):
         # Arrange, Act, Assert
         with pytest.raises(ValueError):
-            Price(-9_223_372_036 - 1, precision=0)
+            Price(PRICE_MIN - 1, precision=0)
 
     def test_instantiate_base_decimal_from_int(self):
         # Arrange, Act
-        result = Price(1, precision=1)
+        value = 1.0
+        precision = 1
+
+        # Act
+        result = Price(value, precision=precision)
 
         # Assert
-        assert result.raw == 1_000_000_000
+        assert result.raw == convert_to_raw_int(value, precision)
         assert str(result) == "1.0"
 
     def test_instantiate_base_decimal_from_float(self):
-        # Arrange, Act
-        result = Price(1.12300, precision=5)
+        # Arrange
+        value = 1.12300
+        precision = 5
+
+        # Act
+        result = Price(value, precision=precision)
 
         # Assert
-        assert result.raw == 1_123_000_000
+        assert result.raw == convert_to_raw_int(value, precision)
         assert str(result) == "1.12300"
 
     def test_instantiate_base_decimal_from_decimal(self):
@@ -569,7 +581,7 @@ class TestPrice:
         result = repr(Price(1.1, 1))
 
         # Assert
-        assert result == "Price('1.1')"
+        assert result == "Price(1.1)"
 
     @pytest.mark.parametrize(
         ("value", "precision", "expected"),
@@ -613,14 +625,20 @@ class TestPrice:
         assert new_price == 0
 
     def test_from_raw_returns_expected_price(self):
-        # Arrange, Act
-        price1 = Price.from_raw(1000000000000, 3)
-        price2 = Price(1000, 3)
+        # Arrange
+        value = 1000
+        precision = 3
+
+        # Act
+        raw_value = convert_to_raw_int(value, precision)
+        price1 = Price.from_raw(raw_value, precision)
+        price2 = Price(value, precision)
 
         # Assert
         assert price1 == price2
         assert str(price1) == "1000.000"
-        assert price1.precision == 3
+        assert price1.precision == precision
+        assert Price.from_raw(price1.raw, precision) == price1
 
     def test_equality(self):
         # Arrange, Act
@@ -663,7 +681,7 @@ class TestPrice:
 
         # Assert
         assert str(price) == "1.00000"
-        assert repr(price) == "Price('1.00000')"
+        assert repr(price) == "Price(1.00000)"
 
     def test_pickle_dumps_and_loads(self):
         # Arrange
@@ -673,4 +691,4 @@ class TestPrice:
         pickled = pickle.dumps(price)
 
         # Assert
-        assert pickle.loads(pickled) == price  # noqa (testing pickle)
+        assert pickle.loads(pickled) == price  # noqa: S301 (testing pickle)

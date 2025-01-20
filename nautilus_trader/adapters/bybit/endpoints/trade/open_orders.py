@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,18 +13,25 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
 from nautilus_trader.adapters.bybit.endpoints.endpoint import BybitHttpEndpoint
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 from nautilus_trader.adapters.bybit.schemas.order import BybitOpenOrdersResponseStruct
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 
-class BybitOpenOrdersGetParameters(msgspec.Struct, omit_defaults=True, frozen=False):
-    category: BybitInstrumentType | None = None
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+
+
+class BybitOpenOrdersGetParams(msgspec.Struct, omit_defaults=True, frozen=True):
+    category: BybitProductType
     symbol: str | None = None
     baseCoin: str | None = None
     settleCoin: str | None = None
@@ -32,7 +39,7 @@ class BybitOpenOrdersGetParameters(msgspec.Struct, omit_defaults=True, frozen=Fa
     orderLinkId: str | None = None
 
 
-class BybitOpenOrdersHttp(BybitHttpEndpoint):
+class BybitOpenOrdersEndpoint(BybitHttpEndpoint):
     def __init__(
         self,
         client: BybitHttpClient,
@@ -46,10 +53,12 @@ class BybitOpenOrdersHttp(BybitHttpEndpoint):
         )
         self._get_resp_decoder = msgspec.json.Decoder(BybitOpenOrdersResponseStruct)
 
-    async def get(self, parameters: BybitOpenOrdersGetParameters) -> BybitOpenOrdersResponseStruct:
+    async def get(self, params: BybitOpenOrdersGetParams) -> BybitOpenOrdersResponseStruct:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         try:
             return self._get_resp_decoder.decode(raw)
-        except Exception:
-            raise RuntimeError(f"Failed to decode response open orders response: {raw!s}")
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to decode response from {self.url_path}: {raw.decode()}",
+            ) from e

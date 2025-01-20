@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,10 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::time::AtomicTime;
-use nautilus_model::identifiers::{
-    client_order_id::ClientOrderId, strategy_id::StrategyId, trader_id::TraderId,
-};
+use nautilus_core::AtomicTime;
+use nautilus_model::identifiers::{ClientOrderId, StrategyId, TraderId};
 
 use super::get_datetime_tag;
 
@@ -29,8 +27,9 @@ pub struct ClientOrderIdGenerator {
 }
 
 impl ClientOrderIdGenerator {
+    /// Creates a new [`ClientOrderIdGenerator`] instance.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         trader_id: TraderId,
         strategy_id: StrategyId,
         initial_count: usize,
@@ -53,7 +52,7 @@ impl ClientOrderIdGenerator {
     }
 
     #[must_use]
-    pub fn count(&self) -> usize {
+    pub const fn count(&self) -> usize {
         self.count
     }
 
@@ -62,11 +61,11 @@ impl ClientOrderIdGenerator {
         let trader_tag = self.trader_id.get_tag();
         let strategy_tag = self.strategy_id.get_tag();
         self.count += 1;
-        let id = format!(
+        let value = format!(
             "O-{}-{}-{}-{}",
             datetime_tag, trader_tag, strategy_tag, self.count
         );
-        ClientOrderId::from(id.as_str())
+        ClientOrderId::from(value)
     }
 }
 
@@ -76,19 +75,15 @@ impl ClientOrderIdGenerator {
 #[cfg(test)]
 mod tests {
     use nautilus_core::time::get_atomic_clock_static;
-    use nautilus_model::identifiers::{
-        client_order_id::ClientOrderId, strategy_id::StrategyId, trader_id::TraderId,
-    };
+    use nautilus_model::identifiers::{ClientOrderId, StrategyId, TraderId};
     use rstest::rstest;
 
     use crate::generators::client_order_id::ClientOrderIdGenerator;
 
     fn get_client_order_id_generator(initial_count: Option<usize>) -> ClientOrderIdGenerator {
-        let trader_id = TraderId::from("TRADER-001");
-        let strategy_id = StrategyId::from("EMACross-001");
         ClientOrderIdGenerator::new(
-            trader_id,
-            strategy_id,
+            TraderId::default(),
+            StrategyId::default(),
             initial_count.unwrap_or(0),
             get_atomic_clock_static(),
         )
@@ -113,18 +108,9 @@ mod tests {
         let result2 = generator.generate();
         let result3 = generator.generate();
 
-        assert_eq!(
-            result1,
-            ClientOrderId::new("O-19700101-0000-001-001-1").unwrap()
-        );
-        assert_eq!(
-            result2,
-            ClientOrderId::new("O-19700101-0000-001-001-2").unwrap()
-        );
-        assert_eq!(
-            result3,
-            ClientOrderId::new("O-19700101-0000-001-001-3").unwrap()
-        );
+        assert_eq!(result1, ClientOrderId::new("O-19700101-000000-001-001-1"));
+        assert_eq!(result2, ClientOrderId::new("O-19700101-000000-001-001-2"));
+        assert_eq!(result3, ClientOrderId::new("O-19700101-000000-001-001-3"));
     }
 
     #[rstest]
@@ -134,18 +120,9 @@ mod tests {
         let result2 = generator.generate();
         let result3 = generator.generate();
 
-        assert_eq!(
-            result1,
-            ClientOrderId::new("O-19700101-0000-001-001-6").unwrap()
-        );
-        assert_eq!(
-            result2,
-            ClientOrderId::new("O-19700101-0000-001-001-7").unwrap()
-        );
-        assert_eq!(
-            result3,
-            ClientOrderId::new("O-19700101-0000-001-001-8").unwrap()
-        );
+        assert_eq!(result1, ClientOrderId::new("O-19700101-000000-001-001-6"));
+        assert_eq!(result2, ClientOrderId::new("O-19700101-000000-001-001-7"));
+        assert_eq!(result3, ClientOrderId::new("O-19700101-000000-001-001-8"));
     }
 
     #[rstest]
@@ -156,9 +133,6 @@ mod tests {
         generator.reset();
         let result = generator.generate();
 
-        assert_eq!(
-            result,
-            ClientOrderId::new("O-19700101-0000-001-001-1").unwrap()
-        );
+        assert_eq!(result, ClientOrderId::new("O-19700101-000000-001-001-1"));
     }
 }

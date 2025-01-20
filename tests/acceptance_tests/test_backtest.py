@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,6 +17,7 @@ from decimal import Decimal
 
 import pandas as pd
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.backtest.engine import BacktestEngineConfig
 from nautilus_trader.backtest.engine import ExecEngineConfig
@@ -58,7 +59,6 @@ from nautilus_trader.persistence.wranglers import TradeTickDataWrangler
 from nautilus_trader.test_kit.mocks.data import setup_catalog
 from nautilus_trader.test_kit.providers import TestDataProvider
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
-from tests import TEST_DATA_DIR
 from tests.integration_tests.adapters.betfair.test_kit import BetfairDataProvider
 
 
@@ -87,7 +87,7 @@ class TestBacktestAcceptanceTestsUSDJPY:
 
         self.usdjpy = TestInstrumentProvider.default_fx_ccy("USD/JPY")
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(instrument=self.usdjpy)
         provider = TestDataProvider()
         ticks = wrangler.process_bar_data(
@@ -211,7 +211,7 @@ class TestBacktestAcceptanceTestsGBPUSDBarsInternal:
 
         self.gbpusd = TestInstrumentProvider.default_fx_ccy("GBP/USD")
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(self.gbpusd)
         provider = TestDataProvider()
         ticks = wrangler.process_bar_data(
@@ -259,7 +259,7 @@ class TestBacktestAcceptanceTestsGBPUSDBarsInternal:
             trailing_atr_multiple=3.0,
             trailing_offset_type="PRICE",
             trailing_offset=Decimal("0.01"),
-            trigger_type="LAST_TRADE",
+            trigger_type="LAST_PRICE",
         )
         strategy = EMACrossStopEntry(config=config)
         self.engine.add_strategy(strategy)
@@ -333,7 +333,7 @@ class TestBacktestAcceptanceTestsGBPUSDBarsExternal:
 
         self.gbpusd = TestInstrumentProvider.default_fx_ccy("GBP/USD")
 
-        # Setup wranglers
+        # Set up wranglers
         bid_wrangler = BarDataWrangler(
             bar_type=BarType.from_str("GBP/USD.SIM-1-MINUTE-BID-EXTERNAL"),
             instrument=self.gbpusd,
@@ -343,7 +343,7 @@ class TestBacktestAcceptanceTestsGBPUSDBarsExternal:
             instrument=self.gbpusd,
         )
 
-        # Setup data
+        # Set up data
         provider = TestDataProvider()
 
         # Build externally aggregated bars
@@ -383,79 +383,13 @@ class TestBacktestAcceptanceTestsGBPUSDBarsExternal:
         assert ending_balance == Money(1_088_115.65, USD)
 
 
-class TestBacktestAcceptanceTestsBTCUSDTSpotNoCashPositions:
-    def setup(self):
-        # Fixture Setup
-        config = BacktestEngineConfig(
-            run_analysis=False,
-            logging=LoggingConfig(bypass_logging=True),
-            exec_engine=ExecEngineConfig(allow_cash_positions=False),  # <-- Normally True
-            risk_engine=RiskEngineConfig(bypass=True),
-        )
-        self.engine = BacktestEngine(
-            config=config,
-        )
-        self.venue = Venue("BINANCE")
-
-        self.engine.add_venue(
-            venue=self.venue,
-            oms_type=OmsType.NETTING,
-            account_type=AccountType.CASH,  # <-- Spot exchange
-            starting_balances=[Money(10, BTC), Money(10_000_000, USDT)],
-            base_currency=None,
-        )
-
-        self.btcusdt = TestInstrumentProvider.btcusdt_binance()
-        self.engine.add_instrument(self.btcusdt)
-
-    def teardown(self):
-        self.engine.dispose()
-
-    def test_run_ema_cross_with_minute_trade_bars(self):
-        # Arrange
-        wrangler = BarDataWrangler(
-            bar_type=BarType.from_str("BTCUSDT.BINANCE-1-MINUTE-LAST-EXTERNAL"),
-            instrument=self.btcusdt,
-        )
-
-        provider = TestDataProvider()
-
-        # Build externally aggregated bars
-        bars = wrangler.process(
-            data=provider.read_csv_bars("btc-perp-20211231-20220201_1m.csv")[:10_000],
-        )
-
-        self.engine.add_data(bars)
-
-        config = EMACrossConfig(
-            instrument_id=self.btcusdt.id,
-            bar_type=BarType.from_str("BTCUSDT.BINANCE-1-MINUTE-LAST-EXTERNAL"),
-            trade_size=Decimal(0.001),
-            fast_ema_period=10,
-            slow_ema_period=20,
-        )
-        strategy = EMACross(config=config)
-        self.engine.add_strategy(strategy)
-
-        # Act
-        self.engine.run()
-
-        # Assert
-        assert strategy.fast_ema.count == 10_000
-        assert self.engine.iteration == 10_000
-        btc_ending_balance = self.engine.portfolio.account(self.venue).balance_total(BTC)
-        usdt_ending_balance = self.engine.portfolio.account(self.venue).balance_total(USDT)
-        assert btc_ending_balance == Money(9.57200000, BTC)
-        assert usdt_ending_balance == Money(10_017_571.74970600, USDT)
-
-
 class TestBacktestAcceptanceTestsBTCUSDTEmaCrossTWAP:
     def setup(self):
         # Fixture Setup
         config = BacktestEngineConfig(
             run_analysis=False,
             logging=LoggingConfig(bypass_logging=True),
-            exec_engine=ExecEngineConfig(allow_cash_positions=False),  # <-- Normally True
+            exec_engine=ExecEngineConfig(),
             risk_engine=RiskEngineConfig(bypass=True),
         )
         self.engine = BacktestEngine(
@@ -496,7 +430,7 @@ class TestBacktestAcceptanceTestsBTCUSDTEmaCrossTWAP:
         config = EMACrossTWAPConfig(
             instrument_id=self.btcusdt.id,
             bar_type=BarType.from_str("BTCUSDT.BINANCE-1-MINUTE-LAST-EXTERNAL"),
-            trade_size=Decimal(0.01),
+            trade_size=Decimal("0.01"),
             fast_ema_period=10,
             slow_ema_period=20,
             twap_horizon_secs=10.0,
@@ -516,8 +450,8 @@ class TestBacktestAcceptanceTestsBTCUSDTEmaCrossTWAP:
         assert self.engine.iteration == 10_000
         btc_ending_balance = self.engine.portfolio.account(self.venue).balance_total(BTC)
         usdt_ending_balance = self.engine.portfolio.account(self.venue).balance_total(USDT)
-        assert btc_ending_balance == Money(5.71250000, BTC)
-        assert usdt_ending_balance == Money(10_176_033.01433484, USDT)
+        assert btc_ending_balance == Money(10.00000000, BTC)
+        assert usdt_ending_balance == Money(9_999_549.43133000, USDT)
 
     def test_run_ema_cross_with_trade_ticks_from_bar_data(self):
         # Arrange
@@ -536,7 +470,7 @@ class TestBacktestAcceptanceTestsBTCUSDTEmaCrossTWAP:
         config = EMACrossConfig(
             instrument_id=self.btcusdt.id,
             bar_type=BarType.from_str("BTCUSDT.BINANCE-1-MINUTE-BID-INTERNAL"),
-            trade_size=Decimal(0.001),
+            trade_size=Decimal("0.001"),
             fast_ema_period=10,
             slow_ema_period=20,
         )
@@ -552,8 +486,8 @@ class TestBacktestAcceptanceTestsBTCUSDTEmaCrossTWAP:
         assert self.engine.iteration == 40_000
         btc_ending_balance = self.engine.portfolio.account(self.venue).balance_total(BTC)
         usdt_ending_balance = self.engine.portfolio.account(self.venue).balance_total(USDT)
-        assert btc_ending_balance == Money(9.57200000, BTC)
-        assert usdt_ending_balance == Money(10_017_571.74970600, USDT)
+        assert btc_ending_balance == Money(10.00000000, BTC)
+        assert usdt_ending_balance == Money(9_999_954.94313300, USDT)
 
 
 class TestBacktestAcceptanceTestsAUDUSD:
@@ -566,7 +500,7 @@ class TestBacktestAcceptanceTestsAUDUSD:
         self.engine = BacktestEngine(config=config)
         self.venue = Venue("SIM")
 
-        # Setup venue
+        # Set up venue
         provider = TestDataProvider()
         interest_rate_data = provider.read_csv("short-term-interest.csv")
         config = FXRolloverInterestConfig(interest_rate_data)
@@ -581,7 +515,7 @@ class TestBacktestAcceptanceTestsAUDUSD:
             modules=[fx_rollover_interest],
         )
 
-        # Setup data
+        # Set up data
         self.audusd = TestInstrumentProvider.default_fx_ccy("AUD/USD")
         wrangler = QuoteTickDataWrangler(self.audusd)
         ticks = wrangler.process(provider.read_csv_ticks("truefx/audusd-ticks.csv"))
@@ -648,7 +582,7 @@ class TestBacktestAcceptanceTestsETHUSDT:
         self.engine = BacktestEngine(config=config)
         self.venue = Venue("BINANCE")
 
-        # Setup venue
+        # Set up venue
         self.engine.add_venue(
             venue=self.venue,
             oms_type=OmsType.NETTING,
@@ -706,7 +640,7 @@ class TestBacktestAcceptanceTestsOrderBookImbalance:
         self.engine = BacktestEngine(config=config)
         self.venue = Venue("BETFAIR")
 
-        # Setup venue
+        # Set up venue
         self.engine.add_venue(
             venue=self.venue,
             account_type=AccountType.MARGIN,
@@ -716,8 +650,8 @@ class TestBacktestAcceptanceTestsOrderBookImbalance:
             book_type=BookType.L2_MBP,
         )
 
-        # Setup data
-        data = BetfairDataProvider.betfair_feed_parsed(market_id="1.166811431")
+        # Set up data
+        data = BetfairDataProvider.betfair_feed_parsed(market_id="1-166811431")
         instruments = [d for d in data if isinstance(d, BettingInstrument)]
         assert instruments
 
@@ -776,7 +710,7 @@ class TestBacktestAcceptanceTestsMarketMaking:
             book_type=BookType.L2_MBP,
         )
 
-        data = BetfairDataProvider.betfair_feed_parsed(market_id="1.166811431")
+        data = BetfairDataProvider.betfair_feed_parsed(market_id="1-166811431")
         instruments = [d for d in data if isinstance(d, BettingInstrument)]
 
         for instrument in instruments[:1]:
@@ -810,9 +744,5 @@ class TestBacktestAcceptanceTestsMarketMaking:
         self.engine.run()
 
         # Assert
-        # TODO - Unsure why this is not deterministic ?
-        assert self.engine.iteration in (7812, 8198, 9319)
-        assert self.engine.portfolio.account(self.venue).balance_total(GBP) in (
-            Money("9861.76", GBP),
-            Money("9868.13", GBP),
-        )
+        assert self.engine.iteration == 4216
+        assert self.engine.portfolio.account(self.venue).balance_total(GBP) == Money("924.64", GBP)

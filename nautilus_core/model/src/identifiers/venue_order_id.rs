@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,14 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid venue order ID (assigned by a trading venue).
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
 
-use anyhow::Result;
-use nautilus_core::correctness::check_valid_string;
+use nautilus_core::correctness::{check_valid_string, FAILED};
 use ustr::Ustr;
 
 /// Represents a valid venue order ID (assigned by a trading venue).
@@ -29,44 +30,58 @@ use ustr::Ustr;
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct VenueOrderId {
-    /// The venue assigned order ID value.
-    pub value: Ustr,
-}
+pub struct VenueOrderId(Ustr);
 
 impl VenueOrderId {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`VenueOrderId` value")?;
-
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`VenueOrderId`] instance with correctness checking.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `value` is not a valid string.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
     }
-}
 
-impl Default for VenueOrderId {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("001"),
-        }
+    /// Creates a new [`VenueOrderId`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
 impl Debug for VenueOrderId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for VenueOrderId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl From<&str> for VenueOrderId {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+        write!(f, "{}", self.0)
     }
 }
 
@@ -81,7 +96,7 @@ mod tests {
 
     #[rstest]
     fn test_string_reprs(venue_order_id: VenueOrderId) {
-        assert_eq!(venue_order_id.to_string(), "001");
+        assert_eq!(venue_order_id.as_str(), "001");
         assert_eq!(format!("{venue_order_id}"), "001");
     }
 }

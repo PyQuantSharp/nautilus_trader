@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,11 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-
 import json
 
 import msgspec
 import pytest
 
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
 from nautilus_trader.adapters.bybit.factories import get_bybit_http_client
 from nautilus_trader.adapters.bybit.http.account import BybitAccountHttpAPI
 from nautilus_trader.common.component import LiveClock
@@ -37,7 +35,6 @@ async def test_bybit_account_http_client():
     http_account = BybitAccountHttpAPI(
         clock=clock,
         client=client,
-        account_type=BybitInstrumentType.LINEAR,
     )
 
     ################################################################################

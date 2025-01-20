@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -26,7 +26,6 @@ from betfair_parser.spec.streaming import RunnerDefinition
 from betfair_parser.spec.streaming import RunnerStatus
 from betfair_parser.spec.streaming.type_definitions import PV
 
-from nautilus_trader.adapters.betfair.constants import BETFAIR_VENUE
 from nautilus_trader.adapters.betfair.constants import CLOSE_PRICE_LOSER
 from nautilus_trader.adapters.betfair.constants import CLOSE_PRICE_WINNER
 from nautilus_trader.adapters.betfair.constants import MARKET_STATUS_MAPPING
@@ -39,7 +38,6 @@ from nautilus_trader.adapters.betfair.parsing.common import betfair_instrument_i
 from nautilus_trader.adapters.betfair.parsing.common import hash_market_trade
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.execution.reports import FillReport
-from nautilus_trader.model.data import NULL_ORDER
 from nautilus_trader.model.data import BookOrder
 from nautilus_trader.model.data import CustomData
 from nautilus_trader.model.data import DataType
@@ -48,13 +46,13 @@ from nautilus_trader.model.data import InstrumentStatus
 from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import TradeTick
-from nautilus_trader.model.data import VenueStatus
 from nautilus_trader.model.enums import AggressorSide
 from nautilus_trader.model.enums import BookAction
 from nautilus_trader.model.enums import InstrumentCloseType
 from nautilus_trader.model.enums import LiquiditySide
-from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import MarketStatusAction
 from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import RecordFlag
 from nautilus_trader.model.identifiers import AccountId
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import Symbol
@@ -132,7 +130,7 @@ def market_change_to_updates(  # noqa: C901
                 if deltas is not None:
                     book_updates.append(deltas)
 
-            # Trade ticks
+            # Trades
             if rc.trd:
                 if instrument_id not in traded_volumes:
                     traded_volumes[instrument_id] = {}
@@ -179,24 +177,15 @@ def market_definition_to_instrument_status(
 ) -> list[InstrumentStatus]:
     updates = []
 
-    if market_definition.in_play:
-        venue_status = VenueStatus(
-            venue=BETFAIR_VENUE,
-            status=MarketStatus.OPEN,
-            ts_event=ts_event,
-            ts_init=ts_init,
-        )
-        updates.append(venue_status)
-
     for runner in market_definition.runners:
         instrument_id = betfair_instrument_id(
             market_id=market_id,
             selection_id=runner.id,
             selection_handicap=runner.handicap,
         )
-        key: tuple[MarketStatus, bool] = (market_definition.status, market_definition.in_play)
+        key: tuple[MarketStatusAction, bool] = (market_definition.status, market_definition.in_play)
         if runner.status in (RunnerStatus.REMOVED, RunnerStatus.REMOVED_VACANT):
-            status = MarketStatus.CLOSED
+            status = MarketStatusAction.CLOSE
         else:
             try:
                 status = MARKET_STATUS_MAPPING[key]
@@ -206,7 +195,7 @@ def market_definition_to_instrument_status(
                 )
         status = InstrumentStatus(
             instrument_id,
-            status=status,
+            action=status,
             ts_event=ts_event,
             ts_init=ts_init,
         )
@@ -332,12 +321,11 @@ def runner_change_to_order_book_snapshot(
     ), "Incorrect orderbook data found (best) should only be `atb` and `atl`"
 
     deltas: list[OrderBookDelta] = [
-        OrderBookDelta(
+        OrderBookDelta.clear(
             instrument_id,
-            BookAction.CLEAR,
-            NULL_ORDER,
-            ts_event,
-            ts_init,
+            sequence=0,
+            ts_event=ts_event,
+            ts_init=ts_init,
         ),
     ]
 
@@ -349,8 +337,10 @@ def runner_change_to_order_book_snapshot(
                 instrument_id,
                 BookAction.UPDATE if bid.volume > 0.0 else BookAction.DELETE,
                 book_order,
-                ts_event,
-                ts_init,
+                flags=RecordFlag.F_SNAPSHOT,
+                sequence=0,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
             deltas.append(delta)
 
@@ -362,8 +352,10 @@ def runner_change_to_order_book_snapshot(
                 instrument_id,
                 BookAction.UPDATE if ask.volume > 0.0 else BookAction.DELETE,
                 book_order,
-                ts_event,
-                ts_init,
+                flags=RecordFlag.F_SNAPSHOT,
+                sequence=0,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
             deltas.append(delta)
 
@@ -381,7 +373,7 @@ def runner_change_to_trade_ticks(
     for trd in rc.trd:
         if trd.volume == 0:
             continue
-        # Betfair trade ticks are total volume traded.
+        # Betfair trades are total volume traded
         if trd.price not in traded_volumes:
             traded_volumes[trd.price] = 0
         existing_volume = traded_volumes[trd.price]
@@ -420,30 +412,49 @@ def runner_change_to_order_book_deltas(
 
     deltas: list[OrderBookDelta] = []
 
+    bids_len = len(rc.atb) if rc.atb else 0
+    asks_len = len(rc.atl) if rc.atl else 0
+
     # Bids are available to back (atb)
     if rc.atb is not None:
-        for bid in rc.atb:
+        for idx, bid in enumerate(rc.atb):
+            flags = 0
+            if idx == bids_len - 1 and asks_len == 0:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
             book_order = _price_volume_to_book_order(bid, OrderSide.BUY)
             delta = OrderBookDelta(
                 instrument_id,
                 BookAction.UPDATE if bid.volume > 0.0 else BookAction.DELETE,
                 book_order,
-                ts_event,
-                ts_init,
+                flags=flags,
+                sequence=0,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
             deltas.append(delta)
 
     # Asks are available to back (atl)
     if rc.atl is not None:
-        for ask in rc.atl:
+        for idx, ask in enumerate(rc.atl):
+            flags = 0
+            if idx == asks_len - 1:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
             book_order = _price_volume_to_book_order(ask, OrderSide.SELL)
 
             delta = OrderBookDelta(
                 instrument_id,
                 BookAction.UPDATE if ask.volume > 0.0 else BookAction.DELETE,
                 book_order,
-                ts_event,
-                ts_init,
+                flags=flags,
+                sequence=0,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
             deltas.append(delta)
 
@@ -493,29 +504,49 @@ def runner_change_to_bsp_order_book_deltas(
 ) -> list[CustomData] | None:
     if not (rc.spb or rc.spl):
         return None
+
     deltas: list[BSPOrderBookDelta] = []
 
-    if rc.spb is not None:
-        for spb in rc.spb:
-            book_order = _price_volume_to_book_order(spb, OrderSide.SELL)
-            delta = BSPOrderBookDelta(
-                instrument_id,
-                BookAction.DELETE if spb.volume == 0.0 else BookAction.UPDATE,
-                book_order,
-                ts_event,
-                ts_init,
-            )
-            deltas.append(delta)
+    bids_len = len(rc.spb) if rc.spb else 0
+    asks_len = len(rc.spl) if rc.spl else 0
 
     if rc.spl is not None:
-        for spl in rc.spl:
+        for idx, spl in enumerate(rc.spl):
+            flags = 0
+            if idx == bids_len - 1 and asks_len == 0:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
             book_order = _price_volume_to_book_order(spl, OrderSide.BUY)
             delta = BSPOrderBookDelta(
                 instrument_id,
                 BookAction.DELETE if spl.volume == 0.0 else BookAction.UPDATE,
                 book_order,
-                ts_event,
-                ts_init,
+                flags=flags,
+                sequence=0,
+                ts_event=ts_event,
+                ts_init=ts_init,
+            )
+            deltas.append(delta)
+
+    if rc.spb is not None:
+        for idx, spb in enumerate(rc.spb):
+            flags = 0
+            if idx == asks_len - 1:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
+            book_order = _price_volume_to_book_order(spb, OrderSide.SELL)
+            delta = BSPOrderBookDelta(
+                instrument_id,
+                BookAction.DELETE if spb.volume == 0.0 else BookAction.UPDATE,
+                book_order,
+                flags=flags,
+                sequence=0,
+                ts_event=ts_event,
+                ts_init=ts_init,
             )
             deltas.append(delta)
 

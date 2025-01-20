@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,14 +18,14 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use nautilus_core::time::UnixNanos;
+use nautilus_core::UnixNanos;
 
 use crate::{
     data::{
         depth::{OrderBookDepth10, DEPTH10_LEN},
         order::BookOrder,
     },
-    identifiers::instrument_id::InstrumentId,
+    identifiers::InstrumentId,
 };
 
 /// # Safety
@@ -33,6 +33,7 @@ use crate::{
 /// - Assumes `bids` and `asks` are valid pointers to arrays of `BookOrder` of length 10.
 /// - Assumes `bid_counts` and `ask_counts` are valid pointers to arrays of `u32` of length 10.
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub unsafe extern "C" fn orderbook_depth10_new(
     instrument_id: InstrumentId,
     bids_ptr: *const BookOrder,

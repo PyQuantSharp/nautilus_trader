@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,19 +15,16 @@
 
 use std::fmt::{Display, Formatter};
 
-use anyhow::Result;
-use nautilus_core::{time::UnixNanos, uuid::UUID4};
+use nautilus_core::{UnixNanos, UUID4};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     enums::AccountType,
-    identifiers::account_id::AccountId,
-    types::{
-        balance::{AccountBalance, MarginBalance},
-        currency::Currency,
-    },
+    identifiers::AccountId,
+    types::{AccountBalance, Currency, MarginBalance},
 };
 
+/// Represents an event which includes information on the state of the account.
 #[repr(C)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(
@@ -35,18 +32,29 @@ use crate::{
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
 pub struct AccountState {
+    /// The account ID associated with the event.
     pub account_id: AccountId,
+    /// The type of the account (e.g., margin, spot, etc.).
     pub account_type: AccountType,
+    /// The base currency for the account, if applicable.
     pub base_currency: Option<Currency>,
+    /// The balances in the account.
     pub balances: Vec<AccountBalance>,
+    /// The margin balances in the account.
     pub margins: Vec<MarginBalance>,
+    /// Indicates if the account state is reported by the exchange
+    /// (as opposed to system-calculated).
     pub is_reported: bool,
+    /// The unique identifier for the event.
     pub event_id: UUID4,
+    /// UNIX timestamp (nanoseconds) when the event occurred.
     pub ts_event: UnixNanos,
+    /// UNIX timestamp (nanoseconds) when the event was initialized.
     pub ts_init: UnixNanos,
 }
 
 impl AccountState {
+    /// Creates a new [`AccountState`] instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         account_id: AccountId,
@@ -58,8 +66,8 @@ impl AccountState {
         ts_event: UnixNanos,
         ts_init: UnixNanos,
         base_currency: Option<Currency>,
-    ) -> Result<Self> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             account_id,
             account_type,
             base_currency,
@@ -69,7 +77,7 @@ impl AccountState {
             event_id,
             ts_event,
             ts_init,
-        })
+        }
     }
 }
 
@@ -77,7 +85,8 @@ impl Display for AccountState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "AccountState(account_id={}, account_type={}, base_currency={}, is_reported={}, balances=[{}], margins=[{}], event_id={})",
+            "{}(account_id={}, account_type={}, base_currency={}, is_reported={}, balances=[{}], margins=[{}], event_id={})",
+            stringify!(AccountState),
             self.account_id,
             self.account_type,
             self.base_currency.map_or_else(|| "None".to_string(), |base_currency | format!("{}", base_currency.code)),
@@ -104,9 +113,9 @@ impl PartialEq for AccountState {
 mod tests {
     use rstest::rstest;
 
-    use crate::events::account::{
-        state::AccountState,
-        stubs::{cash_account_state, margin_account_state},
+    use crate::events::{
+        account::stubs::{cash_account_state, margin_account_state},
+        AccountState,
     };
 
     #[rstest]

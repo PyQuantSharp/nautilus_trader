@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,11 +13,12 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-
 import msgspec
+import pytest
 
 from nautilus_trader.backtest.engine import BacktestEngineConfig
 from nautilus_trader.backtest.node import BacktestNode
+from nautilus_trader.common.config import InvalidConfiguration
 from nautilus_trader.config import BacktestDataConfig
 from nautilus_trader.config import BacktestRunConfig
 from nautilus_trader.config import BacktestVenueConfig
@@ -25,7 +26,6 @@ from nautilus_trader.config import ImportableStrategyConfig
 from nautilus_trader.config import LoggingConfig
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.identifiers import InstrumentId
-from nautilus_trader.persistence.funcs import parse_bytes
 from nautilus_trader.test_kit.mocks.data import load_catalog_with_stub_quote_ticks_audusd
 from nautilus_trader.test_kit.mocks.data import setup_catalog
 
@@ -39,7 +39,7 @@ class TestBacktestNode:
             account_type="MARGIN",
             base_currency="USD",
             starting_balances=["1000000 USD"],
-            # fill_model=fill_model,  # TODO(cs): Implement next iteration
+            # fill_model=fill_model,  # TODO: Implement
         )
         self.data_config = BacktestDataConfig(
             catalog_path=self.catalog.path,
@@ -71,13 +71,53 @@ class TestBacktestNode:
                 ),
                 venues=[self.venue_config],
                 data=[self.data_config],
+                chunk_size=5_000,
             ),
         ]
         load_catalog_with_stub_quote_ticks_audusd(self.catalog)  # Load sample data
 
     def test_init(self):
+        # Arrange, Act
         node = BacktestNode(configs=self.backtest_configs)
+
+        # Assert
         assert node
+
+    @pytest.mark.parametrize(
+        ("book_type"),
+        [
+            "L2_MBP",
+            "L3_MBO",
+        ],
+    )
+    def test_order_book_with_depth_data_config_validation(self, book_type: str) -> None:
+        # Arrange
+        venue_l3 = BacktestVenueConfig(
+            name="SIM",
+            oms_type="HEDGING",
+            account_type="MARGIN",
+            base_currency="USD",
+            book_type=book_type,
+            starting_balances=["1_000_000 USD"],
+        )
+
+        run_config = BacktestRunConfig(
+            engine=BacktestEngineConfig(
+                strategies=self.strategies,
+                logging=LoggingConfig(bypass_logging=True),
+            ),
+            venues=[self.venue_config, venue_l3],
+            data=[self.data_config],
+            chunk_size=None,  # No streaming
+        )
+
+        with pytest.raises(InvalidConfiguration) as exc_info:
+            BacktestNode(configs=[run_config])
+
+        assert (
+            str(exc_info.value)
+            == f"No order book data available for SIM with book type {book_type}"
+        )
 
     def test_run(self):
         # Arrange
@@ -95,7 +135,7 @@ class TestBacktestNode:
             engine=BacktestEngineConfig(strategies=self.strategies),
             venues=[self.venue_config],
             data=[self.data_config],
-            batch_size_bytes=parse_bytes("10kib"),
+            chunk_size=5_000,
         )
 
         node = BacktestNode(configs=[config])
@@ -116,10 +156,6 @@ class TestBacktestNode:
         # Assert
         assert isinstance(results, list)
         assert len(results) == 1
-        # assert (
-        #     str(results[0])
-        #     == "BacktestResult(trader_id='BACKTESTER-000', machine_id='CJDS-X99-Ubuntu', run_config_id='e7647ae948f030bbd50e0b6cb58f67ae', instance_id='ecdf513e-9b07-47d5-9742-3b984a27bb52', run_id='d4d7a09c-fac7-4240-b80a-fd7a7d8f217c', run_started=1648796370520892000, run_finished=1648796371603767000, backtest_start=1580398089820000000, backtest_end=1580504394500999936, elapsed_time=106304.680999, iterations=100000, total_events=192, total_orders=96, total_positions=48, stats_pnls={'USD': {'PnL': -3634.12, 'PnL%': Decimal('-0.36341200'), 'Max Winner': 2673.19, 'Avg Winner': 530.0907692307693, 'Min Winner': 123.13, 'Min Loser': -16.86, 'Avg Loser': -263.9497142857143, 'Max Loser': -616.84, 'Expectancy': -48.89708333333337, 'Win Rate': 0.2708333333333333}}, stats_returns={'Annual Volatility (Returns)': 0.01191492048585753, 'Average (Return)': -3.3242292920660964e-05, 'Average Loss (Return)': -0.00036466955522398476, 'Average Win (Return)': 0.0007716524869588397, 'Sharpe Ratio': -0.7030729097982443, 'Sortino Ratio': -1.492072178035927, 'Profit Factor': 0.8713073377919724, 'Risk Return Ratio': -0.04428943030649289})"  # noqa
-        # )
 
     def test_node_config_from_raw(self):
         # Arrange

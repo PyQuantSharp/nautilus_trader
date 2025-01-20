@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -34,7 +34,7 @@ from nautilus_trader.model.objects cimport Quantity
 
 cdef class CryptoFuture(Instrument):
     """
-    Represents a `Deliverable Futures Contract` instrument, with crypto assets
+    Represents a deliverable futures contract instrument, with crypto assets
     as underlying and for settlement.
 
     Parameters
@@ -47,10 +47,14 @@ cdef class CryptoFuture(Instrument):
         The underlying asset.
     quote_currency : Currency
         The contract quote currency.
+    settlement_currency : Currency
+        The settlement currency.
+    is_inverse : bool
+        If the instrument costing is inverse (quantity expressed in quote currency units).
     activation_ns : uint64_t
-        The UNIX timestamp (nanoseconds) for contract activation.
+        UNIX timestamp (nanoseconds) for contract activation.
     expiration_ns : uint64_t
-        The UNIX timestamp (nanoseconds) for contract expiration.
+        UNIX timestamp (nanoseconds) for contract expiration.
     price_precision : int
         The price decimal precision.
     size_precision : int
@@ -59,18 +63,14 @@ cdef class CryptoFuture(Instrument):
         The minimum price increment (tick size).
     size_increment : Quantity
         The minimum size increment.
-    margin_init : Decimal
-        The initial (order) margin requirement in percentage of order value.
-    margin_maint : Decimal
-        The maintenance (position) margin in percentage of position value.
-    maker_fee : Decimal
-        The fee rate for liquidity makers as a percentage of order value.
-    taker_fee : Decimal
-        The fee rate for liquidity takers as a percentage of order value.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
+    multiplier : Quantity, default 1
+        The contract multiplier.
+    lot_size : Quantity
+        The rounded lot unit size (standard/board).
     max_quantity : Quantity, optional
         The maximum allowable order quantity.
     min_quantity : Quantity, optional
@@ -83,6 +83,14 @@ cdef class CryptoFuture(Instrument):
         The maximum allowable quoted price.
     min_price : Price, optional
         The minimum allowable quoted price.
+    margin_init : Decimal, optional
+        The initial (order) margin requirement in percentage of order value.
+    margin_maint : Decimal, optional
+        The maintenance (position) margin in percentage of position value.
+    maker_fee : Decimal, optional
+        The fee rate for liquidity makers as a percentage of order value.
+    taker_fee : Decimal, optional
+        The fee rate for liquidity takers as a percentage of order value.
     info : dict[str, object], optional
         The additional instrument information.
 
@@ -114,6 +122,11 @@ cdef class CryptoFuture(Instrument):
         If `max_price` is not positive (> 0).
     ValueError
         If `min_price` is negative (< 0).
+    ValueError
+        If `margin_init` is negative (< 0).
+    ValueError
+        If `margin_maint` is negative (< 0).
+
     """
 
     def __init__(
@@ -123,16 +136,13 @@ cdef class CryptoFuture(Instrument):
         Currency underlying not None,
         Currency quote_currency not None,
         Currency settlement_currency not None,
+        bint is_inverse,
         uint64_t activation_ns,
         uint64_t expiration_ns,
         int price_precision,
         int size_precision,
         Price price_increment not None,
         Quantity size_increment not None,
-        margin_init not None: Decimal,
-        margin_maint not None: Decimal,
-        maker_fee not None: Decimal,
-        taker_fee not None: Decimal,
         uint64_t ts_event,
         uint64_t ts_init,
         multiplier=Quantity.from_int_c(1),
@@ -143,15 +153,19 @@ cdef class CryptoFuture(Instrument):
         Money min_notional: Money | None = None,
         Price max_price: Price | None = None,
         Price min_price: Price | None = None,
+        margin_init: Decimal | None = None,
+        margin_maint: Decimal | None = None,
+        maker_fee: Decimal | None = None,
+        taker_fee: Decimal | None = None,
         dict info = None,
-    ):
+    ) -> None:
         super().__init__(
             instrument_id=instrument_id,
             raw_symbol=raw_symbol,
             asset_class=AssetClass.CRYPTOCURRENCY,
             instrument_class=InstrumentClass.FUTURE,
             quote_currency=quote_currency,
-            is_inverse=False,
+            is_inverse=is_inverse,
             price_precision=price_precision,
             size_precision=size_precision,
             price_increment=price_increment,
@@ -164,10 +178,10 @@ cdef class CryptoFuture(Instrument):
             min_notional=min_notional,
             max_price=max_price,
             min_price=min_price,
-            margin_init=margin_init,
-            margin_maint=margin_maint,
-            maker_fee=maker_fee,
-            taker_fee=taker_fee,
+            margin_init=margin_init or Decimal(0),
+            margin_maint=margin_maint or Decimal(0),
+            maker_fee=maker_fee or Decimal(0),
+            taker_fee=taker_fee or Decimal(0),
             ts_event=ts_event,
             ts_init=ts_init,
             info=info,
@@ -216,6 +230,40 @@ cdef class CryptoFuture(Instrument):
         return pd.Timestamp(self.expiration_ns, tz=pytz.utc)
 
     @staticmethod
+    cdef CryptoFuture from_pyo3_c(pyo3_instrument):
+        return CryptoFuture(
+            instrument_id=InstrumentId.from_str_c(pyo3_instrument.id.value),
+            raw_symbol=Symbol(pyo3_instrument.raw_symbol.value),
+            underlying=Currency.from_str_c(pyo3_instrument.underlying.code),
+            quote_currency=Currency.from_str_c(pyo3_instrument.quote_currency.code),
+            settlement_currency=Currency.from_str_c(pyo3_instrument.settlement_currency.code),
+            is_inverse=pyo3_instrument.is_inverse,
+            activation_ns=pyo3_instrument.activation_ns,
+            expiration_ns=pyo3_instrument.expiration_ns,
+            price_precision=pyo3_instrument.price_precision,
+            size_precision=pyo3_instrument.size_precision,
+            price_increment=Price.from_raw_c(pyo3_instrument.price_increment.raw, pyo3_instrument.price_precision),
+            size_increment=Quantity.from_raw_c(pyo3_instrument.size_increment.raw, pyo3_instrument.size_precision),
+            max_quantity=Quantity.from_raw_c(pyo3_instrument.max_quantity.raw,pyo3_instrument.max_quantity.precision) if pyo3_instrument.max_quantity is not None else None,
+            min_quantity=Quantity.from_raw_c(pyo3_instrument.min_quantity.raw, pyo3_instrument.min_quantity.precision) if pyo3_instrument.min_quantity is not None else None,
+            max_notional=Money.from_str_c(str(pyo3_instrument.max_notional)) if pyo3_instrument.max_notional is not None else None,
+            min_notional=Money.from_str_c(str(pyo3_instrument.min_notional)) if pyo3_instrument.min_notional is not None else None,
+            max_price=Price.from_raw_c(pyo3_instrument.max_price.raw, pyo3_instrument.max_price.precision) if pyo3_instrument.max_price is not None else None,
+            min_price=Price.from_raw_c(pyo3_instrument.min_price.raw, pyo3_instrument.min_price.precision) if pyo3_instrument.min_price is not None else None,
+            margin_init=Decimal(pyo3_instrument.margin_init),
+            margin_maint=Decimal(pyo3_instrument.margin_maint),
+            maker_fee=Decimal(pyo3_instrument.maker_fee),
+            taker_fee=Decimal(pyo3_instrument.taker_fee),
+            ts_event=pyo3_instrument.ts_event,
+            ts_init=pyo3_instrument.ts_init,
+            info=pyo3_instrument.info,
+        )
+
+    @staticmethod
+    def from_pyo3(pyo3_instrument):
+        return CryptoFuture.from_pyo3_c(pyo3_instrument)
+
+    @staticmethod
     cdef CryptoFuture from_dict_c(dict values):
         Condition.not_none(values, "values")
         cdef str max_q = values["max_quantity"]
@@ -230,12 +278,14 @@ cdef class CryptoFuture(Instrument):
             underlying=Currency.from_str_c(values["underlying"]),
             quote_currency=Currency.from_str_c(values["quote_currency"]),
             settlement_currency=Currency.from_str_c(values["settlement_currency"]),
+            is_inverse=values["is_inverse"],
             activation_ns=values["activation_ns"],
             expiration_ns=values["expiration_ns"],
             price_precision=values["price_precision"],
             size_precision=values["size_precision"],
             price_increment=Price.from_str_c(values["price_increment"]),
             size_increment=Quantity.from_str_c(values["size_increment"]),
+            multiplier=Quantity.from_str_c(values["multiplier"]),
             max_quantity=Quantity.from_str_c(max_q) if max_q is not None else None,
             min_quantity=Quantity.from_str_c(min_q) if min_q is not None else None,
             max_notional=Money.from_str_c(max_n) if max_n is not None else None,
@@ -261,16 +311,19 @@ cdef class CryptoFuture(Instrument):
             "underlying": obj.underlying.code,
             "quote_currency": obj.quote_currency.code,
             "settlement_currency": obj.settlement_currency.code,
+            "is_inverse": obj.is_inverse,
             "activation_ns": obj.activation_ns,
             "expiration_ns": obj.expiration_ns,
             "price_precision": obj.price_precision,
             "price_increment": str(obj.price_increment),
             "size_precision": obj.size_precision,
             "size_increment": str(obj.size_increment),
+            "multiplier": str(obj.multiplier),
+            "lot_size": str(obj.lot_size),
             "max_quantity": str(obj.max_quantity) if obj.max_quantity is not None else None,
             "min_quantity": str(obj.min_quantity) if obj.min_quantity is not None else None,
-            "max_notional": obj.max_notional.to_str() if obj.max_notional is not None else None,
-            "min_notional": obj.min_notional.to_str() if obj.min_notional is not None else None,
+            "max_notional": str(obj.max_notional) if obj.max_notional is not None else None,
+            "min_notional": str(obj.min_notional) if obj.min_notional is not None else None,
             "max_price": str(obj.max_price) if obj.max_price is not None else None,
             "min_price": str(obj.min_price) if obj.min_price is not None else None,
             "margin_init": str(obj.margin_init),

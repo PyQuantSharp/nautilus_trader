@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -62,7 +62,7 @@ class TestVolumeWeightedAveragePrice:
 
         # Assert
         assert indicator.has_inputs
-        assert indicator.value == 1.00003
+        assert indicator.value == 1.0000266666666666
 
     def test_value_with_one_input_returns_expected_value(self):
         # Arrange

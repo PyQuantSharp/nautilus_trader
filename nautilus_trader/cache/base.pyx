@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -135,7 +135,7 @@ cdef class CacheFacade:
         """Abstract method (implement in subclass)."""
         raise NotImplementedError("method `instrument_ids` must be implemented in the subclass")  # pragma: no cover
 
-    cpdef list instruments(self, Venue venue = None):
+    cpdef list instruments(self, Venue venue = None, str underlying = None):
         """Abstract method (implement in subclass)."""
         raise NotImplementedError("method `instruments` must be implemented in the subclass")  # pragma: no cover
 

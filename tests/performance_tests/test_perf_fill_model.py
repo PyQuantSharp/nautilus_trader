@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,18 +24,8 @@ _FILL_MODEL = FillModel(
 
 
 def test_is_limit_filled(benchmark):
-    benchmark.pedantic(
-        target=_FILL_MODEL.is_limit_filled,
-        iterations=100_000,
-        rounds=1,
-    )
-    # ~0.0ms / ~0.1μs / 106ns minimum of 100,000 runs @ 1 iteration each run.
+    benchmark(_FILL_MODEL.is_limit_filled)
 
 
 def test_is_stop_filled(benchmark):
-    benchmark.pedantic(
-        target=_FILL_MODEL.is_stop_filled,
-        iterations=100_000,
-        rounds=1,
-    )
-    # ~0.0ms / ~0.1μs / 106ns minimum of 100,000 runs @ 1 iteration each run.
+    benchmark(_FILL_MODEL.is_stop_filled)

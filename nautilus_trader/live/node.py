@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,6 +22,7 @@ from nautilus_trader.cache.base import CacheFacade
 from nautilus_trader.common.component import Logger
 from nautilus_trader.common.enums import LogColor
 from nautilus_trader.config import TradingNodeConfig
+from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.live.factories import LiveDataClientFactory
@@ -79,18 +80,16 @@ class TradingNode:
             logger=self.kernel.logger,
         )
 
-        # Operation flags
-        self._is_built = False
-        self._is_running = False
-        self._has_cache_backing = config.cache and config.cache.database
-        self._has_msgbus_backing = config.message_bus and config.message_bus.database
-
-        self.kernel.logger.info(f"{self._has_cache_backing=}", LogColor.BLUE)
-        self.kernel.logger.info(f"{self._has_msgbus_backing=}", LogColor.BLUE)
+        has_cache_backing = bool(config.cache and config.cache.database)
+        has_msgbus_backing = bool(config.message_bus and config.message_bus.database)
+        self.kernel.logger.info(f"{has_cache_backing=}", LogColor.BLUE)
+        self.kernel.logger.info(f"{has_msgbus_backing=}", LogColor.BLUE)
 
         # Async tasks
-        self._task_heartbeats: asyncio.Task | None = None
-        self._task_position_snapshots: asyncio.Task | None = None
+        self._task_streaming: asyncio.Future | None = None
+
+        # State flags
+        self._is_built = False
 
     @property
     def trader_id(self) -> TraderId:
@@ -164,7 +163,6 @@ class TradingNode:
         """
         return self.kernel.portfolio
 
-    @property
     def is_running(self) -> bool:
         """
         Return whether the trading node is running.
@@ -174,9 +172,8 @@ class TradingNode:
         bool
 
         """
-        return self._is_running
+        return self.kernel.is_running()
 
-    @property
     def is_built(self) -> bool:
         """
         Return whether the trading node clients are built.
@@ -263,7 +260,7 @@ class TradingNode:
         self._builder.build_exec_clients(self._config.exec_clients)
         self._is_built = True
 
-    def run(self) -> None:
+    def run(self, raise_exception=False) -> None:
         """
         Start and run the trading node.
         """
@@ -274,6 +271,26 @@ class TradingNode:
                 self.kernel.loop.run_until_complete(self.run_async())
         except RuntimeError as e:
             self.kernel.logger.exception("Error on run", e)
+
+            if raise_exception:
+                raise e
+
+    def publish_bus_message(self, bus_msg: nautilus_pyo3.BusMessage) -> None:
+        """
+        Publish bus message on the internal message bus.
+
+        Note the message will not be published externally.
+
+        Parameters
+        ----------
+        bus_msg : nautilus_pyo3.BusMessage
+            The bus message to publish.
+
+        """
+        msg = self.kernel.msgbus_serializer.deserialize(bus_msg.payload)
+        if not self.kernel.msgbus.is_streaming_type(type(msg)):
+            return  # Type has not been registered for message streaming
+        self.kernel.msgbus.publish(bus_msg.topic, msg, external_pub=False)
 
     async def run_async(self) -> None:
         """
@@ -286,13 +303,12 @@ class TradingNode:
                     "Run `node.build()` prior to start.",
                 )
 
-            self._is_running = True
             await self.kernel.start_async()
 
             if self.kernel.loop.is_running():
-                self.kernel.logger.info("RUNNING.")
+                self.kernel.logger.info("RUNNING")
             else:
-                self.kernel.logger.warning("Event loop is not running.")
+                self.kernel.logger.warning("Event loop is not running")
 
             # Continue to run while engines are running...
             tasks: list[asyncio.Task] = [
@@ -306,85 +322,16 @@ class TradingNode:
                 self.kernel.exec_engine.get_evt_queue_task(),
             ]
 
-            if self._config.heartbeat_interval:
-                self._task_heartbeats = asyncio.create_task(
-                    self.maintain_heartbeat(self._config.heartbeat_interval),
-                )
-            if self._config.snapshot_positions_interval:
-                self._task_position_snapshots = asyncio.create_task(
-                    self.snapshot_open_positions(self._config.snapshot_positions_interval),
+            if self._config.message_bus and self._config.message_bus.external_streams:
+                streams = self._config.message_bus.external_streams
+                self.kernel.logger.info("Starting task: external message streaming", LogColor.BLUE)
+                self.kernel.logger.info(f"Listening to streams: {streams}", LogColor.BLUE)
+                self._task_streaming = asyncio.ensure_future(
+                    self.kernel.msgbus_database.stream(self.publish_bus_message),
                 )
 
             await asyncio.gather(*tasks)
         except asyncio.CancelledError as e:
-            self.kernel.logger.error(str(e))
-
-    async def maintain_heartbeat(self, interval: float) -> None:
-        """
-        Maintain heartbeats at the given `interval` while the node is running.
-
-        Parameters
-        ----------
-        interval : float
-            The interval (seconds) between heartbeats.
-
-        """
-        self.kernel.logger.info(
-            f"Starting heartbeats at {interval}s intervals...",
-            LogColor.BLUE,
-        )
-        try:
-            while True:
-                await asyncio.sleep(interval)
-                msg = self.kernel.clock.utc_now()
-                if self._has_cache_backing:
-                    self.cache.heartbeat(msg)
-                if self._has_msgbus_backing:
-                    self.kernel.msgbus.publish(topic="health:heartbeat", msg=str(msg))
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            # Catch-all exceptions for development purposes (unexpected errors)
-            self.kernel.logger.error(str(e))
-
-    async def snapshot_open_positions(self, interval: float) -> None:
-        """
-        Snapshot the state of all open positions at the configured interval.
-
-        Parameters
-        ----------
-        interval : float
-            The interval (seconds) between open position state snapshotting.
-
-        """
-        self.kernel.logger.info(
-            f"Starting open position snapshots at {interval}s intervals...",
-            LogColor.BLUE,
-        )
-        try:
-            while True:
-                await asyncio.sleep(interval)
-                open_positions = self.kernel.cache.positions_open()
-                for position in open_positions:
-                    if self._has_cache_backing:
-                        self.cache.snapshot_position_state(
-                            position=position,
-                            ts_snapshot=self.kernel.clock.timestamp_ns(),
-                        )
-                    if self._has_msgbus_backing:
-                        #  TODO: Consolidate this with the cache
-                        position_state = position.to_dict()
-                        unrealized_pnl = self.kernel.cache.calculate_unrealized_pnl(position)
-                        if unrealized_pnl is not None:
-                            position_state["unrealized_pnl"] = unrealized_pnl.to_str()
-                        self.kernel.msgbus.publish(
-                            topic=f"snapshots:positions:{position.id}",
-                            msg=self.kernel.msgbus.serializer.serialize(position_state),
-                        )
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            # Catch-all exceptions for development purposes (unexpected errors)
             self.kernel.logger.error(str(e))
 
     def stop(self) -> None:
@@ -413,19 +360,12 @@ class TradingNode:
         If save strategy is configured, then strategy states will be saved.
 
         """
-        if self._task_heartbeats:
-            self.kernel.logger.info("Cancelling `task_heartbeats` task...")
-            self._task_heartbeats.cancel()
-            self._task_heartbeats = None
-
-        if self._task_position_snapshots:
-            self.kernel.logger.info("Cancelling `task_position_snapshots` task...")
-            self._task_position_snapshots.cancel()
-            self._task_position_snapshots = None
+        if self._task_streaming:
+            self.kernel.logger.info("Canceling task 'streaming'")
+            self._task_streaming.cancel()
+            self._task_streaming = None
 
         await self.kernel.stop_async()
-
-        self._is_running = False
 
     def dispose(self) -> None:
         """
@@ -438,11 +378,11 @@ class TradingNode:
             timeout = self.kernel.clock.utc_now() + timedelta(
                 seconds=self._config.timeout_disconnection,
             )
-            while self._is_running:
+            while self.kernel.is_running():
                 time.sleep(0.1)
                 if self.kernel.clock.utc_now() >= timeout:
                     self.kernel.logger.warning(
-                        f"Timed out ({self._config.timeout_disconnection}s) waiting for node to stop."
+                        f"Timed out ({self._config.timeout_disconnection}s) waiting for node to stop"
                         f"\nStatus"
                         f"\n------"
                         f"\nDataEngine.check_disconnected() == {self.kernel.data_engine.check_disconnected()}"
@@ -450,7 +390,7 @@ class TradingNode:
                     )
                     break
 
-            self.kernel.logger.debug("DISPOSING...")
+            self.kernel.logger.debug("DISPOSING")
 
             self.kernel.logger.debug(str(self.kernel.data_engine.get_cmd_queue_task()))
             self.kernel.logger.debug(str(self.kernel.data_engine.get_req_queue_task()))
@@ -464,19 +404,19 @@ class TradingNode:
             self.kernel.dispose()
 
             if self.kernel.executor:
-                self.kernel.logger.info("Shutting down executor...")
+                self.kernel.logger.info("Shutting down executor")
                 self.kernel.executor.shutdown(wait=True, cancel_futures=True)
 
-            self.kernel.logger.info("Stopping event loop...")
+            self.kernel.logger.info("Stopping event loop")
             self.kernel.cancel_all_tasks()
             self.kernel.loop.stop()
         except (asyncio.CancelledError, RuntimeError) as e:
             self.kernel.logger.exception("Error on dispose", e)
         finally:
             if self.kernel.loop.is_running():
-                self.kernel.logger.warning("Cannot close a running event loop.")
+                self.kernel.logger.warning("Cannot close a running event loop")
             else:
-                self.kernel.logger.info("Closing event loop...")
+                self.kernel.logger.info("Closing event loop")
                 self.kernel.loop.close()
 
             # Check and log if event loop is running
@@ -491,8 +431,8 @@ class TradingNode:
             else:
                 self.kernel.logger.info(f"loop.is_closed={self.kernel.loop.is_closed()}")
 
-            self.kernel.logger.info("DISPOSED.")
+            self.kernel.logger.info("DISPOSED")
 
     def _loop_sig_handler(self, sig: signal.Signals) -> None:
-        self.kernel.logger.warning(f"Received {sig!s}, shutting down...")
+        self.kernel.logger.warning(f"Received {sig.name}, shutting down")
         self.stop()

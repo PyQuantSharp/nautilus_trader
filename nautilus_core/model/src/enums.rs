@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Defines enumerations for the trading domain model.
+//! Enumerations for the trading domain model.
 
 use std::str::FromStr;
 
@@ -24,6 +24,12 @@ use crate::enum_strum_serde;
 
 pub trait FromU8 {
     fn from_u8(value: u8) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+pub trait FromU16 {
+    fn from_u16(value: u16) -> Option<Self>
     where
         Self: Sized;
 }
@@ -49,7 +55,7 @@ pub trait FromU8 {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum AccountType {
     /// An account with unleveraged cash assets only.
@@ -81,7 +87,7 @@ pub enum AccountType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum AggregationSource {
     /// The data is externally aggregated (outside the Nautilus system boundary).
@@ -96,6 +102,7 @@ pub enum AggregationSource {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     Hash,
     PartialEq,
@@ -111,10 +118,11 @@ pub enum AggregationSource {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum AggressorSide {
     /// There was no specific aggressor for the trade.
+    #[default]
     NoAggressor = 0,
     /// The BUY order was the aggressor for the trade.
     Buyer = 1,
@@ -154,7 +162,7 @@ impl FromU8 for AggressorSide {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 #[allow(non_camel_case_types)]
 pub enum AssetClass {
@@ -174,7 +182,22 @@ pub enum AssetClass {
     Alternative = 7,
 }
 
-/// The asset type for a financial market product.
+impl FromU8 for AssetClass {
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            1 => Some(Self::FX),
+            2 => Some(Self::Equity),
+            3 => Some(Self::Commodity),
+            4 => Some(Self::Debt),
+            5 => Some(Self::Index),
+            6 => Some(Self::Cryptocurrency),
+            7 => Some(Self::Alternative),
+            _ => None,
+        }
+    }
+}
+
+/// The instrument class.
 #[repr(C)]
 #[derive(
     Copy,
@@ -195,7 +218,7 @@ pub enum AssetClass {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum InstrumentClass {
     /// A spot market instrument class. The current market price of an instrument that is bought or sold for immediate delivery and payment.
@@ -220,6 +243,8 @@ pub enum InstrumentClass {
     Warrant = 10,
     /// A warrant instrument class. A derivative that gives the holder the right, but not the obligation, to buy or sell a security—most commonly an equity—at a certain price before expiration.
     SportsBetting = 11,
+    /// A binary option instrument class. A type of derivative where the payoff is either a fixed monetary amount or nothing, based on a yes/no proposition about an underlying event.
+    BinaryOption = 12,
 }
 
 /// The aggregation method through which a bar is generated and closed.
@@ -243,7 +268,7 @@ pub enum InstrumentClass {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum BarAggregation {
     /// Based on a number of ticks.
@@ -252,17 +277,17 @@ pub enum BarAggregation {
     TickImbalance = 2,
     /// Based on sequential buy/sell runs of ticks.
     TickRuns = 3,
-    /// Based on trading volume.
+    /// Based on traded volume.
     Volume = 4,
-    /// Based on the buy/sell imbalance of trading volume.
+    /// Based on the buy/sell imbalance of traded volume.
     VolumeImbalance = 5,
-    /// Based on sequential runs of buy/sell trading volume.
+    /// Based on sequential runs of buy/sell traded volume.
     VolumeRuns = 6,
     /// Based on the 'notional' value of the instrument.
     Value = 7,
-    /// Based on the buy/sell imbalance of trading by 'notional' value.
+    /// Based on the buy/sell imbalance of trading by notional value.
     ValueImbalance = 8,
-    /// Based on sequential buy/sell runs of trading by 'notional' value.
+    /// Based on sequential buy/sell runs of trading by notional value.
     ValueRuns = 9,
     /// Based on time intervals with millisecond granularity.
     Millisecond = 10,
@@ -278,6 +303,38 @@ pub enum BarAggregation {
     Week = 15,
     /// Based on time intervals with month granularity.
     Month = 16,
+}
+
+/// The interval type for bar aggregation.
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Display,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    AsRefStr,
+    FromRepr,
+    EnumIter,
+    EnumString,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+)]
+pub enum BarIntervalType {
+    /// Left-open interval `(start, end]`: start is exclusive, end is inclusive (default).
+    #[default]
+    LeftOpen = 1,
+    /// Right-open interval `[start, end)`: start is inclusive, end is exclusive.
+    RightOpen = 2,
 }
 
 /// The type of order book action for an order book event.
@@ -301,7 +358,7 @@ pub enum BarAggregation {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum BookAction {
     /// An order is added to the book.
@@ -348,7 +405,7 @@ impl FromU8 for BookAction {
 #[allow(non_camel_case_types)]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum BookType {
     /// Top-of-book best bid/ask, one level per side.
@@ -378,6 +435,7 @@ impl FromU8 for BookType {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     Hash,
     PartialEq,
@@ -393,11 +451,12 @@ impl FromU8 for BookType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum ContingencyType {
     /// Not a contingent order.
-    NoContingency = 0, // Will be replaced by `Option`
+    #[default]
+    NoContingency = 0,
     /// One-Cancels-the-Other.
     Oco = 1,
     /// One-Triggers-the-Other.
@@ -427,7 +486,7 @@ pub enum ContingencyType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum CurrencyType {
     /// A type of cryptocurrency or crypto token.
@@ -459,7 +518,7 @@ pub enum CurrencyType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum InstrumentCloseType {
     /// When the market session ended.
@@ -468,7 +527,7 @@ pub enum InstrumentCloseType {
     ContractExpired = 2,
 }
 
-/// The liqudity side for a trade in a financial market.
+/// The liqudity side for a trade.
 #[repr(C)]
 #[derive(
     Copy,
@@ -489,12 +548,12 @@ pub enum InstrumentCloseType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 #[allow(clippy::enum_variant_names)]
 pub enum LiquiditySide {
-    /// No specific liqudity side.
-    NoLiquiditySide = 0, // Will be replaced by `Option`
+    /// No liquidity side specified.
+    NoLiquiditySide = 0,
     /// The order passively provided liqudity to the market to complete the trade (made a market).
     Maker = 1,
     /// The order aggressively took liqudity from the market to complete the trade.
@@ -522,26 +581,24 @@ pub enum LiquiditySide {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum MarketStatus {
-    /// The market session is in the pre-open.
-    PreOpen = 1,
-    /// The market session is open.
-    Open = 2,
-    /// The market session is paused.
-    Pause = 3,
-    /// The market session is halted.
-    Halt = 4,
-    /// The market session has reopened after a pause or halt.
-    Reopen = 5,
-    /// The market session is in the pre-close.
-    PreClose = 6,
-    /// The market session is closed.
-    Closed = 7,
+    /// The instrument is trading.
+    Open = 1,
+    /// The instrument is in a pre-open period.
+    Closed = 2,
+    /// Trading in the instrument has been paused.
+    Paused = 3,
+    /// Trading in the instrument has been halted.
+    // Halted = 4,  # TODO: Unfortunately can't use this yet due to Cython (C enum namespacing)
+    /// Trading in the instrument has been suspended.
+    Suspended = 5,
+    /// Trading in the instrument is not available.
+    NotAvailable = 6,
 }
 
-/// The reason for a venue or market halt.
+/// An action affecting the status of an individual market on a trading venue.
 #[repr(C)]
 #[derive(
     Copy,
@@ -562,15 +619,66 @@ pub enum MarketStatus {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
-pub enum HaltReason {
-    /// The venue or market session is not halted.
-    NotHalted = 1,
-    /// Trading halt is imposed for purely regulatory reasons with/without volatility halt.
-    General = 2,
-    /// Trading halt is imposed by the venue to protect against extreme volatility.
-    Volatility = 3,
+pub enum MarketStatusAction {
+    /// No change.
+    None = 0,
+    /// The instrument is in a pre-open period.
+    PreOpen = 1,
+    /// The instrument is in a pre-cross period.
+    PreCross = 2,
+    /// The instrument is quoting but not trading.
+    Quoting = 3,
+    /// The instrument is in a cross/auction.
+    Cross = 4,
+    /// The instrument is being opened through a trading rotation.
+    Rotation = 5,
+    /// A new price indication is available for the instrument.
+    NewPriceIndication = 6,
+    /// The instrument is trading.
+    Trading = 7,
+    /// Trading in the instrument has been halted.
+    Halt = 8,
+    /// Trading in the instrument has been paused.
+    Pause = 9,
+    /// Trading in the instrument has been suspended.
+    Suspend = 10,
+    /// The instrument is in a pre-close period.
+    PreClose = 11,
+    /// Trading in the instrument has closed.
+    Close = 12,
+    /// The instrument is in a post-close period.
+    PostClose = 13,
+    /// A change in short-selling restrictions.
+    ShortSellRestrictionChange = 14,
+    /// The instrument is not available for trading, either trading has closed or been halted.
+    NotAvailableForTrading = 15,
+}
+
+/// Convert the given `value` to an [`OrderSide`].
+impl FromU16 for MarketStatusAction {
+    fn from_u16(value: u16) -> Option<Self> {
+        match value {
+            0 => Some(Self::None),
+            1 => Some(Self::PreOpen),
+            2 => Some(Self::PreCross),
+            3 => Some(Self::Quoting),
+            4 => Some(Self::Cross),
+            5 => Some(Self::Rotation),
+            6 => Some(Self::NewPriceIndication),
+            7 => Some(Self::Trading),
+            8 => Some(Self::Halt),
+            9 => Some(Self::Pause),
+            10 => Some(Self::Suspend),
+            11 => Some(Self::PreClose),
+            12 => Some(Self::Close),
+            13 => Some(Self::PostClose),
+            14 => Some(Self::ShortSellRestrictionChange),
+            15 => Some(Self::NotAvailableForTrading),
+            _ => None,
+        }
+    }
 }
 
 /// The order management system (OMS) type for a trading venue or trading strategy.
@@ -579,6 +687,7 @@ pub enum HaltReason {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     Hash,
     PartialEq,
@@ -594,11 +703,12 @@ pub enum HaltReason {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum OmsType {
-    /// There is no specific type of order management specified (will defer to the venue).
-    Unspecified = 0, // Will be replaced by `Option`
+    /// There is no specific type of order management specified (will defer to the venue OMS).
+    #[default]
+    Unspecified = 0,
     /// The netting type where there is one position per instrument.
     Netting = 1,
     /// The hedging type where there can be multiple positions per instrument.
@@ -628,7 +738,7 @@ pub enum OmsType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum OptionKind {
     /// A Call option gives the holder the right, but not the obligation, to buy an underlying asset at a specified strike price within a specified period of time.
@@ -638,6 +748,64 @@ pub enum OptionKind {
 }
 
 /// The order side for a specific order, or action related to orders.
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Display,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    AsRefStr,
+    FromRepr,
+    EnumIter,
+    EnumString,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+#[allow(clippy::enum_variant_names)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+)]
+pub enum OrderSide {
+    /// No order side is specified.
+    #[default]
+    NoOrderSide = 0,
+    /// The order is a BUY.
+    Buy = 1,
+    /// The order is a SELL.
+    Sell = 2,
+}
+
+impl OrderSide {
+    #[must_use]
+    pub fn as_specified(&self) -> OrderSideSpecified {
+        match &self {
+            Self::Buy => OrderSideSpecified::Buy,
+            Self::Sell => OrderSideSpecified::Sell,
+            _ => panic!("Order invariant failed: side must be `Buy` or `Sell`"),
+        }
+    }
+}
+
+/// Convert the given `value` to an [`OrderSide`].
+impl FromU8 for OrderSide {
+    fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::NoOrderSide),
+            1 => Some(Self::Buy),
+            2 => Some(Self::Sell),
+            _ => None,
+        }
+    }
+}
+
+/// The specified order side (BUY or SELL).
 #[repr(C)]
 #[derive(
     Copy,
@@ -657,27 +825,19 @@ pub enum OptionKind {
 #[strum(ascii_case_insensitive)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[allow(clippy::enum_variant_names)]
-#[cfg_attr(
-    feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
-)]
-pub enum OrderSide {
-    /// No order side is specified.
-    NoOrderSide = 0,
+pub enum OrderSideSpecified {
     /// The order is a BUY.
     Buy = 1,
     /// The order is a SELL.
     Sell = 2,
 }
 
-/// Convert the given `value` to an [`OrderSide`].
-impl FromU8 for OrderSide {
-    fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            0 => Some(Self::NoOrderSide),
-            1 => Some(Self::Buy),
-            2 => Some(Self::Sell),
-            _ => None,
+impl OrderSideSpecified {
+    #[must_use]
+    pub fn as_order_side(&self) -> OrderSide {
+        match &self {
+            Self::Buy => OrderSide::Buy,
+            Self::Sell => OrderSide::Sell,
         }
     }
 }
@@ -722,7 +882,7 @@ impl FromU8 for OrderSide {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum OrderStatus {
     /// The order is initialized (instantiated) within the Nautilus system.
@@ -776,7 +936,7 @@ pub enum OrderStatus {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum OrderType {
     /// A market order to buy or sell at the best available price in the current market.
@@ -805,6 +965,7 @@ pub enum OrderType {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     Hash,
     PartialEq,
@@ -821,11 +982,12 @@ pub enum OrderType {
 #[allow(clippy::enum_variant_names)]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum PositionSide {
     /// No position side is specified (only valid in the context of a filter for actions involving positions).
-    NoPositionSide = 0, // Will be replaced by `Option`
+    #[default]
+    NoPositionSide = 0,
     /// A neural/flat position, where no position is currently held in the market.
     Flat = 1,
     /// A long position in the market, typically acquired through one or many BUY orders.
@@ -834,7 +996,7 @@ pub enum PositionSide {
     Short = 3,
 }
 
-/// The type of price for an instrument in a financial market.
+/// The type of price for an instrument in a market.
 #[repr(C)]
 #[derive(
     Copy,
@@ -855,20 +1017,20 @@ pub enum PositionSide {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum PriceType {
     /// A quoted order price where a buyer is willing to buy a quantity of an instrument.
     Bid = 1,
     /// A quoted order price where a seller is willing to sell a quantity of an instrument.
     Ask = 2,
-    /// The midpoint between the bid and ask prices.
+    /// The midpoint between the best bid and best ask prices.
     Mid = 3,
     /// The last price at which a trade was made for an instrument.
     Last = 4,
 }
 
-/// The 'Time in Force' instruction for an order in the financial market.
+/// A record flag bit field, indicating event end and data information.
 #[repr(C)]
 #[derive(
     Copy,
@@ -889,16 +1051,63 @@ pub enum PriceType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+)]
+#[allow(non_camel_case_types)]
+pub enum RecordFlag {
+    /// Last message in the book event or packet from the venue for a given `instrument_id`.
+    F_LAST = 1 << 7, // 128
+    /// Top-of-book message, not an individual order.
+    F_TOB = 1 << 6, // 64
+    /// Message sourced from a replay, such as a snapshot server.
+    F_SNAPSHOT = 1 << 5, // 32
+    /// Aggregated price level message, not an individual order.
+    F_MBP = 1 << 4, // 16
+    /// Reserved for future use.
+    RESERVED_2 = 1 << 3, // 8
+    /// Reserved for future use.
+    RESERVED_1 = 1 << 2, // 4
+}
+
+impl RecordFlag {
+    /// Checks if the flag matches a given value.
+    #[must_use]
+    pub fn matches(self, value: u8) -> bool {
+        (self as u8) & value != 0
+    }
+}
+
+/// The 'Time in Force' instruction for an order.
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    AsRefStr,
+    FromRepr,
+    EnumIter,
+    EnumString,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum TimeInForce {
-    /// Good Till Canceled (GTC) - the order remains active until canceled.
+    /// Good-Till-Canceled (GTC) - the order remains active until canceled.
     Gtc = 1,
-    /// Immediate or Cancel (IOC) - the order is filled as much as possible, the rest is canceled.
+    /// Immediate-Or-Cancel (IOC) - the order is filled as much as possible, the rest is canceled.
     Ioc = 2,
-    /// Fill or Kill (FOK) - the order must be executed in full immediately, or it is canceled.
+    /// Fill-Or-Kill (FOK) - the order must be executed in full immediately, or it is canceled.
     Fok = 3,
-    /// Good Till Date/Time (GTD) - the order is active until a specified date or time.
+    /// Good-Till-Date/Time (GTD) - the order is active until a specified date or time.
     Gtd = 4,
     /// Day - the order is active until the end of the current trading session.
     Day = 5,
@@ -929,7 +1138,7 @@ pub enum TimeInForce {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum TradingState {
     /// Normal trading operations.
@@ -946,6 +1155,7 @@ pub enum TradingState {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     Hash,
     PartialEq,
@@ -961,11 +1171,12 @@ pub enum TradingState {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum TrailingOffsetType {
     /// No trailing offset type is specified (invalid for trailing type orders).
-    NoTrailingOffset = 0, // Will be replaced by `Option`
+    #[default]
+    NoTrailingOffset = 0,
     /// The trailing offset is based on a market price.
     Price = 1,
     /// The trailing offset is based on a percentage represented in basis points, of a market price.
@@ -982,6 +1193,7 @@ pub enum TrailingOffsetType {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     Hash,
     PartialEq,
@@ -997,29 +1209,30 @@ pub enum TrailingOffsetType {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.model.enums")
 )]
 pub enum TriggerType {
     /// No trigger type is specified (invalid for orders with a trigger).
-    NoTrigger = 0, // Will be replaced by `Option`
+    #[default]
+    NoTrigger = 0,
     /// The default trigger type set by the trading venue.
     Default = 1,
-    /// Based on the top-of-book quoted prices for the instrument.
-    BidAsk = 2,
     /// Based on the last traded price for the instrument.
-    LastTrade = 3,
-    /// Based on a 'double match' of the last traded price for the instrument
-    DoubleLast = 4,
-    /// Based on a 'double match' of the bid/ask price for the instrument
-    DoubleBidAsk = 5,
-    /// Based on both the [`TriggerType::LastTrade`] and [`TriggerType::BidAsk`].
-    LastOrBidAsk = 6,
-    /// Based on the mid-point of the [`TriggerType::BidAsk`].
-    MidPoint = 7,
+    LastPrice = 2,
     /// Based on the mark price for the instrument.
-    MarkPrice = 8,
+    MarkPrice = 3,
     /// Based on the index price for the instrument.
-    IndexPrice = 9,
+    IndexPrice = 4,
+    /// Based on the top-of-book quoted prices for the instrument.
+    BidAsk = 5,
+    /// Based on a 'double match' of the last traded price for the instrument
+    DoubleLast = 6,
+    /// Based on a 'double match' of the bid/ask price for the instrument
+    DoubleBidAsk = 7,
+    /// Based on both the [`TriggerType::LastTrade`] and [`TriggerType::BidAsk`].
+    LastOrBidAsk = 8,
+    /// Based on the mid-point of the [`TriggerType::BidAsk`].
+    MidPoint = 9,
 }
 
 enum_strum_serde!(AccountType);
@@ -1028,6 +1241,7 @@ enum_strum_serde!(AggressorSide);
 enum_strum_serde!(AssetClass);
 enum_strum_serde!(InstrumentClass);
 enum_strum_serde!(BarAggregation);
+enum_strum_serde!(BarIntervalType);
 enum_strum_serde!(BookAction);
 enum_strum_serde!(BookType);
 enum_strum_serde!(ContingencyType);
@@ -1035,6 +1249,7 @@ enum_strum_serde!(CurrencyType);
 enum_strum_serde!(InstrumentCloseType);
 enum_strum_serde!(LiquiditySide);
 enum_strum_serde!(MarketStatus);
+enum_strum_serde!(MarketStatusAction);
 enum_strum_serde!(OmsType);
 enum_strum_serde!(OptionKind);
 enum_strum_serde!(OrderSide);
@@ -1042,6 +1257,7 @@ enum_strum_serde!(OrderStatus);
 enum_strum_serde!(OrderType);
 enum_strum_serde!(PositionSide);
 enum_strum_serde!(PriceType);
+enum_strum_serde!(RecordFlag);
 enum_strum_serde!(TimeInForce);
 enum_strum_serde!(TradingState);
 enum_strum_serde!(TrailingOffsetType);

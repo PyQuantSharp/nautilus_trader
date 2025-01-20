@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -295,14 +295,10 @@ class Subscriptions(Base):
 
         Parameters
         ----------
-        req_id : int
+        req_id : int, optional
             The request ID of the subscription to remove. If None, name is used.
-        name : str | tuple
+        name : str | tuple, optional
             The name of the subscription to remove.
-
-        Args:
-            req_id (Optional[int]):
-            name (Optional[Union[str, tuple]]): The name of the subscription to remove.
 
         """
         if not req_id:
@@ -493,22 +489,28 @@ class BaseMixin:
     _subscriptions: Subscriptions
     _event_subscriptions: dict[str, Callable]
     _eclient: EClient
-    _is_ib_ready: asyncio.Event
+    _is_ib_connected: asyncio.Event
+    _start: Callable
+    _startup: Callable
+    _reset: Callable
+    _stop: Callable
+    _resume: Callable
     _degrade: Callable
     _end_request: Callable
     _await_request: Callable
     _next_req_id: Callable
-    logAnswer: Callable
-    _reset: Callable
+    _resubscribe_all: Callable
     _create_task: Callable
-    _start_client_tasks_and_tws_api: Callable
+    logAnswer: Callable
 
     # Account
     accounts: Callable
 
     # Connection
-    _connection_attempt_counter: int
-    _contract_for_probe: IBContract
+    _reconnect_attempts: int
+    _reconnect_delay: int
+    _max_reconnect_attempts: int
+    _indefinite_reconnect: bool
 
     # MarketData
     _bar_type_to_last_bar: dict[str, BarData | None]

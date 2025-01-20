@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,16 +19,17 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from nautilus_trader.core.nautilus_pyo3 import DataTransformer
+from nautilus_trader import TEST_DATA_DIR
+from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
+from nautilus_trader.model.objects import FIXED_PRECISION_BYTES
 from nautilus_trader.persistence.wranglers import TradeTickDataWrangler
 from nautilus_trader.persistence.wranglers_v2 import QuoteTickDataWranglerV2
 from nautilus_trader.test_kit.providers import TestDataProvider
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
-from tests import TEST_DATA_DIR
 
 
 def test_pyo3_quote_ticks_to_record_batch_reader() -> None:
@@ -42,7 +43,7 @@ def test_pyo3_quote_ticks_to_record_batch_reader() -> None:
     quotes = wrangler.from_pandas(df)
 
     # Act
-    batch_bytes = DataTransformer.pyo3_quote_ticks_to_record_batch_bytes(quotes)
+    batch_bytes = nautilus_pyo3.quote_ticks_to_arrow_record_batch_bytes(quotes)
     reader = pa.ipc.open_stream(BytesIO(batch_bytes))
 
     # Assert
@@ -58,7 +59,7 @@ def test_legacy_trade_ticks_to_record_batch_reader() -> None:
     trades = wrangler.process(TestDataProvider().read_csv_ticks("binance/ethusdt-trades.csv"))
 
     # Act
-    batch_bytes = DataTransformer.pyobjects_to_record_batch_bytes(trades)
+    batch_bytes = nautilus_pyo3.pyobjects_to_arrow_record_batch_bytes(trades)
     reader = pa.ipc.open_stream(BytesIO(batch_bytes))
 
     # Assert
@@ -90,7 +91,7 @@ def test_legacy_deltas_to_record_batch_reader() -> None:
     ]
 
     # Act
-    batch_bytes = DataTransformer.pyobjects_to_record_batch_bytes(deltas)
+    batch_bytes = nautilus_pyo3.pyobjects_to_arrow_record_batch_bytes(deltas)
     reader = pa.ipc.open_stream(BytesIO(batch_bytes))
 
     # Assert
@@ -102,7 +103,7 @@ def test_legacy_deltas_to_record_batch_reader() -> None:
 def test_get_schema_map_with_unsupported_type() -> None:
     # Arrange, Act, Assert
     with pytest.raises(TypeError):
-        DataTransformer.get_schema_map(str)
+        nautilus_pyo3.get_arrow_schema_map(str)
 
 
 @pytest.mark.parametrize(
@@ -112,12 +113,12 @@ def test_get_schema_map_with_unsupported_type() -> None:
             OrderBookDelta,
             {
                 "action": "UInt8",
-                "flags": "UInt8",
-                "order_id": "UInt64",
-                "price": "Int64",
-                "sequence": "UInt64",
                 "side": "UInt8",
-                "size": "UInt64",
+                "price": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "size": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "order_id": "UInt64",
+                "sequence": "UInt64",
+                "flags": "UInt8",
                 "ts_event": "UInt64",
                 "ts_init": "UInt64",
             },
@@ -125,10 +126,10 @@ def test_get_schema_map_with_unsupported_type() -> None:
         [
             QuoteTick,
             {
-                "bid_price": "Int64",
-                "ask_price": "Int64",
-                "bid_size": "UInt64",
-                "ask_size": "UInt64",
+                "bid_price": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "ask_price": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "bid_size": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "ask_size": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
                 "ts_event": "UInt64",
                 "ts_init": "UInt64",
             },
@@ -136,8 +137,8 @@ def test_get_schema_map_with_unsupported_type() -> None:
         [
             TradeTick,
             {
-                "price": "Int64",
-                "size": "UInt64",
+                "price": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "size": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
                 "aggressor_side": "UInt8",
                 "trade_id": "Utf8",
                 "ts_event": "UInt64",
@@ -147,11 +148,11 @@ def test_get_schema_map_with_unsupported_type() -> None:
         [
             Bar,
             {
-                "open": "Int64",
-                "high": "Int64",
-                "low": "Int64",
-                "close": "Int64",
-                "volume": "UInt64",
+                "open": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "high": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "low": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "close": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
+                "volume": f"FixedSizeBinary({FIXED_PRECISION_BYTES})",
                 "ts_event": "UInt64",
                 "ts_init": "UInt64",
             },
@@ -163,7 +164,7 @@ def test_get_schema_map_for_all_implemented_types(
     expected_map: dict[str, str],
 ) -> None:
     # Arrange, Act
-    schema_map = DataTransformer.get_schema_map(data_type)
+    schema_map = nautilus_pyo3.get_arrow_schema_map(data_type)
 
     # Assert
     assert schema_map == expected_map

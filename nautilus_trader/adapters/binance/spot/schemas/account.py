@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -31,7 +31,7 @@ from nautilus_trader.model.objects import Money
 
 class BinanceSpotBalanceInfo(msgspec.Struct, frozen=True):
     """
-    HTTP response 'inner struct' from `Binance Spot/Margin` GET /api/v3/account (HMAC
+    HTTP response 'inner struct' from Binance Spot/Margin GET /api/v3/account (HMAC
     SHA256).
     """
 
@@ -53,7 +53,7 @@ class BinanceSpotBalanceInfo(msgspec.Struct, frozen=True):
 
 class BinanceSpotAccountInfo(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Spot/Margin` GET /api/v3/account (HMAC SHA256).
+    HTTP response from Binance Spot/Margin GET /api/v3/account (HMAC SHA256).
     """
 
     makerCommission: int
@@ -74,10 +74,10 @@ class BinanceSpotAccountInfo(msgspec.Struct, frozen=True):
 
 class BinanceSpotOrderOco(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Spot/Margin` GET /api/v3/orderList (HMAC SHA256).
+    HTTP response from Binance Spot/Margin GET /api/v3/orderList (HMAC SHA256).
 
-    HTTP response from `Binance Spot/Margin` POST /api/v3/order/oco (HMAC SHA256). HTTP
-    response from `Binance Spot/Margin` DELETE /api/v3/orderList (HMAC SHA256).
+    HTTP response from Binance Spot/Margin POST /api/v3/order/oco (HMAC SHA256). HTTP
+    response from Binance Spot/Margin DELETE /api/v3/orderList (HMAC SHA256).
 
     """
 

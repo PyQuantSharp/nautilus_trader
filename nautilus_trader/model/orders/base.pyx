@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,16 +18,16 @@ from decimal import Decimal
 # This needs to be a Python import so it can used in the FSM
 from nautilus_trader.model.enums import order_status_to_str
 
-from libc.stdint cimport int64_t
-from libc.stdint cimport uint64_t
-
 from nautilus_trader.core.correctness cimport Condition
+from nautilus_trader.core.rust.model cimport FIXED_SCALAR
 from nautilus_trader.core.rust.model cimport ContingencyType
 from nautilus_trader.core.rust.model cimport LiquiditySide
 from nautilus_trader.core.rust.model cimport OrderSide
 from nautilus_trader.core.rust.model cimport OrderStatus
 from nautilus_trader.core.rust.model cimport OrderType
 from nautilus_trader.core.rust.model cimport PositionSide
+from nautilus_trader.core.rust.model cimport PriceRaw
+from nautilus_trader.core.rust.model cimport QuantityRaw
 from nautilus_trader.model.events.order cimport OrderAccepted
 from nautilus_trader.model.events.order cimport OrderCanceled
 from nautilus_trader.model.events.order cimport OrderCancelRejected
@@ -56,14 +56,14 @@ from nautilus_trader.model.objects cimport Money
 from nautilus_trader.model.objects cimport Quantity
 
 
-VALID_STOP_ORDER_TYPES = {
+STOP_ORDER_TYPES = {
     OrderType.STOP_MARKET,
     OrderType.STOP_LIMIT,
     OrderType.MARKET_IF_TOUCHED,
     OrderType.LIMIT_IF_TOUCHED,
 }
 
-VALID_LIMIT_ORDER_TYPES = {
+LIMIT_ORDER_TYPES = {
     OrderType.LIMIT,
     OrderType.STOP_LIMIT,
     OrderType.LIMIT_IF_TOUCHED,
@@ -276,6 +276,17 @@ cdef class Order:
 
         """
         return self.type_string_c()
+
+    cpdef str tif_string(self):
+        """
+        Return the orders time in force as a string.
+
+        Returns
+        -------
+        str
+
+        """
+        return self.tif_string_c()
 
     cpdef str info(self):
         """
@@ -611,7 +622,7 @@ cdef class Order:
         """
         Return whether the order is active and held in the local system.
 
-        An order is considered active local when its status is any of;
+        An order is considered active local when its status is any of:
         - ``INITIALIZED``
         - ``EMULATED``
         - ``RELEASED``
@@ -688,8 +699,7 @@ cdef class Order:
         """
         Return whether the order is in-flight (order request sent to the trading venue).
 
-        An order is considered in-flight when its status is any of;
-
+        An order is considered in-flight when its status is any of:
         - ``SUBMITTED``
         - ``PENDING_UPDATE``
         - ``PENDING_CANCEL``
@@ -710,8 +720,7 @@ cdef class Order:
         """
         Return whether the order is open at the trading venue.
 
-        An order is considered open when its status is any of;
-
+        An order is considered open when its status is any of:
         - ``ACCEPTED``
         - ``TRIGGERED``
         - ``PENDING_UPDATE``
@@ -917,7 +926,7 @@ cdef class Order:
         list[Money]
 
         """
-        return list(self._commissions.values())
+        return sorted(self._commissions.values())
 
     cpdef void apply(self, OrderEvent event):
         """
@@ -984,7 +993,7 @@ cdef class Order:
                 self._fsm.trigger(self._previous_status)
             self._updated(event)
         elif isinstance(event, OrderTriggered):
-            Condition.true(
+            Condition.is_true(
                 (
                     self.order_type == OrderType.STOP_LIMIT
                     or self.order_type == OrderType.TRAILING_STOP_LIMIT
@@ -1057,18 +1066,20 @@ cdef class Order:
         self.strategy_id = fill.strategy_id
         self._trade_ids.append(fill.trade_id)
         self.last_trade_id = fill.trade_id
-        cdef uint64_t raw_filled_qty = self.filled_qty._mem.raw + fill.last_qty._mem.raw
-        cdef int64_t raw_leaves_qty = self.quantity._mem.raw - raw_filled_qty
+        cdef QuantityRaw raw_filled_qty = self.filled_qty._mem.raw + fill.last_qty._mem.raw
+
+        # Using `PriceRaw` as temporary hack to access int128_t so that negative values can be represented
+        cdef PriceRaw raw_leaves_qty = self.quantity._mem.raw - raw_filled_qty
         if raw_leaves_qty < 0:
             raise ValueError(
-                f"invalid order.leaves_qty: was {<uint64_t>raw_leaves_qty / 1e9}, "
+                f"invalid order.leaves_qty: was {raw_leaves_qty / FIXED_SCALAR}, "
                 f"order.quantity={self.quantity}, "
                 f"order.filled_qty={self.filled_qty}, "
                 f"fill.last_qty={fill.last_qty}, "
                 f"fill={fill}",
             )
         self.filled_qty.add_assign(fill.last_qty)
-        self.leaves_qty = Quantity.from_raw_c(<uint64_t>raw_leaves_qty, fill.last_qty._mem.precision)
+        self.leaves_qty = Quantity.from_raw_c(<QuantityRaw>raw_leaves_qty, fill.last_qty._mem.precision)
         self.avg_px = self._calculate_avg_px(fill.last_qty.as_f64_c(), fill.last_px.as_f64_c())
         self.liquidity_side = fill.liquidity_side
         self._set_slippage()

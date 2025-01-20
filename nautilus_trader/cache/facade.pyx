@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -65,7 +65,11 @@ cdef class CacheDatabaseFacade:
     def __init__(self, config: CacheConfig | None = None) -> None:
         self._log = Logger(name=type(self).__name__)
 
-        self._log.info("READY.")
+        self._log.info("READY")
+
+    cpdef void close(self):
+        """Abstract method (implement in subclass)."""
+        raise NotImplementedError("method `close` must be implemented in the subclass")  # pragma: no cover
 
     cpdef void flush(self):
         """Abstract method (implement in subclass)."""

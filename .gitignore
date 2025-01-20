@@ -1,72 +1,94 @@
 *.c
 *.o
 *.so
-*.pyc
-*.pyd
 *.exp
 *.obj
 *.lib
+*.xml
+
+# Logs and patches
 *.log
 *.patch
+log/
+logs/
+
+# Profiler and database
 *.prof
 *.rdb
-*.xml
+*.sqlite
+
+# Secrets and environment files
 *.key
 *.key_secret
-*.sqlite
 *.env
+
+# Compressed files
 *.tar.gz*
 *.zip
 
-*.dbn
-*.dbn.zst
+# Data
+*.parquet
 
+# IntelliJ and VSCode project
+*.iml
+.idea/
+.vscode/
+
+# Benchmarking and coverage
 .benchmarks*
 .coverage*
+
+# Rust related
+*target/
+
+# Python related
+*.pyc
+*.pyd
 .history*
 .cache/
-.env/
-.git/
-.idea/
-.ipynb_checkpoints
+.codspeed/
 .mypy_cache/
 .profile/
 .pytest_cache/
-.python-version
 .ruff_cache/
-.vscode/
+*dask-worker-space*
+requirements*
+venv*/
+__pycache__/
 
-/catalog/
-/examples/notebooks/catalog/
-
-__pycache__
+# Build environment and temp
 _build/
 build/
-data_catalog/
 dist/
 env/
-log/
-logs/
-secrets/
-ta-lib/
 *temp/
-*target/
-venv*/
 
+# System and editor specific
+.cursorignore
 .DS_Store
 .null-ls*
 PERF.JSON
 output.json
-*dask-worker-space*
-.cursorignore
 
-docs/**/*.ipynb
-examples/backtest/notebooks/catalog
+# Nautilus specific
+.ipynb_checkpoints/
+bench_data/
+/api_reference/
+/catalog/
+/docs/getting_started/catalog/
+/docs/tutorials/catalog/
+/docs/tutorials/databento/
+/examples/backtest/notebooks/catalog/
+/examples/notebooks/catalog/
 nautilus_trader/**/.gitignore
 nautilus_trader/test_kit/mocks/.nautilus/
 tests/test_data/catalog/
-tests/unit_tests/persistence/catalog
-bench_data/
+tests/test_data/large/*
+tests/unit_tests/catalog/
+tests/unit_tests/persistence/catalog/
 
+# Exceptions
+!tests/test_data/large/checksums.json
+!tests/test_data/nautilus/*/**.parquet
 !tests/integration_tests/adapters/betfair/responses/*.log
-**/test_db.sqlite
+!/nautilus_core/adapters/src/databento/test_data/*

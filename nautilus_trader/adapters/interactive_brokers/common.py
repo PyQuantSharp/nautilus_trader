@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,10 +20,13 @@ from ibapi.common import UNSET_DECIMAL
 from ibapi.tag_value import TagValue
 
 from nautilus_trader.config import NautilusConfig
+from nautilus_trader.model.identifiers import ClientId
 from nautilus_trader.model.identifiers import Venue
 
 
-IB_VENUE: Final[Venue] = Venue("INTERACTIVE_BROKERS")
+IB: Final[str] = "INTERACTIVE_BROKERS"
+IB_VENUE: Final[Venue] = Venue(IB)
+IB_CLIENT_ID: Final[ClientId] = ClientId(IB)
 
 
 class ContractId(int):
@@ -101,7 +104,19 @@ class IBContract(NautilusConfig, frozen=True, repr_omit_defaults=True):
 
     """
 
-    secType: Literal["CASH", "STK", "OPT", "FUT", "FOP", "CONTFUT", "CRYPTO", ""] = ""
+    secType: Literal[
+        "CASH",
+        "STK",
+        "OPT",
+        "FUT",
+        "FOP",
+        "CONTFUT",
+        "CRYPTO",
+        "CFD",
+        "CMDTY",
+        "IND",
+        "",
+    ] = ""
     conId: int = 0
     exchange: str = ""
     primaryExchange: str = ""
@@ -167,7 +182,7 @@ class IBOrderTags(NautilusConfig, frozen=True, repr_omit_defaults=True):
 
     @property
     def value(self):
-        return self.json().decode()
+        return f"IBOrderTags:{self.json().decode()}"
 
     def __str__(self):
         return self.value

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,6 +19,7 @@ import pytest
 
 from nautilus_trader.core.nautilus_pyo3 import Currency
 from nautilus_trader.core.nautilus_pyo3 import CurrencyType
+from nautilus_trader.model.objects import FIXED_PRECISION
 
 
 AUD = Currency.from_str("AUD")
@@ -44,7 +45,7 @@ class TestCurrency:
         with pytest.raises(ValueError):
             Currency(
                 code="AUD",
-                precision=10,
+                precision=FIXED_PRECISION + 1,
                 iso4217=36,
                 name="Australian dollar",
                 currency_type=CurrencyType.FIAT,
@@ -129,7 +130,7 @@ class TestCurrency:
         assert currency.name == "Australian dollar"
         assert (
             repr(currency)
-            == 'Currency { code: u!("AUD"), precision: 2, iso4217: 36, name: u!("Australian dollar"), currency_type: Fiat }'
+            == "Currency(code='AUD', precision=2, iso4217=36, name='Australian dollar', currency_type=FIAT)"
         )
 
     def test_currency_pickle(self):
@@ -144,13 +145,13 @@ class TestCurrency:
 
         # Act
         pickled = pickle.dumps(currency)
-        unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+        unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
         # Assert
         assert unpickled == currency
         assert (
             repr(unpickled)
-            == 'Currency { code: u!("AUD"), precision: 2, iso4217: 36, name: u!("Australian dollar"), currency_type: Fiat }'
+            == "Currency(code='AUD', precision=2, iso4217=36, name='Australian dollar', currency_type=FIAT)"
         )
 
     def test_register_adds_currency_to_internal_currency_map(self):

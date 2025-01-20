@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,6 +19,7 @@ from nautilus_trader.backtest.exchange import SimulatedExchange
 from nautilus_trader.backtest.execution_client import BacktestExecClient
 from nautilus_trader.backtest.models import FillModel
 from nautilus_trader.backtest.models import LatencyModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
 from nautilus_trader.data.engine import DataEngine
@@ -93,15 +94,16 @@ class TestSimulatedExchangeContingencyAdvancedOrders:
             starting_balances=[Money(200, ETH), Money(1_000_000, USDT)],
             default_leverage=Decimal(10),
             leverages={},
-            instruments=[ETHUSDT_PERP_BINANCE],
             modules=[],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
             latency_model=LatencyModel(0),
         )
+        self.exchange.add_instrument(ETHUSDT_PERP_BINANCE)
 
         self.exec_client = BacktestExecClient(
             exchange=self.exchange,

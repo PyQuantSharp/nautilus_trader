@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -67,9 +67,11 @@ config_node = TradingNodeConfig(
             us=False,  # If client is for Binance US
             testnet=True,  # If client uses the testnet
             instrument_provider=InstrumentProviderConfig(load_all=True),
+            max_retries=3,
+            retry_delay=1.0,
         ),
     },
-    timeout_connection=20.0,
+    timeout_connection=30.0,
     timeout_reconciliation=10.0,
     timeout_portfolio=10.0,
     timeout_disconnection=10.0,
@@ -96,7 +98,7 @@ strategy = EMACross(config=strat_config)
 # Add your strategies and modules
 node.trader.add_strategy(strategy)
 
-# Register your client factories with the node (can take user defined factories)
+# Register your client factories with the node (can take user-defined factories)
 node.add_data_client_factory("BINANCE", BinanceLiveDataClientFactory)
 node.add_exec_client_factory("BINANCE", BinanceLiveExecClientFactory)
 node.build()

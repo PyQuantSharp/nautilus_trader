@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Provides macros.
+
 #[macro_export]
 macro_rules! identifier_for_python {
     ($ty:ty) => {
@@ -20,32 +22,30 @@ macro_rules! identifier_for_python {
         impl $ty {
             #[new]
             fn py_new(value: &str) -> PyResult<Self> {
-                match <$ty>::new(value) {
-                    Ok(instance) => Ok(instance),
-                    Err(e) => Err(to_pyvalue_err(e)),
-                }
+                <$ty>::new_checked(value).map_err(to_pyvalue_err)
             }
 
-            fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
-                let value: (&PyString,) = state.extract(py)?;
-                let value_str: String = value.0.extract()?;
-                self.value = Ustr::from_str(&value_str).map_err(to_pyvalue_err)?;
+            fn __setstate__(&mut self, state: &Bound<'_, PyAny>) -> PyResult<()> {
+                let py_tuple: &Bound<'_, PyTuple> = state.downcast::<PyTuple>()?;
+                let bindings = py_tuple.get_item(0)?;
+                let value = bindings.downcast::<PyString>()?.extract::<&str>()?;
+                self.set_inner(value);
                 Ok(())
             }
 
             fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
-                Ok((self.value.to_string(),).to_object(py))
+                Ok((self.to_string(),).to_object(py))
             }
 
             fn __reduce__(&self, py: Python) -> PyResult<PyObject> {
-                let safe_constructor = py.get_type::<Self>().getattr("_safe_constructor")?;
+                let safe_constructor = py.get_type_bound::<Self>().getattr("_safe_constructor")?;
                 let state = self.__getstate__(py)?;
-                Ok((safe_constructor, PyTuple::empty(py), state).to_object(py))
+                Ok((safe_constructor, PyTuple::empty_bound(py), state).to_object(py))
             }
 
             #[staticmethod]
             fn _safe_constructor() -> PyResult<Self> {
-                Ok(<$ty>::from_str("NULL").unwrap()) // Safe default
+                Ok(<$ty>::from("NULL")) // Safe default
             }
 
             fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
@@ -60,25 +60,31 @@ macro_rules! identifier_for_python {
             }
 
             fn __hash__(&self) -> isize {
-                self.value.precomputed_hash() as isize
-            }
-
-            fn __str__(&self) -> &'static str {
-                self.value.as_str()
+                self.inner().precomputed_hash() as isize
             }
 
             fn __repr__(&self) -> String {
                 format!(
                     "{}('{}')",
                     stringify!($ty).split("::").last().unwrap_or(""),
-                    self.value
+                    self.as_str()
                 )
+            }
+
+            fn __str__(&self) -> &'static str {
+                self.inner().as_str()
             }
 
             #[getter]
             #[pyo3(name = "value")]
             fn py_value(&self) -> String {
-                self.value.to_string()
+                self.to_string()
+            }
+
+            #[staticmethod]
+            #[pyo3(name = "from_str")]
+            fn py_from_str(value: &str) -> Self {
+                Self::from(value)
             }
         }
     };

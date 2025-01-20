@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,16 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+use indexmap::IndexMap;
 use pyo3::{
     exceptions::PyValueError,
     prelude::*,
-    types::{PyDict, PyList},
+    types::{PyDict, PyList, PyNone},
 };
 use serde_json::Value;
 use strum::IntoEnumIterator;
+
+use crate::types::{Currency, Money};
 
 pub const PY_MODULE_MODEL: &str = "nautilus_trader.core.nautilus_pyo3.model";
 
@@ -60,8 +63,8 @@ impl EnumIterator {
     }
 }
 
-pub fn value_to_pydict(py: Python<'_>, val: &Value) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new(py);
+pub fn value_to_pydict(py: Python<'_>, val: &Value) -> PyResult<Py<PyAny>> {
+    let dict = PyDict::new_bound(py);
 
     match val {
         Value::Object(map) => {
@@ -92,7 +95,7 @@ pub fn value_to_pyobject(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
             }
         }
         Value::Array(arr) => {
-            let py_list = PyList::new(py, &[] as &[PyObject]);
+            let py_list = PyList::new_bound(py, &[] as &[PyObject]);
             for item in arr {
                 let py_item = value_to_pyobject(py, item)?;
                 py_list.append(py_item)?;
@@ -101,9 +104,31 @@ pub fn value_to_pyobject(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
         }
         Value::Object(_) => {
             let py_dict = value_to_pydict(py, val)?;
-            Ok(py_dict.into())
+            Ok(py_dict)
         }
     }
+}
+
+pub fn commissions_from_vec(py: Python<'_>, commissions: Vec<Money>) -> PyResult<Bound<'_, PyAny>> {
+    let mut values = Vec::new();
+
+    for value in commissions {
+        values.push(value.to_string());
+    }
+
+    if values.is_empty() {
+        Ok(PyNone::get_bound(py).to_owned().into_any())
+    } else {
+        values.sort();
+        Ok(PyList::new_bound(py, &values).to_owned().into_any())
+    }
+}
+
+pub fn commissions_from_indexmap(
+    py: Python<'_>,
+    commissions: IndexMap<Currency, Money>,
+) -> PyResult<Bound<'_, PyAny>> {
+    commissions_from_vec(py, commissions.values().cloned().collect())
 }
 
 #[cfg(test)]
@@ -111,7 +136,7 @@ mod tests {
     use pyo3::{
         prelude::*,
         prepare_freethreaded_python,
-        types::{PyBool, PyInt, PyList, PyString},
+        types::{PyBool, PyInt, PyString},
     };
     use rstest::rstest;
     use serde_json::Value;
@@ -132,12 +157,11 @@ mod tests {
 
             let val: Value = serde_json::from_str(json_str).unwrap();
             let py_dict_ref = value_to_pydict(py, &val).unwrap();
-            let py_dict = py_dict_ref.as_ref(py);
+            let py_dict = py_dict_ref.bind(py);
 
             assert_eq!(
                 py_dict
                     .get_item("type")
-                    .unwrap()
                     .unwrap()
                     .downcast::<PyString>()
                     .unwrap()
@@ -149,7 +173,6 @@ mod tests {
                 py_dict
                     .get_item("ts_event")
                     .unwrap()
-                    .unwrap()
                     .downcast::<PyInt>()
                     .unwrap()
                     .extract::<i64>()
@@ -158,7 +181,6 @@ mod tests {
             );
             assert!(!py_dict
                 .get_item("is_reconciliation")
-                .unwrap()
                 .unwrap()
                 .downcast::<PyBool>()
                 .unwrap()
@@ -197,7 +219,7 @@ mod tests {
                 Value::String("item2".to_string()),
             ]);
             let binding = value_to_pyobject(py, &val).unwrap();
-            let py_list = binding.downcast::<PyList>(py).unwrap();
+            let py_list: &Bound<'_, PyList> = binding.bind(py).downcast::<PyList>().unwrap();
 
             assert_eq!(py_list.len(), 2);
             assert_eq!(

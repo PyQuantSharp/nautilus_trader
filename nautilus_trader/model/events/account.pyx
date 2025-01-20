@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -35,7 +35,7 @@ cdef class AccountState(Event):
     ----------
     account_id : AccountId
         The account ID (with the venue).
-    account_type : AccountId
+    account_type : AccountType
         The account type for the event.
     base_currency : Currency, optional
         The account base currency. Use None for multi-currency accounts.
@@ -50,9 +50,9 @@ cdef class AccountState(Event):
     event_id : UUID4
         The event ID.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the account state event occurred.
+        UNIX timestamp (nanoseconds) when the account state event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     Raises
     ------
@@ -120,7 +120,7 @@ cdef class AccountState(Event):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the event occurred.
+        UNIX timestamp (nanoseconds) when the event occurred.
 
         Returns
         -------
@@ -132,7 +132,7 @@ cdef class AccountState(Event):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -154,7 +154,7 @@ cdef class AccountState(Event):
             balances=[AccountBalance.from_dict(b) for b in values["balances"]],
             margins=[MarginBalance.from_dict(m) for m in values["margins"]],
             info=values["info"],
-            event_id=UUID4(values["event_id"]),
+            event_id=UUID4.from_str_c(values["event_id"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
         )

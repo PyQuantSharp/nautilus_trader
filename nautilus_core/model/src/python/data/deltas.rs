@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,25 +19,21 @@ use std::{
     ops::Deref,
 };
 
-use nautilus_core::time::UnixNanos;
+use nautilus_core::python::to_pyvalue_err;
 use pyo3::{prelude::*, pyclass::CompareOp, types::PyCapsule};
 
 use super::data_to_pycapsule;
 use crate::{
-    data::{
-        delta::OrderBookDelta,
-        deltas::{OrderBookDeltas, OrderBookDeltas_API},
-        Data,
-    },
-    identifiers::instrument_id::InstrumentId,
+    data::{Data, OrderBookDelta, OrderBookDeltas, OrderBookDeltas_API},
+    identifiers::InstrumentId,
     python::common::PY_MODULE_MODEL,
 };
 
 #[pymethods]
 impl OrderBookDeltas {
     #[new]
-    fn py_new(instrument_id: InstrumentId, deltas: Vec<OrderBookDelta>) -> Self {
-        Self::new(instrument_id, deltas)
+    fn py_new(instrument_id: InstrumentId, deltas: Vec<OrderBookDelta>) -> PyResult<Self> {
+        Self::new_checked(instrument_id, deltas).map_err(to_pyvalue_err)
     }
 
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
@@ -54,12 +50,12 @@ impl OrderBookDeltas {
         h.finish() as isize
     }
 
-    fn __str__(&self) -> String {
-        self.to_string()
-    }
-
     fn __repr__(&self) -> String {
         format!("{self:?}")
+    }
+
+    fn __str__(&self) -> String {
+        self.to_string()
     }
 
     #[getter]
@@ -89,14 +85,14 @@ impl OrderBookDeltas {
 
     #[getter]
     #[pyo3(name = "ts_event")]
-    fn py_ts_event(&self) -> UnixNanos {
-        self.ts_event
+    fn py_ts_event(&self) -> u64 {
+        self.ts_event.as_u64()
     }
 
     #[getter]
     #[pyo3(name = "ts_init")]
-    fn py_ts_init(&self) -> UnixNanos {
-        self.ts_init
+    fn py_ts_init(&self) -> u64 {
+        self.ts_init.as_u64()
     }
 
     #[staticmethod]
@@ -107,9 +103,9 @@ impl OrderBookDeltas {
 
     #[staticmethod]
     #[pyo3(name = "from_pycapsule")]
-    pub fn py_from_pycapsule(capsule: &PyAny) -> Self {
-        let capsule: &PyCapsule = capsule
-            .downcast()
+    pub fn py_from_pycapsule(capsule: Bound<'_, PyAny>) -> Self {
+        let capsule: &Bound<'_, PyCapsule> = capsule
+            .downcast::<PyCapsule>()
             .expect("Error on downcast to `&PyCapsule`");
         let data: &OrderBookDeltas_API =
             unsafe { &*(capsule.pointer() as *const OrderBookDeltas_API) };
@@ -131,7 +127,6 @@ impl OrderBookDeltas {
     ///
     /// The function will panic if the `PyCapsule` creation fails, which can occur if the
     /// [`Data::Deltas`] object cannot be converted into a raw pointer.
-    ///
     #[pyo3(name = "as_pycapsule")]
     fn py_as_pycapsule(&self, py: Python<'_>) -> PyObject {
         let deltas = OrderBookDeltas_API::new(self.clone());

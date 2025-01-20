@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,12 +19,12 @@ import pandas as pd
 import pytest
 import pytz
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.core.datetime import as_utc_index
 from nautilus_trader.test_kit.stubs.data import UNIX_EPOCH
 from nautilus_trader.trading.filters import EconomicNewsEventFilter
 from nautilus_trader.trading.filters import ForexSession
 from nautilus_trader.trading.filters import ForexSessionFilter
-from tests import TEST_DATA_DIR
 
 
 class TestForexSessionFilter:

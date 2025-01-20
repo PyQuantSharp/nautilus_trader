@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,37 +13,31 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::collections::HashMap;
-
-use nautilus_core::{
-    python::{serialization::from_dict_pyo3, to_pyvalue_err},
-    time::UnixNanos,
-    uuid::UUID4,
-};
+use indexmap::IndexMap;
+use nautilus_core::{python::serialization::from_dict_pyo3, UnixNanos, UUID4};
 use pyo3::{
     basic::CompareOp,
     prelude::*,
     types::{PyDict, PyList},
 };
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use ustr::Ustr;
 
 use crate::{
     enums::{ContingencyType, OrderSide, OrderType, TimeInForce, TrailingOffsetType, TriggerType},
-    events::order::initialized::OrderInitialized,
+    events::OrderInitialized,
     identifiers::{
-        client_order_id::ClientOrderId, exec_algorithm_id::ExecAlgorithmId,
-        instrument_id::InstrumentId, order_list_id::OrderListId, strategy_id::StrategyId,
-        trader_id::TraderId,
+        ClientOrderId, ExecAlgorithmId, InstrumentId, OrderListId, StrategyId, TraderId,
     },
-    orders::base::str_hashmap_to_ustr,
-    types::{price::Price, quantity::Quantity},
+    orders::base::str_indexmap_to_ustr,
+    types::{Price, Quantity},
 };
 
 #[pymethods]
 impl OrderInitialized {
     #[allow(clippy::too_many_arguments)]
     #[new]
+    #[pyo3(signature = (trader_id, strategy_id, instrument_id, client_order_id, order_side, order_type, quantity, time_in_force, post_only, reduce_only, quote_quantity, reconciliation, event_id, ts_event, ts_init, price=None, trigger_price=None, trigger_type=None, limit_offset=None, trailing_offset=None, trailing_offset_type=None, expire_time=None, display_qty=None, emulation_trigger=None, trigger_instrument_id=None, contingency_type=None, order_list_id=None, linked_order_ids=None, parent_order_id=None, exec_algorithm_id=None, exec_algorithm_params=None, exec_spawn_id=None, tags=None))]
     fn py_new(
         trader_id: TraderId,
         strategy_id: StrategyId,
@@ -58,15 +52,15 @@ impl OrderInitialized {
         quote_quantity: bool,
         reconciliation: bool,
         event_id: UUID4,
-        ts_event: UnixNanos,
-        ts_init: UnixNanos,
+        ts_event: u64,
+        ts_init: u64,
         price: Option<Price>,
         trigger_price: Option<Price>,
         trigger_type: Option<TriggerType>,
-        limit_offset: Option<Price>,
-        trailing_offset: Option<Price>,
+        limit_offset: Option<Decimal>,
+        trailing_offset: Option<Decimal>,
         trailing_offset_type: Option<TrailingOffsetType>,
-        expire_time: Option<UnixNanos>,
+        expire_time: Option<u64>,
         display_qty: Option<Quantity>,
         emulation_trigger: Option<TriggerType>,
         trigger_instrument_id: Option<InstrumentId>,
@@ -75,10 +69,10 @@ impl OrderInitialized {
         linked_order_ids: Option<Vec<ClientOrderId>>,
         parent_order_id: Option<ClientOrderId>,
         exec_algorithm_id: Option<ExecAlgorithmId>,
-        exec_algorithm_params: Option<HashMap<String, String>>,
+        exec_algorithm_params: Option<IndexMap<String, String>>,
         exec_spawn_id: Option<ClientOrderId>,
-        tags: Option<String>,
-    ) -> PyResult<Self> {
+        tags: Option<Vec<String>>,
+    ) -> Self {
         Self::new(
             trader_id,
             strategy_id,
@@ -93,15 +87,15 @@ impl OrderInitialized {
             quote_quantity,
             reconciliation,
             event_id,
-            ts_event,
-            ts_init,
+            ts_event.into(),
+            ts_init.into(),
             price,
             trigger_price,
             trigger_type,
             limit_offset,
             trailing_offset,
             trailing_offset_type,
-            expire_time,
+            expire_time.map(UnixNanos::from),
             display_qty,
             emulation_trigger,
             trigger_instrument_id,
@@ -110,12 +104,12 @@ impl OrderInitialized {
             linked_order_ids,
             parent_order_id,
             exec_algorithm_id,
-            exec_algorithm_params.map(str_hashmap_to_ustr),
+            exec_algorithm_params.map(str_indexmap_to_ustr),
             exec_spawn_id,
-            tags.map(|s| Ustr::from(&s)),
+            tags.map(|vec| vec.iter().map(|s| Ustr::from(s)).collect()),
         )
-        .map_err(to_pyvalue_err)
     }
+
     fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
         match op {
             CompareOp::Eq => self.eq(other).into_py(py),
@@ -125,93 +119,17 @@ impl OrderInitialized {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "OrderInitialized(\
-            trader_id={}, \
-            strategy_id={}, \
-            instrument_id={}, \
-            client_order_id={}, \
-            side={}, \
-            type={}, \
-            quantity={}, \
-            time_in_force={}, \
-            post_only={}, \
-            reduce_only={}, \
-            quote_quantity={}, \
-            price={}, \
-            emulation_trigger={}, \
-            trigger_instrument_id={}, \
-            contingency_type={}, \
-            order_list_id={}, \
-            linked_order_ids=[{}], \
-            parent_order_id={}, \
-            exec_algorithm_id={}, \
-            exec_algorithm_params={}, \
-            exec_spawn_id={}, \
-            tags={}, \
-            event_id={}, \
-            ts_init={})",
-            self.trader_id,
-            self.strategy_id,
-            self.instrument_id,
-            self.client_order_id,
-            self.order_side,
-            self.order_type,
-            self.quantity,
-            self.time_in_force,
-            self.post_only,
-            self.reduce_only,
-            self.quote_quantity,
-            self.price
-                .map_or("None".to_string(), |price| format!("{price}")),
-            self.emulation_trigger
-                .map_or("None".to_string(), |trigger| format!("{trigger}")),
-            self.trigger_instrument_id
-                .map_or("None".to_string(), |instrument_id| format!(
-                    "{instrument_id}"
-                )),
-            self.contingency_type
-                .map_or("None".to_string(), |contingency_type| format!(
-                    "{contingency_type}"
-                )),
-            self.order_list_id
-                .map_or("None".to_string(), |order_list_id| format!(
-                    "{order_list_id}"
-                )),
-            self.linked_order_ids
-                .as_ref()
-                .map_or("None".to_string(), |linked_order_ids| linked_order_ids
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")),
-            self.parent_order_id
-                .map_or("None".to_string(), |parent_order_id| format!(
-                    "{parent_order_id}"
-                )),
-            self.exec_algorithm_id
-                .map_or("None".to_string(), |exec_algorithm_id| format!(
-                    "{exec_algorithm_id}"
-                )),
-            self.exec_algorithm_params
-                .as_ref()
-                .map_or("None".to_string(), |exec_algorithm_params| format!(
-                    "{exec_algorithm_params:?}"
-                )),
-            self.exec_spawn_id
-                .map_or("None".to_string(), |exec_spawn_id| format!(
-                    "{exec_spawn_id}"
-                )),
-            self.tags
-                .as_ref()
-                .map_or("None".to_string(), |tags| format!("{tags}")),
-            self.event_id,
-            self.ts_init
-        )
+        format!("{:?}", self)
     }
 
     fn __str__(&self) -> String {
-        format!("{self}")
+        self.to_string()
+    }
+
+    #[getter]
+    #[pyo3(name = "order_type")]
+    fn py_order_type(&self) -> OrderType {
+        self.order_type
     }
 
     #[staticmethod]
@@ -222,7 +140,8 @@ impl OrderInitialized {
 
     #[pyo3(name = "to_dict")]
     fn py_to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
+        dict.set_item("type", stringify!(OrderInitiliazed))?;
         dict.set_item("trader_id", self.trader_id.to_string())?;
         dict.set_item("strategy_id", self.strategy_id.to_string())?;
         dict.set_item("instrument_id", self.instrument_id.to_string())?;
@@ -235,9 +154,17 @@ impl OrderInitialized {
         dict.set_item("reduce_only", self.reduce_only)?;
         dict.set_item("quote_quantity", self.quote_quantity)?;
         dict.set_item("reconciliation", self.reconciliation)?;
+        // TODO remove options as in legacy cython only
+        let options = PyDict::new_bound(py);
+        if self.order_type == OrderType::StopMarket {
+            options.set_item("trigger_type", self.trigger_type.map(|x| x.to_string()))?;
+            options.set_item("trigger_price", self.trigger_price.map(|x| x.to_string()))?;
+            options.set_item("expire_time_ns", self.expire_time.map(|x| x.to_string()))?;
+        }
+        dict.set_item("options", options)?;
         dict.set_item("event_id", self.event_id.to_string())?;
-        dict.set_item("ts_event", self.ts_event.to_u64())?;
-        dict.set_item("ts_init", self.ts_init.to_u64())?;
+        dict.set_item("ts_event", self.ts_event.as_u64())?;
+        dict.set_item("ts_init", self.ts_init.as_u64())?;
         match self.price {
             Some(price) => dict.set_item("price", price.to_string())?,
             None => dict.set_item("price", py.None())?,
@@ -267,7 +194,7 @@ impl OrderInitialized {
             None => dict.set_item("trailing_offset_type", py.None())?,
         }
         match self.expire_time {
-            Some(expire_time) => dict.set_item("expire_time", expire_time.to_u64())?,
+            Some(expire_time) => dict.set_item("expire_time", expire_time.as_u64())?,
             None => dict.set_item("expire_time", py.None())?,
         }
         match self.display_qty {
@@ -298,7 +225,7 @@ impl OrderInitialized {
         }
         match &self.linked_order_ids {
             Some(linked_order_ids) => {
-                let py_linked_order_ids = PyList::empty(py);
+                let py_linked_order_ids = PyList::empty_bound(py);
                 for linked_order_id in linked_order_ids {
                     py_linked_order_ids.append(linked_order_id.to_string())?;
                 }
@@ -320,7 +247,7 @@ impl OrderInitialized {
         }
         match &self.exec_algorithm_params {
             Some(exec_algorithm_params) => {
-                let py_exec_algorithm_params = PyDict::new(py);
+                let py_exec_algorithm_params = PyDict::new_bound(py);
                 for (key, value) in exec_algorithm_params {
                     py_exec_algorithm_params.set_item(key.to_string(), value.to_string())?;
                 }
@@ -333,7 +260,10 @@ impl OrderInitialized {
             None => dict.set_item("exec_spawn_id", py.None())?,
         }
         match &self.tags {
-            Some(tags) => dict.set_item("tags", tags.to_string())?,
+            Some(tags) => dict.set_item(
+                "tags",
+                tags.iter().map(|x| x.to_string()).collect::<Vec<String>>(),
+            )?,
             None => dict.set_item("tags", py.None())?,
         }
         Ok(dict.into())

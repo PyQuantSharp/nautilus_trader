@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,23 +18,21 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use nautilus_core::{
-    python::{serialization::from_dict_pyo3, to_pyvalue_err},
-    time::UnixNanos,
-};
+use nautilus_core::python::{serialization::from_dict_pyo3, to_pyvalue_err};
 use pyo3::{basic::CompareOp, prelude::*, types::PyDict};
-use rust_decimal::{prelude::ToPrimitive, Decimal};
+use rust_decimal::Decimal;
 
 use crate::{
-    identifiers::{instrument_id::InstrumentId, symbol::Symbol},
-    instruments::currency_pair::CurrencyPair,
-    types::{currency::Currency, money::Money, price::Price, quantity::Quantity},
+    identifiers::{InstrumentId, Symbol},
+    instruments::CurrencyPair,
+    types::{Currency, Money, Price, Quantity},
 };
 
 #[pymethods]
 impl CurrencyPair {
     #[allow(clippy::too_many_arguments)]
     #[new]
+    #[pyo3(signature = (id, raw_symbol, base_currency, quote_currency, price_precision, size_precision, price_increment, size_increment, ts_event, ts_init, lot_size=None, max_quantity=None, min_quantity=None, max_notional=None, min_notional=None, max_price=None, min_price=None, margin_init=None, margin_maint=None, maker_fee=None, taker_fee=None))]
     fn py_new(
         id: InstrumentId,
         raw_symbol: Symbol,
@@ -44,12 +42,8 @@ impl CurrencyPair {
         size_precision: u8,
         price_increment: Price,
         size_increment: Quantity,
-        maker_fee: Decimal,
-        taker_fee: Decimal,
-        margin_init: Decimal,
-        margin_maint: Decimal,
-        ts_event: UnixNanos,
-        ts_init: UnixNanos,
+        ts_event: u64,
+        ts_init: u64,
         lot_size: Option<Quantity>,
         max_quantity: Option<Quantity>,
         min_quantity: Option<Quantity>,
@@ -57,8 +51,12 @@ impl CurrencyPair {
         min_notional: Option<Money>,
         max_price: Option<Price>,
         min_price: Option<Price>,
+        margin_init: Option<Decimal>,
+        margin_maint: Option<Decimal>,
+        maker_fee: Option<Decimal>,
+        taker_fee: Option<Decimal>,
     ) -> PyResult<Self> {
-        Self::new(
+        Self::new_checked(
             id,
             raw_symbol,
             base_currency,
@@ -67,10 +65,6 @@ impl CurrencyPair {
             size_precision,
             price_increment,
             size_increment,
-            maker_fee,
-            taker_fee,
-            margin_init,
-            margin_maint,
             lot_size,
             max_quantity,
             min_quantity,
@@ -78,8 +72,12 @@ impl CurrencyPair {
             min_notional,
             max_price,
             min_price,
-            ts_event,
-            ts_init,
+            margin_init,
+            margin_maint,
+            maker_fee,
+            taker_fee,
+            ts_event.into(),
+            ts_init.into(),
         )
         .map_err(to_pyvalue_err)
     }
@@ -98,8 +96,7 @@ impl CurrencyPair {
     }
 
     #[getter]
-    #[pyo3(name = "instrument_type")]
-    fn py_instrument_type(&self) -> &str {
+    fn type_str(&self) -> &str {
         stringify!(CurrencyPair)
     }
 
@@ -194,15 +191,45 @@ impl CurrencyPair {
     }
 
     #[getter]
+    #[pyo3(name = "maker_fee")]
+    fn py_maker_fee(&self) -> Decimal {
+        self.maker_fee
+    }
+
+    #[getter]
+    #[pyo3(name = "taker_fee")]
+    fn py_taker_fee(&self) -> Decimal {
+        self.taker_fee
+    }
+
+    #[getter]
+    #[pyo3(name = "margin_maint")]
+    fn py_margin_maint(&self) -> Decimal {
+        self.margin_maint
+    }
+
+    #[getter]
+    #[pyo3(name = "margin_init")]
+    fn py_margin_init(&self) -> Decimal {
+        self.margin_init
+    }
+
+    #[getter]
     #[pyo3(name = "ts_event")]
-    fn py_ts_event(&self) -> UnixNanos {
-        self.ts_event
+    fn py_ts_event(&self) -> u64 {
+        self.ts_event.as_u64()
     }
 
     #[getter]
     #[pyo3(name = "ts_init")]
-    fn py_ts_init(&self) -> UnixNanos {
-        self.ts_init
+    fn py_ts_init(&self) -> u64 {
+        self.ts_init.as_u64()
+    }
+
+    #[getter]
+    #[pyo3(name = "info")]
+    fn py_info(&self, py: Python<'_>) -> PyResult<PyObject> {
+        Ok(PyDict::new_bound(py).into())
     }
 
     #[staticmethod]
@@ -213,7 +240,7 @@ impl CurrencyPair {
 
     #[pyo3(name = "to_dict")]
     fn py_to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
         dict.set_item("type", stringify!(CurrencyPair))?;
         dict.set_item("id", self.id.to_string())?;
         dict.set_item("raw_symbol", self.raw_symbol.to_string())?;
@@ -223,12 +250,13 @@ impl CurrencyPair {
         dict.set_item("size_precision", self.size_precision)?;
         dict.set_item("price_increment", self.price_increment.to_string())?;
         dict.set_item("size_increment", self.size_increment.to_string())?;
-        dict.set_item("maker_fee", self.maker_fee.to_f64())?;
-        dict.set_item("taker_fee", self.taker_fee.to_f64())?;
-        dict.set_item("margin_init", self.margin_init.to_f64())?;
-        dict.set_item("margin_maint", self.margin_maint.to_f64())?;
-        dict.set_item("ts_event", self.ts_event)?;
-        dict.set_item("ts_init", self.ts_init)?;
+        dict.set_item("maker_fee", self.maker_fee.to_string())?;
+        dict.set_item("taker_fee", self.taker_fee.to_string())?;
+        dict.set_item("margin_init", self.margin_init.to_string())?;
+        dict.set_item("margin_maint", self.margin_maint.to_string())?;
+        dict.set_item("info", PyDict::new_bound(py))?;
+        dict.set_item("ts_event", self.ts_event.as_u64())?;
+        dict.set_item("ts_init", self.ts_init.as_u64())?;
         match self.lot_size {
             Some(value) => dict.set_item("lot_size", value.to_string())?,
             None => dict.set_item("lot_size", py.None())?,

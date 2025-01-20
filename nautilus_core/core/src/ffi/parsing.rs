@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,7 +21,10 @@ use std::{
 use serde_json::{Result, Value};
 use ustr::Ustr;
 
-use crate::{ffi::string::cstr_to_str, parsing::precision_from_str};
+use crate::{
+    ffi::string::cstr_as_str,
+    parsing::{min_increment_precision_from_str, precision_from_str},
+};
 
 /// Convert a C bytes pointer into an owned `Vec<String>`.
 ///
@@ -136,16 +139,33 @@ pub unsafe fn optional_bytes_to_str_vec(ptr: *const c_char) -> Option<Vec<String
 ///
 /// # Panics
 ///
+/// This function panics:
 /// - If `ptr` is null.
 #[no_mangle]
 pub unsafe extern "C" fn precision_from_cstr(ptr: *const c_char) -> u8 {
     assert!(!ptr.is_null(), "`ptr` was NULL");
-    precision_from_str(cstr_to_str(ptr))
+    precision_from_str(cstr_as_str(ptr))
+}
+
+/// Return the minimum price increment decimal precision inferred from the given C string.
+///
+/// # Safety
+///
+/// - Assumes `ptr` is a valid C string pointer.
+///
+/// # Panics
+///
+/// This function panics:
+/// - If `ptr` is null.
+#[no_mangle]
+pub unsafe extern "C" fn min_increment_precision_from_cstr(ptr: *const c_char) -> u8 {
+    assert!(!ptr.is_null(), "`ptr` was NULL");
+    min_increment_precision_from_str(cstr_as_str(ptr))
 }
 
 /// Return a `bool` value from the given `u8`.
 #[must_use]
-pub fn u8_as_bool(value: u8) -> bool {
+pub const fn u8_as_bool(value: u8) -> bool {
     value != 0
 }
 

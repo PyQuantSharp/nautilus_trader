@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -32,7 +32,7 @@ cdef class ExponentialMovingAverage(MovingAverage):
     period : int
         The rolling window period for the indicator (> 0).
     price_type : PriceType
-        The specified price type for extracting values from quote ticks.
+        The specified price type for extracting values from quotes.
 
     Raises
     ------

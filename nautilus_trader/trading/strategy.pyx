@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -33,10 +33,8 @@ from libc.stdint cimport uint64_t
 from nautilus_trader.cache.base cimport CacheFacade
 from nautilus_trader.cache.cache cimport Cache
 from nautilus_trader.common.actor cimport Actor
-from nautilus_trader.common.component cimport CMD
 from nautilus_trader.common.component cimport EVT
 from nautilus_trader.common.component cimport RECV
-from nautilus_trader.common.component cimport SENT
 from nautilus_trader.common.component cimport Clock
 from nautilus_trader.common.component cimport LogColor
 from nautilus_trader.common.component cimport MessageBus
@@ -84,6 +82,7 @@ from nautilus_trader.model.events.position cimport PositionEvent
 from nautilus_trader.model.events.position cimport PositionOpened
 from nautilus_trader.model.functions cimport oms_type_from_str
 from nautilus_trader.model.functions cimport order_side_to_str
+from nautilus_trader.model.functions cimport order_status_to_str
 from nautilus_trader.model.functions cimport position_side_to_str
 from nautilus_trader.model.identifiers cimport ClientOrderId
 from nautilus_trader.model.identifiers cimport ExecAlgorithmId
@@ -93,8 +92,8 @@ from nautilus_trader.model.identifiers cimport StrategyId
 from nautilus_trader.model.identifiers cimport TraderId
 from nautilus_trader.model.objects cimport Price
 from nautilus_trader.model.objects cimport Quantity
-from nautilus_trader.model.orders.base cimport VALID_LIMIT_ORDER_TYPES
-from nautilus_trader.model.orders.base cimport VALID_STOP_ORDER_TYPES
+from nautilus_trader.model.orders.base cimport LIMIT_ORDER_TYPES
+from nautilus_trader.model.orders.base cimport STOP_ORDER_TYPES
 from nautilus_trader.model.orders.base cimport Order
 from nautilus_trader.model.orders.list cimport OrderList
 from nautilus_trader.model.orders.market cimport MarketOrder
@@ -146,6 +145,8 @@ cdef class Strategy(Actor):
         self.order_id_tag = str(config.order_id_tag)
 
         # Configuration
+        self._log_events = config.log_events
+        self._log_commands = config.log_commands
         self.config = config
         self.oms_type = oms_type_from_str(str(config.oms_type).upper()) if config.oms_type else OmsType.UNSPECIFIED
         self.external_order_claims = self._parse_external_order_claims(config.external_order_claims)
@@ -204,7 +205,7 @@ cdef class Strategy(Actor):
         self.log.warning(
             "The `Strategy.on_start` handler was called when not overridden. "
             "It's expected that any actions required when starting the strategy "
-            "occur here, such as subscribing/requesting data.",
+            "occur here, such as subscribing/requesting data",
         )
 
     cpdef void on_stop(self):
@@ -212,7 +213,7 @@ cdef class Strategy(Actor):
         self.log.warning(
             "The `Strategy.on_stop` handler was called when not overridden. "
             "It's expected that any actions required when stopping the strategy "
-            "occur here, such as unsubscribing from data.",
+            "occur here, such as unsubscribing from data",
         )
 
     cpdef void on_resume(self):
@@ -220,7 +221,7 @@ cdef class Strategy(Actor):
         self.log.warning(
             "The `Strategy.on_resume` handler was called when not overridden. "
             "It's expected that any actions required when resuming the strategy "
-            "following a stop occur here."
+            "following a stop occur here"
         )
 
     cpdef void on_reset(self):
@@ -228,7 +229,7 @@ cdef class Strategy(Actor):
         self.log.warning(
             "The `Strategy.on_reset` handler was called when not overridden. "
             "It's expected that any actions required when resetting the strategy "
-            "occur here, such as resetting indicators and other state."
+            "occur here, such as resetting indicators and other state"
         )
 
 # -- REGISTRATION ---------------------------------------------------------------------------------
@@ -291,7 +292,9 @@ cdef class Strategy(Actor):
             submit_order_handler=None,
             cancel_order_handler=self.cancel_order,
             modify_order_handler=self.modify_order,
-            debug=True,  # Set True for debugging
+            debug=False,  # Set True for debugging
+            log_events=self._log_events,
+            log_commands=self._log_commands,
         )
 
         # Required subscriptions
@@ -350,12 +353,12 @@ cdef class Strategy(Actor):
         cdef int order_list_id_count = len(order_list_ids)
         self.order_factory.set_client_order_id_count(order_id_count)
         self.log.info(
-            f"Set ClientOrderIdGenerator client_order_id count to {order_id_count}.",
+            f"Set ClientOrderIdGenerator client_order_id count to {order_id_count}",
             LogColor.BLUE,
         )
         self.order_factory.set_order_list_id_count(order_list_id_count)
         self.log.info(
-            f"Set ClientOrderIdGenerator order_list_id count to {order_list_id_count}.",
+            f"Set ClientOrderIdGenerator order_list_id count to {order_list_id_count}",
             LogColor.BLUE,
         )
 
@@ -769,9 +772,13 @@ cdef class Strategy(Actor):
         not be what you intended.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
-        Condition.equal(order.status_c(), OrderStatus.INITIALIZED, "order", "order_status")
+        if order._fsm.state != OrderStatus.INITIALIZED:  # Check predicate first for efficiency
+            Condition.is_true(
+                order.status_c() == OrderStatus.INITIALIZED,
+                f"Invalid order status on submit: expected 'INITIALIZED', was '{order.status_string_c()}'",
+            )
 
         # Publish initialized event
         self._msgbus.publish_c(
@@ -846,7 +853,7 @@ cdef class Strategy(Actor):
         not be what you intended.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order_list, "order_list")
 
         cdef Order order
@@ -956,7 +963,7 @@ cdef class Strategy(Actor):
         https://www.onixs.biz/fix-dictionary/5.0.SP2/msgType_G_71.html
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
 
         cdef ModifyOrder command = self._create_modify_order(
@@ -990,7 +997,7 @@ cdef class Strategy(Actor):
             If ``None`` then will be inferred from the venue in the instrument ID.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
 
         cdef CancelOrder command = self._create_cancel_order(
@@ -1053,12 +1060,12 @@ cdef class Strategy(Actor):
                 if first.instrument_id != order.instrument_id:
                     self._log.error(
                         "Cannot cancel all orders: instrument_id mismatch "
-                        f"{first.instrument_id} vs {order.instrument_id}.",
+                        f"{first.instrument_id} vs {order.instrument_id}",
                     )
                     return
                 if order.is_emulated_c():
                     self._log.error(
-                        "Cannot include emulated orders in a batch cancel."
+                        "Cannot include emulated orders in a batch cancel"
                     )
                     return
 
@@ -1071,7 +1078,7 @@ cdef class Strategy(Actor):
             cancels.append(cancel)
 
         if not cancels:
-            self._log.warning("Cannot send `BatchCancelOrders`, no valid cancel commands.")
+            self._log.warning("Cannot send `BatchCancelOrders`, no valid cancel commands")
             return
 
         cdef command = BatchCancelOrders(
@@ -1109,7 +1116,7 @@ cdef class Strategy(Actor):
             If ``None`` then will be inferred from the venue in the instrument ID.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(instrument_id, "instrument_id")
 
         cdef list open_orders = self.cache.orders_open(
@@ -1130,21 +1137,21 @@ cdef class Strategy(Actor):
         if not open_orders and not emulated_orders:
             self.log.info(
                 f"No {instrument_id.to_str()} open or emulated{order_side_str} "
-                f"orders to cancel.")
+                f"orders to cancel")
             return
 
         cdef int open_count = len(open_orders)
         if open_count:
             self.log.info(
                 f"Canceling {open_count} open{order_side_str} "
-                f"{instrument_id.to_str()} order{'' if open_count == 1 else 's'}...",
+                f"{instrument_id.to_str()} order{'' if open_count == 1 else 's'}",
             )
 
         cdef int emulated_count = len(emulated_orders)
         if emulated_count:
             self.log.info(
                 f"Canceling {emulated_count} emulated{order_side_str} "
-                f"{instrument_id.to_str()} order{'' if emulated_count == 1 else 's'}...",
+                f"{instrument_id.to_str()} order{'' if emulated_count == 1 else 's'}",
             )
 
         cdef:
@@ -1189,7 +1196,8 @@ cdef class Strategy(Actor):
         self,
         Position position,
         ClientId client_id = None,
-        str tags = None,
+        list[str] tags = None,
+        bint reduce_only = True,
     ):
         """
         Close the given position.
@@ -1204,11 +1212,14 @@ cdef class Strategy(Actor):
         client_id : ClientId, optional
             The specific client ID for the command.
             If ``None`` then will be inferred from the venue in the instrument ID.
-        tags : str, optional
+        tags : list[str], optional
             The tags for the market order closing the position.
+        reduce_only : bool, default True
+            If the market order to close the position should carry the 'reduce-only' execution instruction.
+            Optional, as not all venues support this feature.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(position, "position")
         Condition.not_none(self.trader_id, "self.trader_id")
         Condition.not_none(self.order_factory, "self.order_factory")
@@ -1216,7 +1227,7 @@ cdef class Strategy(Actor):
         if position.is_closed_c():
             self.log.warning(
                 f"Cannot close position "
-                f"(the position is already closed), {position}."
+                f"(the position is already closed), {position}"
             )
             return  # Invalid command
 
@@ -1226,7 +1237,7 @@ cdef class Strategy(Actor):
             order_side=Order.closing_side_c(position.side),
             quantity=position.quantity,
             time_in_force=TimeInForce.GTC,
-            reduce_only=True,
+            reduce_only=reduce_only,
             quote_quantity=False,
             exec_algorithm_id=None,
             exec_algorithm_params=None,
@@ -1240,7 +1251,8 @@ cdef class Strategy(Actor):
         InstrumentId instrument_id,
         PositionSide position_side = PositionSide.NO_POSITION_SIDE,
         ClientId client_id = None,
-        str tags = None,
+        list[str] tags = None,
+        bint reduce_only = True,
     ):
         """
         Close all positions for the given instrument ID for this strategy.
@@ -1254,12 +1266,15 @@ cdef class Strategy(Actor):
         client_id : ClientId, optional
             The specific client ID for the command.
             If ``None`` then will be inferred from the venue in the instrument ID.
-        tags : str, optional
+        tags : list[str], optional
             The tags for the market orders closing the positions.
+        reduce_only : bool, default True
+            If the market orders to close positions should carry the 'reduce-only' execution instruction.
+            Optional, as not all venues support this feature.
 
         """
         # instrument_id can be None
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
 
         cdef list positions_open = self.cache.positions_open(
             venue=None,  # Faster query filtering
@@ -1271,18 +1286,18 @@ cdef class Strategy(Actor):
         cdef str position_side_str = " " + position_side_to_str(position_side) if position_side != PositionSide.NO_POSITION_SIDE else ""
         if not positions_open:
             self.log.info(
-                f"No {instrument_id.to_str()} open{position_side_str} positions to close.",
+                f"No {instrument_id.to_str()} open{position_side_str} positions to close",
             )
             return
 
         cdef int count = len(positions_open)
         self.log.info(
-            f"Closing {count} open{position_side_str} position{'' if count == 1 else 's'}...",
+            f"Closing {count} open{position_side_str} position{'' if count == 1 else 's'}",
         )
 
         cdef Position position
         for position in positions_open:
-            self.close_position(position, client_id, tags)
+            self.close_position(position, client_id, tags, reduce_only)
 
     cpdef void query_order(self, Order order, ClientId client_id = None):
         """
@@ -1302,7 +1317,7 @@ cdef class Strategy(Actor):
             If ``None`` then will be inferred from the venue in the instrument ID.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
 
         cdef QueryOrder command = QueryOrder(
@@ -1332,33 +1347,35 @@ cdef class Strategy(Actor):
             updating = True
 
         if price is not None:
-            Condition.true(
-                order.order_type in VALID_LIMIT_ORDER_TYPES,
+            Condition.is_true(
+                order.order_type in LIMIT_ORDER_TYPES,
                 fail_msg=f"{order.type_string_c()} orders do not have a LIMIT price",
             )
             if price != order.price:
                 updating = True
 
         if trigger_price is not None:
-            Condition.true(
-                order.order_type in VALID_STOP_ORDER_TYPES,
+            Condition.is_true(
+                order.order_type in STOP_ORDER_TYPES,
                 fail_msg=f"{order.type_string_c()} orders do not have a STOP trigger price",
             )
             if trigger_price != order.trigger_price:
                 updating = True
 
         if not updating:
+            price_str = f", {order.price=}" if order.has_price_c() else ""
+            trigger_str = f", {order.trigger_price=}" if order.has_trigger_price_c() else ""
             self.log.error(
                 "Cannot create command ModifyOrder: "
-                "quantity, price and trigger were either None "
-                "or the same as existing values.",
+                f"{quantity=}, {price=}, {trigger_price=} were either None "
+                f"or the same as existing values: {order.quantity=}{price_str}{trigger_str}",
             )
             return None  # Cannot send command
 
         if order.is_closed_c() or order.is_pending_cancel_c():
             self.log.warning(
                 f"Cannot create command ModifyOrder: "
-                f"state is {order.status_string_c()}, {order}.",
+                f"state is {order.status_string_c()}, {order}",
             )
             return None  # Cannot send command
 
@@ -1396,7 +1413,7 @@ cdef class Strategy(Actor):
     cdef CancelOrder _create_cancel_order(self, Order order, ClientId client_id = None):
         if order.is_closed_c() or order.is_pending_cancel_c():
             self.log.warning(
-                f"Cannot cancel order: state is {order.status_string_c()}, {order}.",
+                f"Cannot cancel order: state is {order.status_string_c()}, {order}",
             )
             return None  # Cannot send command
 
@@ -1452,7 +1469,7 @@ cdef class Strategy(Actor):
             return
 
         self._log.info(
-            f"Canceling managed GTD expiry timer for {order.client_order_id}{expire_time_str}.",
+            f"Canceling managed GTD expiry timer for {order.client_order_id}{expire_time_str}",
             LogColor.BLUE,
         )
         self._clock.cancel_timer(name=timer_name)
@@ -1473,7 +1490,7 @@ cdef class Strategy(Actor):
         )
 
         self._log.info(
-            f"Set managed GTD expiry timer for {order.client_order_id} @ {order.expire_time.isoformat()}.",
+            f"Set managed GTD expiry timer for {order.client_order_id} @ {order.expire_time.isoformat()}",
             LogColor.BLUE,
         )
 
@@ -1482,14 +1499,14 @@ cdef class Strategy(Actor):
         cdef Order order = self.cache.order(client_order_id)
         if order is None:
             self._log.warning(
-                f"Order with {repr(client_order_id)} not found in the cache to apply {event}."
+                f"Order with {repr(client_order_id)} not found in the cache to apply {event}"
             )
 
         if order.is_closed_c():
-            self._log.warning(f"GTD expired order {order.client_order_id} was already closed.")
+            self._log.warning(f"GTD expired order {order.client_order_id} was already closed")
             return  # Already closed
 
-        self._log.info(f"Expiring GTD order {order.client_order_id}.", LogColor.BLUE)
+        self._log.info(f"Expiring GTD order {order.client_order_id}", LogColor.BLUE)
         self.cancel_order(order)
 
     # -- HANDLERS -------------------------------------------------------------------------------------
@@ -1513,9 +1530,9 @@ cdef class Strategy(Actor):
         Condition.not_none(event, "event")
 
         if type(event) in self._warning_events:
-            self.log.warning(f"{RECV}{EVT} {event}.")
-        else:
-            self.log.info(f"{RECV}{EVT} {event}.")
+            self.log.warning(f"{RECV}{EVT} {event}")
+        elif self._log_events:
+            self.log.info(f"{RECV}{EVT} {event}")
 
         cdef Order order
         if self.manage_gtd_expiry and isinstance(event, OrderEvent):
@@ -1638,7 +1655,7 @@ cdef class Strategy(Actor):
         )
 
     cdef void _deny_order(self, Order order, str reason):
-        self._log.error(f"Order denied: {reason}.")
+        self._log.error(f"Order denied: {reason}")
 
         if not self.cache.order_exists(order.client_order_id):
             self.cache.add_order(order)

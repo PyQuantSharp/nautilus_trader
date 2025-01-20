@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,35 +13,98 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEnumParser
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from nautilus_trader.adapters.bybit.common.enums import BybitExecType
 from nautilus_trader.adapters.bybit.common.enums import BybitKlineInterval
 from nautilus_trader.adapters.bybit.common.enums import BybitOrderSide
 from nautilus_trader.adapters.bybit.common.enums import BybitOrderStatus
 from nautilus_trader.adapters.bybit.common.enums import BybitOrderType
 from nautilus_trader.adapters.bybit.common.enums import BybitPositionIdx
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
+from nautilus_trader.adapters.bybit.common.enums import BybitStopOrderType
 from nautilus_trader.adapters.bybit.common.enums import BybitTimeInForce
+from nautilus_trader.adapters.bybit.common.enums import BybitTriggerDirection
+from nautilus_trader.adapters.bybit.common.enums import BybitTriggerType
+from nautilus_trader.adapters.bybit.common.enums import BybitWsOrderRequestMsgOP
+from nautilus_trader.adapters.bybit.common.parsing import parse_bybit_delta
+from nautilus_trader.adapters.bybit.endpoints.trade.amend_order import BybitAmendOrderPostParams
+from nautilus_trader.adapters.bybit.endpoints.trade.cancel_order import BybitCancelOrderPostParams
+from nautilus_trader.adapters.bybit.endpoints.trade.place_order import BybitPlaceOrderPostParams
+from nautilus_trader.adapters.bybit.schemas.order import BybitAmendOrder
+from nautilus_trader.adapters.bybit.schemas.order import BybitCancelOrder
+from nautilus_trader.adapters.bybit.schemas.order import BybitPlaceOrder
 from nautilus_trader.core.datetime import millis_to_nanos
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.execution.reports import OrderStatusReport
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
+from nautilus_trader.model.data import OrderBookDelta
+from nautilus_trader.model.data import OrderBookDeltas
+from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.enums import AggressorSide
+from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import OrderType
+from nautilus_trader.model.enums import RecordFlag
+from nautilus_trader.model.enums import TrailingOffsetType
 from nautilus_trader.model.identifiers import AccountId
 from nautilus_trader.model.identifiers import ClientOrderId
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.identifiers import VenueOrderId
+from nautilus_trader.model.objects import AccountBalance
+from nautilus_trader.model.objects import Currency
+from nautilus_trader.model.objects import MarginBalance
+from nautilus_trader.model.objects import Money
 from nautilus_trader.model.objects import Price
 from nautilus_trader.model.objects import Quantity
 
 
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.execution import BybitExecutionClient
+
+
 class BybitWsMessageGeneral(msgspec.Struct):
+    op: str | None = None
     topic: str | None = None
     success: bool | None = None
     ret_msg: str | None = None
-    op: str | None = None
+
+
+class BybitWsSubscriptionMsg(msgspec.Struct):
+    success: bool
+    op: str
+    conn_id: str
+    ret_msg: str | None = None
+    req_id: str | None = None
+
+
+class BybitWsPrivateChannelAuthMsg(msgspec.Struct, kw_only=True):
+    success: bool
+    ret_msg: str | None = None
+    op: str
+    conn_id: str
+
+    def is_auth_success(self) -> bool:
+        return (self.op == "auth") and (self.success is True)
+
+
+class BybitWsTradeAuthMsg(msgspec.Struct, kw_only=True):
+    reqId: str | None = None
+    retCode: int
+    retMsg: str
+    op: str
+    connId: str
+
+    def is_auth_success(self) -> bool:
+        return (self.op == "auth") and (self.retCode == 0)
 
 
 ################################################################################
@@ -61,6 +124,22 @@ class BybitWsKline(msgspec.Struct):
     turnover: str
     confirm: bool
     timestamp: int
+
+    def parse_to_bar(
+        self,
+        bar_type: BarType,
+        ts_init: int,
+    ) -> Bar:
+        return Bar(
+            bar_type=bar_type,
+            open=Price.from_str(self.open),
+            high=Price.from_str(self.high),
+            low=Price.from_str(self.low),
+            close=Price.from_str(self.close),
+            volume=Quantity.from_str(self.volume),
+            ts_event=millis_to_nanos(int(self.end) + 1),
+            ts_init=ts_init,
+        )
 
 
 class BybitWsKlineMsg(msgspec.Struct):
@@ -92,32 +171,11 @@ class BybitWsLiquidationMsg(msgspec.Struct):
 
 
 ################################################################################
-# Public - Orderbook Delta
+# Public - Orderbook depth
 ################################################################################
 
 
-class BybitWsOrderbookDeltaData(msgspec.Struct):
-    # symbol
-    s: str
-    # bids
-    b: list[list[str]]
-    # asks
-    a: list[list[str]]
-
-
-class BybitWsOrderbookDeltaMsg(msgspec.Struct):
-    topic: str
-    type: str
-    ts: int
-    data: BybitWsOrderbookDeltaData
-
-
-################################################################################
-# Public - Orderbook Snapshot
-################################################################################
-
-
-class BybitWsOrderbookSnapshot(msgspec.Struct):
+class BybitWsOrderbookDepth(msgspec.Struct):
     # symbol
     s: str
     # bids
@@ -130,12 +188,137 @@ class BybitWsOrderbookSnapshot(msgspec.Struct):
     # Cross sequence
     seq: int
 
+    def parse_to_deltas(
+        self,
+        instrument_id: InstrumentId,
+        price_precision: int | None,
+        size_precision: int | None,
+        ts_event: int,
+        ts_init: int,
+        snapshot: bool = False,
+    ) -> OrderBookDeltas:
+        bids_raw = [
+            (
+                Price(float(d[0]), price_precision),
+                Quantity(float(d[1]), size_precision),
+            )
+            for d in self.b
+        ]
+        asks_raw = [
+            (
+                Price(float(d[0]), price_precision),
+                Quantity(float(d[1]), size_precision),
+            )
+            for d in self.a
+        ]
 
-class BybitWsOrderbookSnapshotMsg(msgspec.Struct):
+        deltas: list[OrderBookDelta] = []
+
+        if snapshot:
+            deltas.append(OrderBookDelta.clear(instrument_id, 0, ts_event, ts_init))
+
+        bids_len = len(bids_raw)
+        asks_len = len(asks_raw)
+
+        for idx, bid in enumerate(bids_raw):
+            flags = 0
+            if idx == bids_len - 1 and asks_len == 0:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
+            delta = parse_bybit_delta(
+                instrument_id=instrument_id,
+                values=bid,
+                side=OrderSide.BUY,
+                update_id=self.u,
+                flags=flags,
+                sequence=self.seq,
+                ts_event=ts_event,
+                ts_init=ts_init,
+                snapshot=snapshot,
+            )
+            deltas.append(delta)
+
+        for idx, ask in enumerate(asks_raw):
+            flags = 0
+            if idx == asks_len - 1:
+                # F_LAST, 1 << 7
+                # Last message in the book event or packet from the venue for a given `instrument_id`
+                flags = RecordFlag.F_LAST
+
+            delta = parse_bybit_delta(
+                instrument_id=instrument_id,
+                values=ask,
+                side=OrderSide.SELL,
+                update_id=self.u,
+                flags=flags,
+                sequence=self.seq,
+                ts_event=ts_event,
+                ts_init=ts_init,
+                snapshot=snapshot,
+            )
+            deltas.append(delta)
+
+        return OrderBookDeltas(instrument_id=instrument_id, deltas=deltas)
+
+    def parse_to_quote_tick(
+        self,
+        instrument_id: InstrumentId,
+        last_quote: QuoteTick,
+        price_precision: int,
+        size_precision: int,
+        ts_event: int,
+        ts_init: int,
+    ) -> QuoteTick:
+        top_bid = self.b[0] if self.b else None
+        top_ask = self.a[0] if self.a else None
+        top_bid_price = top_bid[0] if top_bid else None
+        top_ask_price = top_ask[0] if top_ask else None
+        top_bid_size = top_bid[1] if top_bid else None
+        top_ask_size = top_ask[1] if top_ask else None
+
+        if top_bid_size == "0":
+            top_bid_size = None
+        if top_ask_size == "0":
+            top_ask_size = None
+
+        return QuoteTick(
+            instrument_id=instrument_id,
+            bid_price=(
+                Price(float(top_bid_price), price_precision)
+                if top_bid_price
+                else last_quote.bid_price
+            ),
+            ask_price=(
+                Price(float(top_ask_price), price_precision)
+                if top_ask_price
+                else last_quote.ask_price
+            ),
+            bid_size=(
+                Quantity(float(top_bid_size), size_precision)
+                if top_bid_size
+                else last_quote.bid_size
+            ),
+            ask_size=(
+                Quantity(float(top_ask_size), size_precision)
+                if top_ask_size
+                else last_quote.ask_size
+            ),
+            ts_event=ts_event,
+            ts_init=ts_init,
+        )
+
+
+class BybitWsOrderbookDepthMsg(msgspec.Struct):
     topic: str
     type: str
     ts: int
-    data: BybitWsOrderbookSnapshot
+    data: BybitWsOrderbookDepth
+
+
+def decoder_ws_orderbook():
+    return msgspec.json.Decoder(BybitWsOrderbookDepthMsg)
 
 
 ################################################################################
@@ -146,7 +329,7 @@ class BybitWsOrderbookSnapshotMsg(msgspec.Struct):
 class BybitWsTickerLinear(msgspec.Struct, omit_defaults=True, kw_only=True):
     symbol: str
     tickDirection: str | None = None
-    price24hPcnt: str
+    price24hPcnt: str | None = None
     lastPrice: str | None = None
     prevPrice24h: str | None = None
     highPrice24h: str | None = None
@@ -159,11 +342,27 @@ class BybitWsTickerLinear(msgspec.Struct, omit_defaults=True, kw_only=True):
     turnover24h: str | None = None
     volume24h: str | None = None
     nextFundingTime: str | None = None
-    fundingRate: str
-    bid1Price: str
-    bid1Size: str
-    ask1Price: str
-    ask1Size: str
+    fundingRate: str | None = None
+    bid1Price: str | None = None
+    bid1Size: str | None = None
+    ask1Price: str | None = None
+    ask1Size: str | None = None
+
+    def parse_to_quote_tick(
+        self,
+        instrument_id: InstrumentId,
+        ts_event: int,
+        ts_init: int,
+    ) -> QuoteTick:
+        return QuoteTick(
+            instrument_id=instrument_id,
+            bid_price=Price.from_str(self.bid1Price),
+            ask_price=Price.from_str(self.ask1Price),
+            bid_size=Quantity.from_str(self.bid1Size),
+            ask_size=Quantity.from_str(self.ask1Size),
+            ts_event=ts_event,
+            ts_init=ts_init,
+        )
 
 
 class BybitWsTickerLinearMsg(msgspec.Struct):
@@ -231,6 +430,22 @@ class BybitWsTickerOption(msgspec.Struct):
     predictedDeliveryPrice: str
     change24h: str
 
+    def parse_to_quote_tick(
+        self,
+        instrument_id: InstrumentId,
+        ts_event: int,
+        ts_init: int,
+    ) -> QuoteTick:
+        return QuoteTick(
+            instrument_id=instrument_id,
+            bid_price=Price.from_str(self.bidPrice),
+            ask_price=Price.from_str(self.askPrice),
+            bid_size=Quantity.from_str(self.bidSize),
+            ask_size=Quantity.from_str(self.askSize),
+            ts_event=ts_event,
+            ts_init=ts_init,
+        )
+
 
 class BybitWsTickerOptionMsg(msgspec.Struct):
     topic: str
@@ -255,22 +470,34 @@ class BybitWsTrade(msgspec.Struct):
     v: str
     # Trade price
     p: str
-    # Direction of price change
-    L: str
     # Trade id
     i: str
     # Whether is a block trade or not
     BT: bool
+    # Direction of price change
+    L: str | None = None
+    # Message id unique to options
+    id: str | None = None
+    # Mark price, unique field for option
+    mP: str | None = None
+    # Index price, unique field for option
+    iP: str | None = None
+    # Mark iv, unique field for option
+    mIv: str | None = None
+    # iv, unique field for option
+    iv: str | None = None
 
     def parse_to_trade_tick(
         self,
         instrument_id: InstrumentId,
+        price_precision: int,
+        size_precision: int,
         ts_init: int,
     ) -> TradeTick:
         return TradeTick(
             instrument_id=instrument_id,
-            price=Price.from_str(self.p),
-            size=Quantity.from_str(self.v),
+            price=Price(float(self.p), price_precision),
+            size=Quantity(float(self.v), size_precision),
             aggressor_side=AggressorSide.SELLER if self.S == "Sell" else AggressorSide.BUYER,
             trade_id=TradeId(str(self.i)),
             ts_event=millis_to_nanos(self.T),
@@ -285,19 +512,12 @@ class BybitWsTradeMsg(msgspec.Struct):
     data: list[BybitWsTrade]
 
 
-def decoder_ws_trade():
+def decoder_ws_trade() -> msgspec.json.Decoder:
     return msgspec.json.Decoder(BybitWsTradeMsg)
 
 
-def decoder_ws_ticker(instrument_type: BybitInstrumentType):
-    if instrument_type == BybitInstrumentType.LINEAR:
-        return msgspec.json.Decoder(BybitWsTickerLinearMsg)
-    elif instrument_type == BybitInstrumentType.SPOT:
-        return msgspec.json.Decoder(BybitWsTickerSpotMsg)
-    elif instrument_type == BybitInstrumentType.OPTION:
-        return msgspec.json.Decoder(BybitWsTickerOptionMsg)
-    else:
-        raise ValueError(f"Invalid account type: {instrument_type}")
+def decoder_ws_kline():
+    return msgspec.json.Decoder(BybitWsKlineMsg)
 
 
 ################################################################################
@@ -323,17 +543,22 @@ class BybitWsAccountPosition(msgspec.Struct):
     takeProfit: str
     stopLoss: str
     trailingStop: str
+    sessionAvgPrice: str
     unrealisedPnl: str
     cumRealisedPnl: str
     createdTime: str
     updatedTime: str
-    tpslMode: str
     liqPrice: str
     bustPrice: str
-    category: str
+    category: BybitProductType
     positionStatus: str
     adlRankIndicator: int
     seq: int
+    autoAddMargin: int
+    leverageSysUpdatedTime: str
+    mmrSysUpdatedTime: str
+    isReduceOnly: bool
+    tpslMode: str | None = None
 
 
 class BybitWsAccountPositionMsg(msgspec.Struct):
@@ -349,6 +574,7 @@ class BybitWsAccountPositionMsg(msgspec.Struct):
 
 
 class BybitWsAccountOrder(msgspec.Struct):
+    category: BybitProductType
     symbol: str
     orderId: str
     side: BybitOrderSide
@@ -373,8 +599,6 @@ class BybitWsAccountOrder(msgspec.Struct):
     createdTime: str
     updatedTime: str
     rejectReason: str
-    stopOrderType: str
-    tpslMode: str
     triggerPrice: str
     takeProfit: str
     stopLoss: str
@@ -382,44 +606,67 @@ class BybitWsAccountOrder(msgspec.Struct):
     slTriggerBy: str
     tpLimitPrice: str
     slLimitPrice: str
-    triggerDirection: int
-    triggerBy: str
     closeOnTrigger: bool
-    category: str
     placeType: str
     smpType: str
     smpGroup: int
     smpOrderId: str
     feeCurrency: str
+    triggerBy: BybitTriggerType
+    stopOrderType: BybitStopOrderType
+    triggerDirection: BybitTriggerDirection = BybitTriggerDirection.NONE
+    tpslMode: str | None = None
+    createType: str | None = None
 
     def parse_to_order_status_report(
         self,
         account_id: AccountId,
         instrument_id: InstrumentId,
+        client_order_id: ClientOrderId,
         enum_parser: BybitEnumParser,
+        ts_init: int,
     ) -> OrderStatusReport:
-        client_order_id = ClientOrderId(str(self.orderLinkId))
-        price = Price.from_str(self.price) if self.price else None
-        ts_event = millis_to_nanos(int(self.updatedTime))
-        venue_order_id = VenueOrderId(str(self.orderId))
-        ts_init = millis_to_nanos(int(self.createdTime))
+        order_type = enum_parser.parse_bybit_order_type(
+            self.orderType,
+            self.stopOrderType,
+            self.side,
+            self.triggerDirection,
+        )
+        trigger_price = Price.from_str(self.triggerPrice) if self.triggerPrice else None
+        trigger_type = enum_parser.parse_bybit_trigger_type(self.triggerBy)
+
+        if order_type in (OrderType.TRAILING_STOP_MARKET, OrderType.TRAILING_STOP_LIMIT):
+            assert trigger_price is not None  # Type checking
+            last_price = Decimal(self.lastPriceOnCreated)
+            trailing_offset = abs(trigger_price.as_decimal() - last_price)
+            trailing_offset_type = TrailingOffsetType.PRICE
+        else:
+            trailing_offset = None
+            trailing_offset_type = TrailingOffsetType.NO_TRAILING_OFFSET
 
         return OrderStatusReport(
             account_id=account_id,
             instrument_id=instrument_id,
             client_order_id=client_order_id,
-            venue_order_id=venue_order_id,
+            venue_order_id=VenueOrderId(self.orderId),
             order_side=enum_parser.parse_bybit_order_side(self.side),
-            order_type=enum_parser.parse_bybit_order_type(self.orderType),
+            order_type=order_type,
             time_in_force=enum_parser.parse_bybit_time_in_force(self.timeInForce),
-            order_status=enum_parser.parse_bybit_order_status(self.orderStatus),
-            price=price,
+            order_status=enum_parser.parse_bybit_order_status(order_type, self.orderStatus),
+            price=Price.from_str(self.price) if self.price else None,
+            trigger_price=trigger_price,
+            trigger_type=trigger_type,
+            trailing_offset=trailing_offset,
+            trailing_offset_type=trailing_offset_type,
             quantity=Quantity.from_str(self.qty),
             filled_qty=Quantity.from_str(self.cumExecQty),
             report_id=UUID4(),
-            ts_accepted=ts_event,
-            ts_last=ts_event,
+            ts_accepted=millis_to_nanos(int(self.createdTime)),
+            ts_last=millis_to_nanos(int(self.updatedTime)),
             ts_init=ts_init,
+            avg_px=Decimal(self.avgPrice) if self.avgPrice else None,
+            reduce_only=self.reduceOnly,
+            post_only=self.timeInForce == BybitTimeInForce.POST_ONLY.value,
         )
 
 
@@ -436,13 +683,13 @@ class BybitWsAccountOrderMsg(msgspec.Struct):
 
 
 class BybitWsAccountExecution(msgspec.Struct):
-    category: str
+    category: BybitProductType
     symbol: str
     execFee: str
     execId: str
     execPrice: str
     execQty: str
-    execType: str
+    execType: BybitExecType
     execValue: str
     isMaker: bool
     feeRate: str
@@ -458,12 +705,12 @@ class BybitWsAccountExecution(msgspec.Struct):
     orderPrice: str
     orderQty: str
     orderType: BybitOrderType
-    stopOrderType: str
     side: BybitOrderSide
     execTime: str
     isLeverage: str
     closedSize: str
     seq: int
+    stopOrderType: BybitStopOrderType
 
 
 class BybitWsAccountExecutionMsg(msgspec.Struct):
@@ -471,6 +718,34 @@ class BybitWsAccountExecutionMsg(msgspec.Struct):
     id: str
     creationTime: int
     data: list[BybitWsAccountExecution]
+
+
+################################################################################
+# Private - Account Execution Fast
+################################################################################
+
+
+class BybitWsAccountExecutionFast(msgspec.Struct):
+    category: BybitProductType
+    symbol: str
+    orderId: str
+    isMaker: bool
+    orderLinkId: str
+    side: BybitOrderSide
+    execId: str
+    execPrice: str
+    execQty: str
+    execTime: str
+    seq: int
+
+    orderType: BybitOrderType = BybitOrderType.UNKNOWN
+    stopOrderType: BybitStopOrderType = BybitStopOrderType.NONE
+
+
+class BybitWsAccountExecutionFastMsg(msgspec.Struct):
+    topic: str
+    creationTime: int
+    data: list[BybitWsAccountExecutionFast]
 
 
 ################################################################################
@@ -496,6 +771,25 @@ class BybitWsAccountWalletCoin(msgspec.Struct):
     collateralSwitch: bool
     marginCollateral: bool
     locked: str
+    spotHedgingQty: str
+
+    def parse_to_account_balance(self) -> AccountBalance:
+        currency = Currency.from_str(self.coin)
+        total = Decimal(self.walletBalance)
+        locked = Decimal(self.locked)  # TODO: Locked only valid for Spot
+        free = total - locked
+        return AccountBalance(
+            total=Money(total, currency),
+            locked=Money(locked, currency),
+            free=Money(free, currency),
+        )
+
+    def parse_to_margin_balance(self) -> MarginBalance:
+        currency: Currency = Currency.from_str(self.coin)
+        return MarginBalance(
+            initial=Money(Decimal(self.totalPositionIM), currency),
+            maintenance=Money(Decimal(self.totalPositionMM), currency),
+        )
 
 
 class BybitWsAccountWallet(msgspec.Struct):
@@ -512,9 +806,59 @@ class BybitWsAccountWallet(msgspec.Struct):
     accountLTV: str
     accountType: str
 
+    def parse_to_account_balance(self) -> list[AccountBalance]:
+        return [coin.parse_to_account_balance() for coin in self.coin]
+
+    def parse_to_margin_balance(self) -> list[MarginBalance]:
+        return [coin.parse_to_margin_balance() for coin in self.coin]
+
 
 class BybitWsAccountWalletMsg(msgspec.Struct):
     topic: str
     id: str
     creationTime: int
     data: list[BybitWsAccountWallet]
+
+    def handle_account_wallet_update(self, exec_client: BybitExecutionClient):
+        for wallet in self.data:
+            exec_client.generate_account_state(
+                balances=wallet.parse_to_account_balance(),
+                margins=wallet.parse_to_margin_balance(),
+                reported=True,
+                ts_event=millis_to_nanos(self.creationTime),
+            )
+
+
+################################################################################
+# Trade
+################################################################################
+
+
+class BybitWsOrderRequestMsg(msgspec.Struct, kw_only=True):
+    reqId: str | None = None
+    header: dict[str, str]
+    op: BybitWsOrderRequestMsgOP
+    args: list[
+        BybitPlaceOrderPostParams | BybitAmendOrderPostParams | BybitCancelOrderPostParams
+    ] = []
+
+
+class BybitWsOrderResponseMsg(msgspec.Struct, kw_only=True):
+    reqId: str | None = None
+    retCode: int
+    retMsg: str
+    op: str
+    header: dict[str, str] | None = None
+    connId: str
+
+
+class BybitWsPlaceOrderResponseMsg(BybitWsOrderResponseMsg):
+    data: BybitPlaceOrder
+
+
+class BybitWsAmendOrderResponseMsg(BybitWsOrderResponseMsg):
+    data: BybitAmendOrder
+
+
+class BybitWsCancelOrderResponseMsg(BybitWsOrderResponseMsg):
+    data: BybitCancelOrder

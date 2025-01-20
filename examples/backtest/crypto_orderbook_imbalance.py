@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from nautilus_trader.adapters.binance.loaders import BinanceOrderBookDeltaDataLoader
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.backtest.engine import BacktestEngineConfig
 from nautilus_trader.examples.strategies.orderbook_imbalance import OrderBookImbalance
@@ -33,7 +34,6 @@ from nautilus_trader.model.enums import book_type_to_str
 from nautilus_trader.model.identifiers import TraderId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.objects import Money
-from nautilus_trader.persistence.loaders import BinanceOrderBookDeltaDataLoader
 from nautilus_trader.persistence.wranglers import OrderBookDeltaDataWrangler
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 

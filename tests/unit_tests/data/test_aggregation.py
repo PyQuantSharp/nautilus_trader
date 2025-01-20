@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,11 +14,13 @@
 # -------------------------------------------------------------------------------------------------
 
 from datetime import timedelta
+from decimal import ROUND_HALF_EVEN
 from decimal import Decimal
 
 import pandas as pd
 import pytest
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.common.component import TestClock
 from nautilus_trader.core.datetime import dt_to_unix_nanos
 from nautilus_trader.data.aggregation import BarBuilder
@@ -46,12 +48,12 @@ from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.stubs.data import UNIX_EPOCH
 from nautilus_trader.test_kit.stubs.data import TestDataStubs
 from nautilus_trader.test_kit.stubs.identifiers import TestIdStubs
-from tests import TEST_DATA_DIR
 
 
+NANOSECONDS_IN_SECOND = 1_000_000_000
 AUDUSD_SIM = TestInstrumentProvider.default_fx_ccy("AUD/USD")
 BTCUSDT_BINANCE = TestInstrumentProvider.btcusdt_binance()
-ETHUSDT_BITMEX = TestInstrumentProvider.ethusd_bitmex()
+ETHUSDT_BINANCE = TestInstrumentProvider.ethusdt_binance()
 
 
 class TestBarBuilder:
@@ -92,8 +94,8 @@ class TestBarBuilder:
             low=Price.from_str("1.00000"),
             close=Price.from_str("1.00002"),
             volume=Quantity.from_str("1"),
-            ts_event=1_000_000_000,
-            ts_init=1_000_000_000,
+            ts_event=NANOSECONDS_IN_SECOND,
+            ts_init=NANOSECONDS_IN_SECOND,
         )
 
         # Act
@@ -107,8 +109,8 @@ class TestBarBuilder:
         assert bar.low == Price.from_str("1.00000")
         assert bar.close == Price.from_str("1.00002")
         assert bar.volume == Quantity.from_str("1")
-        assert bar.ts_init == 1_000_000_000
-        assert builder.ts_last == 1_000_000_000
+        assert bar.ts_init == NANOSECONDS_IN_SECOND
+        assert builder.ts_last == NANOSECONDS_IN_SECOND
 
     def test_set_partial_when_already_set_does_not_update(self):
         # Arrange
@@ -122,8 +124,8 @@ class TestBarBuilder:
             low=Price.from_str("1.00000"),
             close=Price.from_str("1.00002"),
             volume=Quantity.from_str("1"),
-            ts_event=1_000_000_000,
-            ts_init=1_000_000_000,
+            ts_event=NANOSECONDS_IN_SECOND,
+            ts_init=NANOSECONDS_IN_SECOND,
         )
 
         partial_bar2 = Bar(
@@ -133,7 +135,7 @@ class TestBarBuilder:
             low=Price.from_str("2.00000"),
             close=Price.from_str("2.00002"),
             volume=Quantity.from_str("2"),
-            ts_event=1_000_000_000,
+            ts_event=NANOSECONDS_IN_SECOND,
             ts_init=3_000_000_000,
         )
 
@@ -150,7 +152,7 @@ class TestBarBuilder:
         assert bar.close == Price.from_str("1.00002")
         assert bar.volume == Quantity.from_str("1")
         assert bar.ts_init == 4_000_000_000
-        assert builder.ts_last == 1_000_000_000
+        assert builder.ts_last == NANOSECONDS_IN_SECOND
 
     def test_single_update_results_in_expected_properties(self):
         # Arrange
@@ -165,6 +167,37 @@ class TestBarBuilder:
         assert builder.ts_last == 0
         assert builder.count == 1
 
+    def test_single_bar_update_results_in_expected_properties(self):
+        # Arrange
+        bar_type = TestDataStubs.bartype_btcusdt_binance_100tick_last()
+        builder = BarBuilder(BTCUSDT_BINANCE, bar_type)
+
+        input_bar = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00005"),
+            volume=Quantity.from_str("1.5"),
+            ts_event=NANOSECONDS_IN_SECOND,
+            ts_init=NANOSECONDS_IN_SECOND,
+        )
+
+        # Act
+        builder.update_bar(input_bar, input_bar.volume, input_bar.ts_event)
+
+        # Assert
+        assert builder.initialized
+        assert builder.ts_last == NANOSECONDS_IN_SECOND
+        assert builder.count == 1
+
+        built_bar = builder.build_now()
+        assert built_bar.open == Price.from_str("1.00001")
+        assert built_bar.high == Price.from_str("1.00010")
+        assert built_bar.low == Price.from_str("1.00000")
+        assert built_bar.close == Price.from_str("1.00005")
+        assert built_bar.volume == Quantity.from_str("1.5")
+
     def test_single_update_when_timestamp_less_than_last_update_ignores(self):
         # Arrange
         bar_type = TestDataStubs.bartype_btcusdt_binance_100tick_last()
@@ -173,6 +206,42 @@ class TestBarBuilder:
 
         # Act
         builder.update(Price.from_str("1.00001"), Quantity.from_str("1"), 500)
+
+        # Assert
+        assert builder.initialized
+        assert builder.ts_last == 1_000
+        assert builder.count == 1
+
+    def test_single_bar_update_when_timestamp_less_than_last_update_ignores(self):
+        # Arrange
+        bar_type = TestDataStubs.bartype_btcusdt_binance_100tick_last()
+        builder = BarBuilder(BTCUSDT_BINANCE, bar_type)
+
+        bar1 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00000"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00005"),
+            volume=Quantity.from_str("1.0"),
+            ts_event=1_000,
+            ts_init=1_000,
+        )
+        builder.update_bar(bar1, bar1.volume, bar1.ts_event)
+
+        bar2 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00011"),
+            low=Price.from_str("1.00001"),
+            close=Price.from_str("1.00006"),
+            volume=Quantity.from_str("1.0"),
+            ts_event=500,
+            ts_init=500,
+        )
+
+        # Act
+        builder.update_bar(bar2, bar2.volume, bar2.ts_event)
 
         # Assert
         assert builder.initialized
@@ -194,6 +263,29 @@ class TestBarBuilder:
         # Assert
         assert builder.count == 5
 
+    def test_multiple_bar_updates_correctly_increments_count(self):
+        # Arrange
+        bar_type = TestDataStubs.bartype_btcusdt_binance_100tick_last()
+        builder = BarBuilder(BTCUSDT_BINANCE, bar_type)
+
+        # Act
+        for i in range(5):
+            bar = Bar(
+                bar_type=bar_type,
+                open=Price.from_str(f"1.0000{i}"),
+                high=Price.from_str(f"1.0001{i}"),
+                low=Price.from_str(f"1.0000{i}"),
+                close=Price.from_str(f"1.0000{i+1}"),
+                volume=Quantity.from_int(1),
+                ts_event=1_000 * (i + 1),
+                ts_init=1_000 * (i + 1),
+            )
+            builder.update_bar(bar, bar.volume, bar.ts_init)
+
+        # Assert
+        assert builder.count == 5
+        assert builder.ts_last == 5_000
+
     def test_build_when_no_updates_raises_exception(self):
         # Arrange
         bar_type = TestDataStubs.bartype_audusd_1min_bid()
@@ -213,7 +305,7 @@ class TestBarBuilder:
         builder.update(
             Price.from_str("1.00000"),
             Quantity.from_str("1.5"),
-            1_000_000_000,
+            NANOSECONDS_IN_SECOND,
         )
 
         # Act
@@ -225,8 +317,62 @@ class TestBarBuilder:
         assert bar.low == Price.from_str("1.00000")
         assert bar.close == Price.from_str("1.00000")
         assert bar.volume == Quantity.from_str("4.0")
-        assert bar.ts_init == 1_000_000_000
-        assert builder.ts_last == 1_000_000_000
+        assert bar.ts_init == NANOSECONDS_IN_SECOND
+        assert builder.ts_last == NANOSECONDS_IN_SECOND
+        assert builder.count == 0
+
+    def test_build_when_received_bar_updates_returns_expected_bar(self):
+        # Arrange
+        bar_type = TestDataStubs.bartype_btcusdt_binance_100tick_last()
+        builder = BarBuilder(BTCUSDT_BINANCE, bar_type)
+
+        bar1 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00001"),
+            close=Price.from_str("1.00002"),
+            volume=Quantity.from_str("1.0"),
+            ts_event=0,
+            ts_init=0,
+        )
+        builder.update_bar(bar1, bar1.volume, bar1.ts_init)
+
+        bar2 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00002"),
+            high=Price.from_str("1.00003"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00001"),
+            volume=Quantity.from_str("1.5"),
+            ts_event=500_000_000,
+            ts_init=500_000_000,
+        )
+        builder.update_bar(bar2, bar2.volume, bar2.ts_init)
+
+        bar3 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00000"),
+            volume=Quantity.from_str("1.5"),
+            ts_event=NANOSECONDS_IN_SECOND,
+            ts_init=NANOSECONDS_IN_SECOND,
+        )
+        builder.update_bar(bar3, bar3.volume, bar3.ts_init)
+
+        # Act
+        bar = builder.build_now()  # Also resets builder
+
+        # Assert
+        assert bar.open == Price.from_str("1.00001")
+        assert bar.high == Price.from_str("1.00003")
+        assert bar.low == Price.from_str("1.00000")
+        assert bar.close == Price.from_str("1.00000")
+        assert bar.volume == Quantity.from_str("4.0")
+        assert bar.ts_init == NANOSECONDS_IN_SECOND
+        assert builder.ts_last == NANOSECONDS_IN_SECOND
         assert builder.count == 0
 
     def test_build_with_previous_close(self):
@@ -304,6 +450,35 @@ class TestTickBarAggregator:
 
         # Act
         aggregator.handle_trade_tick(tick1)
+
+        # Assert
+        assert len(handler) == 0
+
+    def test_handle_bar_when_count_below_threshold_updates(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(3, BarAggregation.TICK, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = TickBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00001"),
+            volume=Quantity.from_int(1),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        # Act
+        aggregator.handle_bar(bar)
 
         # Assert
         assert len(handler) == 0
@@ -418,6 +593,64 @@ class TestTickBarAggregator:
         assert handler[0].close == Price.from_str("1.00000")
         assert handler[0].volume == Quantity.from_int(3)
 
+    def test_handle_bar_when_count_at_threshold_sends_bar_to_handler(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(3, BarAggregation.TICK, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = TickBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar1 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00001"),
+            volume=Quantity.from_int(1),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        bar2 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00002"),
+            high=Price.from_str("1.00003"),
+            low=Price.from_str("1.00001"),
+            close=Price.from_str("1.00002"),
+            volume=Quantity.from_int(1),
+            ts_event=1000,
+            ts_init=1000,
+        )
+
+        bar3 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00003"),
+            high=Price.from_str("1.00004"),
+            low=Price.from_str("1.00002"),
+            close=Price.from_str("1.00003"),
+            volume=Quantity.from_int(1),
+            ts_event=2000,
+            ts_init=2000,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+
+        # Assert
+        assert len(handler) == 1
+        assert handler[0].open == Price.from_str("1.00001")
+        assert handler[0].high == Price.from_str("1.00004")
+        assert handler[0].low == Price.from_str("1.00000")
+        assert handler[0].close == Price.from_str("1.00003")
+        assert handler[0].volume == Quantity.from_int(3)
+
     def test_run_quote_ticks_through_aggregator_results_in_expected_bars(self):
         # Arrange
         handler = []
@@ -430,7 +663,7 @@ class TestTickBarAggregator:
             handler.append,
         )
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(instrument)
         provider = TestDataProvider()
         ticks = wrangler.process(provider.read_csv_ticks("truefx/audusd-ticks.csv")[:1000])
@@ -451,7 +684,7 @@ class TestTickBarAggregator:
     def test_run_trade_ticks_through_aggregator_results_in_expected_bars(self):
         # Arrange
         handler = []
-        instrument = ETHUSDT_BITMEX
+        instrument = ETHUSDT_BINANCE
         bar_spec = BarSpecification(1000, BarAggregation.TICK, PriceType.LAST)
         bar_type = BarType(instrument.id, bar_spec)
         aggregator = TickBarAggregator(
@@ -460,7 +693,7 @@ class TestTickBarAggregator:
             handler.append,
         )
 
-        wrangler = TradeTickDataWrangler(instrument=ETHUSDT_BITMEX)
+        wrangler = TradeTickDataWrangler(instrument=ETHUSDT_BINANCE)
         provider = TestDataProvider()
         ticks = wrangler.process(provider.read_csv_ticks("binance/ethusdt-trades.csv")[:10000])
 
@@ -475,7 +708,61 @@ class TestTickBarAggregator:
         assert last_bar.high == Price.from_str("425.25")
         assert last_bar.low == Price.from_str("424.51")
         assert last_bar.close == Price.from_str("425.15")
-        assert last_bar.volume == Quantity.from_int(3142)
+        assert last_bar.volume == Quantity.from_str("3141.91117")
+
+    def test_run_bars_through_aggregator_results_in_expected_bars(self):
+        handler = []
+        bar_spec = BarSpecification(3, BarAggregation.TICK, PriceType.LAST)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        aggregator = TickBarAggregator(
+            ETHUSDT_BINANCE,
+            bar_type,
+            handler.append,
+        )
+
+        bars = [
+            Bar(
+                bar_type,
+                Price.from_str("100.00"),
+                Price.from_str("101.00"),
+                Price.from_str("99.00"),
+                Price.from_str("100.50"),
+                Quantity.from_str("10"),
+                1000,
+                1000,
+            ),
+            Bar(
+                bar_type,
+                Price.from_str("100.50"),
+                Price.from_str("102.00"),
+                Price.from_str("100.00"),
+                Price.from_str("101.50"),
+                Quantity.from_str("15"),
+                2000,
+                2000,
+            ),
+            Bar(
+                bar_type,
+                Price.from_str("101.50"),
+                Price.from_str("103.00"),
+                Price.from_str("101.00"),
+                Price.from_str("102.50"),
+                Quantity.from_str("20"),
+                3000,
+                3000,
+            ),
+        ]
+
+        for bar in bars:
+            aggregator.handle_bar(bar)
+
+        last_bar = handler[-1]
+        assert len(handler) == 1
+        assert last_bar.open == Price.from_str("100.00")
+        assert last_bar.high == Price.from_str("103.00")
+        assert last_bar.low == Price.from_str("99.00")
+        assert last_bar.close == Price.from_str("102.50")
+        assert last_bar.volume == Quantity.from_str("45")
 
 
 class TestVolumeBarAggregator:
@@ -531,6 +818,35 @@ class TestVolumeBarAggregator:
 
         # Act
         aggregator.handle_trade_tick(tick1)
+
+        # Assert
+        assert len(handler) == 0
+
+    def test_handle_bar_when_volume_below_threshold_updates(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(100000, BarAggregation.VOLUME, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = VolumeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00001"),
+            volume=Quantity.from_int(50000),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        # Act
+        aggregator.handle_bar(bar)
 
         # Assert
         assert len(handler) == 0
@@ -644,6 +960,52 @@ class TestVolumeBarAggregator:
         assert handler[0].low == Price.from_str("1.00000")
         assert handler[0].close == Price.from_str("1.00000")
         assert handler[0].volume == Quantity.from_int(10_000)
+
+    def test_handle_bar_when_volume_at_threshold_sends_bar_to_handler(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(100000, BarAggregation.VOLUME, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = VolumeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar1 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00001"),
+            volume=Quantity.from_int(60000),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        bar2 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00002"),
+            high=Price.from_str("1.00003"),
+            low=Price.from_str("1.00001"),
+            close=Price.from_str("1.00002"),
+            volume=Quantity.from_int(40000),
+            ts_event=1000,
+            ts_init=1000,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+
+        # Assert
+        assert len(handler) == 1
+        assert handler[0].open == Price.from_str("1.00001")
+        assert handler[0].high == Price.from_str("1.00003")
+        assert handler[0].low == Price.from_str("1.00000")
+        assert handler[0].close == Price.from_str("1.00002")
+        assert handler[0].volume == Quantity.from_int(100000)
 
     def test_handle_quote_tick_when_volume_beyond_threshold_sends_bars_to_handler(self):
         # Arrange
@@ -775,6 +1137,57 @@ class TestVolumeBarAggregator:
         assert handler[2].close == Price.from_str("1.00000")
         assert handler[2].volume == Quantity.from_int(10_000)
 
+    def test_handle_bar_when_volume_beyond_threshold_sends_bars_to_handler(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(100000, BarAggregation.VOLUME, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = VolumeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar1 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00001"),
+            high=Price.from_str("1.00002"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.00001"),
+            volume=Quantity.from_int(80000),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        bar2 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("1.00002"),
+            high=Price.from_str("1.00003"),
+            low=Price.from_str("1.00001"),
+            close=Price.from_str("1.00002"),
+            volume=Quantity.from_int(140000),
+            ts_event=1000,
+            ts_init=1000,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+
+        # Assert
+        assert len(handler) == 2
+        assert handler[0].open == Price.from_str("1.00001")
+        assert handler[0].high == Price.from_str("1.00003")
+        assert handler[0].low == Price.from_str("1.00000")
+        assert handler[0].close == Price.from_str("1.00002")
+        assert handler[0].volume == Quantity.from_int(100000)
+        assert handler[1].open == Price.from_str("1.00002")
+        assert handler[1].high == Price.from_str("1.00003")
+        assert handler[1].low == Price.from_str("1.00001")
+        assert handler[1].close == Price.from_str("1.00002")
+        assert handler[1].volume == Quantity.from_int(100000)
+
     def test_run_quote_ticks_through_aggregator_results_in_expected_bars(self):
         # Arrange
         handler = []
@@ -787,7 +1200,7 @@ class TestVolumeBarAggregator:
             handler.append,
         )
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(instrument)
         provider = TestDataProvider()
         ticks = wrangler.process(
@@ -811,7 +1224,7 @@ class TestVolumeBarAggregator:
     def test_run_trade_ticks_through_aggregator_results_in_expected_bars(self):
         # Arrange
         handler = []
-        instrument = ETHUSDT_BITMEX
+        instrument = ETHUSDT_BINANCE
         bar_spec = BarSpecification(1000, BarAggregation.VOLUME, PriceType.LAST)
         bar_type = BarType(instrument.id, bar_spec)
         aggregator = VolumeBarAggregator(
@@ -820,7 +1233,7 @@ class TestVolumeBarAggregator:
             handler.append,
         )
 
-        wrangler = TradeTickDataWrangler(instrument=ETHUSDT_BITMEX)
+        wrangler = TradeTickDataWrangler(instrument=ETHUSDT_BINANCE)
         provider = TestDataProvider()
         ticks = wrangler.process(provider.read_csv_ticks("binance/ethusdt-trades.csv")[:10000])
 
@@ -836,6 +1249,60 @@ class TestVolumeBarAggregator:
         assert last_bar.low == Price.from_str("424.69")
         assert last_bar.close == Price.from_str("425.06")
         assert last_bar.volume == Quantity.from_int(1_000)
+
+    def test_run_bars_through_aggregator_results_in_expected_bars(self):
+        handler = []
+        bar_spec = BarSpecification(30, BarAggregation.VOLUME, PriceType.LAST)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        aggregator = VolumeBarAggregator(
+            ETHUSDT_BINANCE,
+            bar_type,
+            handler.append,
+        )
+
+        bars = [
+            Bar(
+                bar_type,
+                Price.from_str("100.00"),
+                Price.from_str("101.00"),
+                Price.from_str("99.00"),
+                Price.from_str("100.50"),
+                Quantity.from_str("10"),
+                1000,
+                1000,
+            ),
+            Bar(
+                bar_type,
+                Price.from_str("100.50"),
+                Price.from_str("102.00"),
+                Price.from_str("100.00"),
+                Price.from_str("101.50"),
+                Quantity.from_str("15"),
+                2000,
+                2000,
+            ),
+            Bar(
+                bar_type,
+                Price.from_str("101.50"),
+                Price.from_str("103.00"),
+                Price.from_str("101.00"),
+                Price.from_str("102.50"),
+                Quantity.from_str("20"),
+                3000,
+                3000,
+            ),
+        ]
+
+        for bar in bars:
+            aggregator.handle_bar(bar)
+
+        last_bar = handler[-1]
+        assert len(handler) == 1
+        assert last_bar.open == Price.from_str("100.00")
+        assert last_bar.high == Price.from_str("103.00")
+        assert last_bar.low == Price.from_str("99.00")
+        assert last_bar.close == Price.from_str("102.50")
+        assert last_bar.volume == Quantity.from_str("30")
 
 
 class TestTestValueBarAggregator:
@@ -892,6 +1359,36 @@ class TestTestValueBarAggregator:
 
         # Act
         aggregator.handle_trade_tick(tick1)
+
+        # Assert
+        assert len(handler) == 0
+        assert aggregator.get_cumulative_value() == Decimal("52500.000")
+
+    def test_handle_bar_when_value_below_threshold_updates(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(100000, BarAggregation.VALUE, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = ValueBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("15000.00"),
+            high=Price.from_str("15001.00"),
+            low=Price.from_str("14999.00"),
+            close=Price.from_str("15000.00"),
+            volume=Quantity.from_str("3.5"),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        # Act
+        aggregator.handle_bar(bar)
 
         # Assert
         assert len(handler) == 0
@@ -1012,7 +1509,76 @@ class TestTestValueBarAggregator:
         assert handler[1].low == Price.from_str("20.00000")
         assert handler[1].close == Price.from_str("20.00000")
         assert handler[1].volume == Quantity.from_str("5000.00")
-        assert aggregator.get_cumulative_value() == Decimal("40000.11000")
+        expected = Decimal("40000.11")
+        assert aggregator.get_cumulative_value().quantize(expected, ROUND_HALF_EVEN) == expected
+
+    def test_handle_bar_when_value_beyond_threshold_sends_bars_to_handler(self):
+        # Arrange
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(100000, BarAggregation.VALUE, PriceType.LAST)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = ValueBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+        )
+
+        bar1 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("20.00001"),
+            high=Price.from_str("20.00010"),
+            low=Price.from_str("20.00000"),
+            close=Price.from_str("20.00005"),
+            volume=Quantity.from_str("3000.00"),
+            ts_event=0,
+            ts_init=0,
+        )
+
+        bar2 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("20.00006"),
+            high=Price.from_str("20.00015"),
+            low=Price.from_str("20.00002"),
+            close=Price.from_str("20.00010"),
+            volume=Quantity.from_str("4000.00"),
+            ts_event=30_000_000_000,
+            ts_init=30_000_000_000,
+        )
+
+        bar3 = Bar(
+            bar_type=bar_type,
+            open=Price.from_str("20.00011"),
+            high=Price.from_str("20.00020"),
+            low=Price.from_str("20.00000"),
+            close=Price.from_str("20.00015"),
+            volume=Quantity.from_str("5000.00"),
+            ts_event=60_000_000_000,
+            ts_init=60_000_000_000,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+
+        # Assert
+        assert len(handler) == 2
+        assert handler[0].open == Price.from_str("20.00001")
+        assert handler[0].high == Price.from_str("20.00015")
+        assert handler[0].low == Price.from_str("20.00000")
+        assert handler[0].close == Price.from_str("20.00010")
+        assert handler[0].volume == Quantity.from_str("5000.00")
+        assert handler[1].open == Price.from_str("20.00006")
+        assert handler[1].high == Price.from_str("20.00020")
+        assert handler[1].low == Price.from_str("20.00000")
+        assert handler[1].close == Price.from_str("20.00015")
+        assert handler[1].volume == Quantity.from_str("5000.00")
+        expected = Decimal("40001.11")
+        assert (
+            aggregator.get_cumulative_value().quantize(expected, rounding=ROUND_HALF_EVEN)
+            == expected
+        )
 
     def test_run_quote_ticks_through_aggregator_results_in_expected_bars(self):
         # Arrange
@@ -1026,7 +1592,7 @@ class TestTestValueBarAggregator:
             handler.append,
         )
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(AUDUSD_SIM)
         provider = TestDataProvider()
         ticks = wrangler.process(
@@ -1051,14 +1617,14 @@ class TestTestValueBarAggregator:
         # Arrange
         handler = []
         bar_spec = BarSpecification(10000, BarAggregation.VALUE, PriceType.LAST)
-        bar_type = BarType(ETHUSDT_BITMEX.id, bar_spec)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
         aggregator = ValueBarAggregator(
-            ETHUSDT_BITMEX,
+            ETHUSDT_BINANCE,
             bar_type,
             handler.append,
         )
 
-        wrangler = TradeTickDataWrangler(instrument=ETHUSDT_BITMEX)
+        wrangler = TradeTickDataWrangler(instrument=ETHUSDT_BINANCE)
         provider = TestDataProvider()
         ticks = wrangler.process(provider.read_csv_ticks("binance/ethusdt-trades.csv")[:1000])
 
@@ -1068,12 +1634,66 @@ class TestTestValueBarAggregator:
 
         # Assert
         last_bar = handler[-1]
-        assert len(handler) == 109
+        assert len(handler) == 112
         assert last_bar.open == Price.from_str("423.19")
         assert last_bar.high == Price.from_str("423.25")
         assert last_bar.low == Price.from_str("423.19")
         assert last_bar.close == Price.from_str("423.25")
-        assert last_bar.volume == Quantity.from_int(24)
+        assert last_bar.volume == Quantity.from_str("23.62824")
+
+    def test_run_bars_through_aggregator_results_in_expected_bars(self):
+        handler = []
+        bar_spec = BarSpecification(3000, BarAggregation.VALUE, PriceType.LAST)
+        bar_type = BarType(ETHUSDT_BINANCE.id, bar_spec)
+        aggregator = ValueBarAggregator(
+            ETHUSDT_BINANCE,
+            bar_type,
+            handler.append,
+        )
+
+        bars = [
+            Bar(
+                bar_type,
+                Price.from_str("100.00"),
+                Price.from_str("101.00"),
+                Price.from_str("99.00"),
+                Price.from_str("100.50"),
+                Quantity.from_str("10"),
+                1000,
+                1000,
+            ),
+            Bar(
+                bar_type,
+                Price.from_str("100.50"),
+                Price.from_str("102.00"),
+                Price.from_str("100.00"),
+                Price.from_str("101.50"),
+                Quantity.from_str("15"),
+                2000,
+                2000,
+            ),
+            Bar(
+                bar_type,
+                Price.from_str("101.50"),
+                Price.from_str("103.00"),
+                Price.from_str("101.00"),
+                Price.from_str("102.50"),
+                Quantity.from_str("20"),
+                3000,
+                3000,
+            ),
+        ]
+
+        for bar in bars:
+            aggregator.handle_bar(bar)
+
+        last_bar = handler[-1]
+        assert len(handler) == 1
+        assert last_bar.open == Price.from_str("100.00")
+        assert last_bar.high == Price.from_str("103.00")
+        assert last_bar.low == Price.from_str("99.00")
+        assert last_bar.close == Price.from_str("102.50")
+        assert last_bar.volume == Quantity.from_str("30")
 
 
 class TestTimeBarAggregator:
@@ -1185,8 +1805,8 @@ class TestTimeBarAggregator:
             ask_price=Price.from_str("1.00003"),
             bid_size=Quantity.from_int(1),
             ask_size=Quantity.from_int(1),
-            ts_event=1 * 60 * 1_000_000_000,  # 1 minute in nanoseconds
-            ts_init=1 * 60 * 1_000_000_000,  # 1 minute in nanoseconds
+            ts_event=1 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=1 * 60 * NANOSECONDS_IN_SECOND,
         )
 
         # Act
@@ -1205,6 +1825,515 @@ class TestTimeBarAggregator:
         assert Price.from_str("1.000015") == bar.close
         assert Quantity.from_int(3) == bar.volume
         assert bar.ts_init == 60_000_000_000
+
+    def test_batch_update_sends_single_bar_to_handler(self):
+        # Arrange
+        clock = TestClock()
+        clock.set_time(3 * 60 * NANOSECONDS_IN_SECOND)
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec = BarSpecification(3, BarAggregation.MINUTE, PriceType.MID)
+        bar_type = BarType(instrument_id, bar_spec)
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+        )
+
+        tick1 = QuoteTick(
+            instrument_id=AUDUSD_SIM.id,
+            bid_price=Price.from_str("1.00001"),
+            ask_price=Price.from_str("1.00004"),
+            bid_size=Quantity.from_int(1),
+            ask_size=Quantity.from_int(1),
+            ts_event=1 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=1 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        tick2 = QuoteTick(
+            instrument_id=AUDUSD_SIM.id,
+            bid_price=Price.from_str("1.00002"),
+            ask_price=Price.from_str("1.00005"),
+            bid_size=Quantity.from_int(1),
+            ask_size=Quantity.from_int(1),
+            ts_event=2 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=2 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        tick3 = QuoteTick(
+            instrument_id=AUDUSD_SIM.id,
+            bid_price=Price.from_str("1.00000"),
+            ask_price=Price.from_str("1.00003"),
+            bid_size=Quantity.from_int(1),
+            ask_size=Quantity.from_int(1),
+            ts_event=3 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=3 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        # Act
+        aggregator.start_batch_update(handler.append, tick1.ts_event)
+        aggregator.handle_quote_tick(tick1)
+        aggregator.handle_quote_tick(tick2)
+        aggregator.stop_batch_update()
+        aggregator.handle_quote_tick(tick3)
+
+        # Assert
+        bar = handler[0]
+        assert len(handler) == 1
+        assert Price.from_str("1.000025") == bar.open
+        assert Price.from_str("1.000035") == bar.high
+        assert Price.from_str("1.000015") == bar.low
+        assert Price.from_str("1.000015") == bar.close
+        assert Quantity.from_int(3) == bar.volume
+        assert bar.ts_init == 3 * 60_000_000_000
+
+    def test_update_timer_with_test_clock_sends_single_bar_to_handler_with_bars(self):
+        # Arrange
+        clock = TestClock()
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec3 = BarSpecification(3, BarAggregation.MINUTE, PriceType.LAST)
+        bar_spec1 = BarSpecification(1, BarAggregation.MINUTE, PriceType.LAST)
+        bar_type = BarType.new_composite(
+            instrument_id,
+            bar_spec3,
+            AggregationSource.INTERNAL,
+            bar_spec1.step,
+            bar_spec1.aggregation,
+            AggregationSource.EXTERNAL,
+        )
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+        )
+        composite_bar_type = bar_type.composite()
+
+        bar1 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00005"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00004"),
+            close=Price.from_str("1.00007"),
+            volume=Quantity.from_int(1),
+            ts_event=1 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=1 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar2 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00007"),
+            high=Price.from_str("1.00020"),
+            low=Price.from_str("1.00003"),
+            close=Price.from_str("1.00015"),
+            volume=Quantity.from_int(1),
+            ts_event=2 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=2 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar3 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00015"),
+            high=Price.from_str("1.00015"),
+            low=Price.from_str("1.00007"),
+            close=Price.from_str("1.00008"),
+            volume=Quantity.from_int(1),
+            ts_event=3 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=3 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+        events = clock.advance_time(bar3.ts_event)
+        events[0].handle()
+
+        # Assert
+        bar = handler[0]
+        assert len(handler) == 1
+        assert bar.bar_type == bar_type.standard()
+        assert bar.open == Price.from_str("1.00005")
+        assert bar.high == Price.from_str("1.00020")
+        assert bar.low == Price.from_str("1.00003")
+        assert bar.close == Price.from_str("1.00008")
+        assert bar.volume == Quantity.from_int(3)
+        assert bar.ts_init == 3 * 60 * NANOSECONDS_IN_SECOND
+
+    def test_update_timer_with_test_clock_sends_no_bar_to_handler_with_skip_first_non_full_bar(
+        self,
+    ):
+        # Arrange
+        clock = TestClock()
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec3 = BarSpecification(3, BarAggregation.MINUTE, PriceType.LAST)
+        bar_spec1 = BarSpecification(1, BarAggregation.MINUTE, PriceType.LAST)
+        bar_type = BarType.new_composite(
+            instrument_id,
+            bar_spec3,
+            AggregationSource.INTERNAL,
+            bar_spec1.step,
+            bar_spec1.aggregation,
+            AggregationSource.EXTERNAL,
+        )
+
+        clock.advance_time(1)
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+            skip_first_non_full_bar=True,
+        )
+        composite_bar_type = bar_type.composite()
+
+        bar1 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00005"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00004"),
+            close=Price.from_str("1.00007"),
+            volume=Quantity.from_int(1),
+            ts_event=1 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=1 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar2 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00007"),
+            high=Price.from_str("1.00020"),
+            low=Price.from_str("1.00003"),
+            close=Price.from_str("1.00015"),
+            volume=Quantity.from_int(1),
+            ts_event=2 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=2 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar3 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00015"),
+            high=Price.from_str("1.00015"),
+            low=Price.from_str("1.00007"),
+            close=Price.from_str("1.00008"),
+            volume=Quantity.from_int(1),
+            ts_event=3 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=3 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+        events = clock.advance_time(bar3.ts_event)
+
+        # Assert
+        assert len(events) == 0
+
+    def test_update_timer_with_test_clock_sends_single_bar_to_handler_with_bars_and_time_origin(
+        self,
+    ):
+        # Arrange
+        clock = TestClock()
+        clock.set_time(30 * 60 * NANOSECONDS_IN_SECOND)
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec3 = BarSpecification(3, BarAggregation.MINUTE, PriceType.LAST)
+        bar_spec1 = BarSpecification(1, BarAggregation.MINUTE, PriceType.LAST)
+        bar_type = BarType.new_composite(
+            instrument_id,
+            bar_spec3,
+            AggregationSource.INTERNAL,
+            bar_spec1.step,
+            bar_spec1.aggregation,
+            AggregationSource.EXTERNAL,
+        )
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+            time_bars_origin=pd.Timedelta(seconds=30),
+        )
+        composite_bar_type = bar_type.composite()
+
+        bar1 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00005"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00004"),
+            close=Price.from_str("1.00007"),
+            volume=Quantity.from_int(1),
+            ts_event=31 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=31 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar2 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00007"),
+            high=Price.from_str("1.00020"),
+            low=Price.from_str("1.00003"),
+            close=Price.from_str("1.00015"),
+            volume=Quantity.from_int(1),
+            ts_event=32 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=32 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar3 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00015"),
+            high=Price.from_str("1.00015"),
+            low=Price.from_str("1.00007"),
+            close=Price.from_str("1.00008"),
+            volume=Quantity.from_int(1),
+            ts_event=33 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=33 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+        events = clock.advance_time(bar3.ts_event)
+        events[0].handle()
+
+        # Assert
+        bar = handler[0]
+        assert len(handler) == 1
+        assert bar.bar_type == bar_type.standard()
+        assert bar.open == Price.from_str("1.00005")
+        assert bar.high == Price.from_str("1.00020")
+        assert bar.low == Price.from_str("1.00003")
+        assert bar.close == Price.from_str("1.00008")
+        assert bar.volume == Quantity.from_int(3)
+        assert bar.ts_init == 33 * 60 * NANOSECONDS_IN_SECOND
+
+    def test_update_timer_with_test_clock_sends_single_monthly_bar_to_handler_with_bars(self):
+        # Arrange
+        clock = TestClock()
+        clock.set_time(pd.Timestamp("2024-3-23").value)
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec3 = BarSpecification(1, BarAggregation.MONTH, PriceType.LAST)
+        bar_spec1 = BarSpecification(1, BarAggregation.DAY, PriceType.LAST)
+        bar_type = BarType.new_composite(
+            instrument_id,
+            bar_spec3,
+            AggregationSource.INTERNAL,
+            bar_spec1.step,
+            bar_spec1.aggregation,
+            AggregationSource.EXTERNAL,
+        )
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+        )
+        composite_bar_type = bar_type.composite()
+
+        bar1 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00005"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00004"),
+            close=Price.from_str("1.00007"),
+            volume=Quantity.from_int(1),
+            ts_event=pd.Timestamp("2024-3-24").value,  # time in nanoseconds
+            ts_init=pd.Timestamp("2024-3-24").value,
+        )
+
+        bar2 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00007"),
+            high=Price.from_str("1.00020"),
+            low=Price.from_str("1.00003"),
+            close=Price.from_str("1.00015"),
+            volume=Quantity.from_int(1),
+            ts_event=pd.Timestamp("2024-3-25").value,
+            ts_init=pd.Timestamp("2024-3-25").value,
+        )
+
+        bar3 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00015"),
+            high=Price.from_str("1.00015"),
+            low=Price.from_str("1.00007"),
+            close=Price.from_str("1.00008"),
+            volume=Quantity.from_int(1),
+            ts_event=pd.Timestamp("2024-3-26").value,
+            ts_init=pd.Timestamp("2024-3-26").value,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+        events = clock.advance_time(pd.Timestamp("2024-4-1").value)
+        events[0].handle()
+
+        # Assert
+        bar = handler[0]
+        assert len(handler) == 1
+        assert bar.bar_type == bar_type.standard()
+        assert bar.open == Price.from_str("1.00005")
+        assert bar.high == Price.from_str("1.00020")
+        assert bar.low == Price.from_str("1.00003")
+        assert bar.close == Price.from_str("1.00008")
+        assert bar.volume == Quantity.from_int(3)
+        assert bar.ts_init == pd.Timestamp("2024-4-1").value
+
+    def test_update_timer_with_test_clock_sends_single_weekly_bar_to_handler_with_bars(self):
+        # Arrange
+        clock = TestClock()
+        clock.set_time(pd.Timestamp("2024-3-20").value)
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec3 = BarSpecification(1, BarAggregation.WEEK, PriceType.LAST)
+        bar_spec1 = BarSpecification(1, BarAggregation.DAY, PriceType.LAST)
+        bar_type = BarType.new_composite(
+            instrument_id,
+            bar_spec3,
+            AggregationSource.INTERNAL,
+            bar_spec1.step,
+            bar_spec1.aggregation,
+            AggregationSource.EXTERNAL,
+        )
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+        )
+        composite_bar_type = bar_type.composite()
+
+        bar1 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00005"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00004"),
+            close=Price.from_str("1.00007"),
+            volume=Quantity.from_int(1),
+            ts_event=pd.Timestamp("2024-3-20").value,  # time in nanoseconds
+            ts_init=pd.Timestamp("2024-3-20").value,
+        )
+
+        bar2 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00007"),
+            high=Price.from_str("1.00020"),
+            low=Price.from_str("1.00003"),
+            close=Price.from_str("1.00015"),
+            volume=Quantity.from_int(1),
+            ts_event=pd.Timestamp("2024-3-21").value,
+            ts_init=pd.Timestamp("2024-3-21").value,
+        )
+
+        bar3 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00015"),
+            high=Price.from_str("1.00015"),
+            low=Price.from_str("1.00007"),
+            close=Price.from_str("1.00008"),
+            volume=Quantity.from_int(1),
+            ts_event=pd.Timestamp("2024-3-22").value,
+            ts_init=pd.Timestamp("2024-3-22").value,
+        )
+
+        # Act
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.handle_bar(bar3)
+        events = clock.advance_time(pd.Timestamp("2024-3-25").value)
+        events[0].handle()
+
+        # Assert
+        bar = handler[0]
+        assert len(handler) == 1
+        assert bar.bar_type == bar_type.standard()
+        assert bar.open == Price.from_str("1.00005")
+        assert bar.high == Price.from_str("1.00020")
+        assert bar.low == Price.from_str("1.00003")
+        assert bar.close == Price.from_str("1.00008")
+        assert bar.volume == Quantity.from_int(3)
+        assert bar.ts_init == pd.Timestamp("2024-3-25").value
+
+    def test_batch_update_sends_single_bar_to_handler_with_bars(self):
+        # Arrange
+        clock = TestClock()
+        clock.set_time(3 * 60 * NANOSECONDS_IN_SECOND)
+        handler = []
+        instrument_id = TestIdStubs.audusd_id()
+        bar_spec3 = BarSpecification(3, BarAggregation.MINUTE, PriceType.LAST)
+        bar_spec1 = BarSpecification(1, BarAggregation.MINUTE, PriceType.LAST)
+        bar_type = BarType.new_composite(
+            instrument_id,
+            bar_spec3,
+            AggregationSource.INTERNAL,
+            bar_spec1.step,
+            bar_spec1.aggregation,
+            AggregationSource.EXTERNAL,
+        )
+        aggregator = TimeBarAggregator(
+            AUDUSD_SIM,
+            bar_type,
+            handler.append,
+            clock,
+        )
+        composite_bar_type = bar_type.composite()
+
+        bar1 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00005"),
+            high=Price.from_str("1.00010"),
+            low=Price.from_str("1.00004"),
+            close=Price.from_str("1.00007"),
+            volume=Quantity.from_int(1),
+            ts_event=1 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=1 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar2 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00007"),
+            high=Price.from_str("1.00020"),
+            low=Price.from_str("1.00003"),
+            close=Price.from_str("1.00015"),
+            volume=Quantity.from_int(1),
+            ts_event=2 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=2 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        bar3 = Bar(
+            bar_type=composite_bar_type,
+            open=Price.from_str("1.00015"),
+            high=Price.from_str("1.00015"),
+            low=Price.from_str("1.00007"),
+            close=Price.from_str("1.00008"),
+            volume=Quantity.from_int(1),
+            ts_event=3 * 60 * NANOSECONDS_IN_SECOND,
+            ts_init=3 * 60 * NANOSECONDS_IN_SECOND,
+        )
+
+        # Act
+        aggregator.start_batch_update(handler.append, bar1.ts_init)
+        aggregator.handle_bar(bar1)
+        aggregator.handle_bar(bar2)
+        aggregator.stop_batch_update()
+        aggregator.handle_bar(bar3)
+
+        # Assert
+        bar = handler[0]
+        assert len(handler) == 1
+        assert bar.bar_type == bar_type.standard()
+        assert bar.open == Price.from_str("1.00005")
+        assert bar.high == Price.from_str("1.00020")
+        assert bar.low == Price.from_str("1.00003")
+        assert bar.close == Price.from_str("1.00008")
+        assert bar.volume == Quantity.from_int(3)
+        assert bar.ts_init == 3 * 60 * NANOSECONDS_IN_SECOND
 
     @pytest.mark.parametrize(
         ("step", "aggregation"),
@@ -1248,7 +2377,7 @@ class TestTimeBarAggregator:
 
         # Assert
         assert clock.timestamp_ns() == 1610064046674000000
-        assert aggregator.interval_ns == 1_000_000_000
+        assert aggregator.interval_ns == NANOSECONDS_IN_SECOND
         assert aggregator.next_close_ns == 1610064047000000000
         assert handler[0].open == Price.from_str("39432.99")
         assert handler[0].high == Price.from_str("39435.66")
@@ -1359,8 +2488,8 @@ class TestTimeBarAggregator:
             bar_type,
             handler.append,
             clock,
-            timestamp_on_close=timestamp_on_close,
             interval_type=interval_type,
+            timestamp_on_close=timestamp_on_close,
         )
         aggregator.handle_quote_tick(ticks[0])
 

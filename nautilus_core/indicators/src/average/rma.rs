@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,8 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -58,11 +57,11 @@ impl Indicator for WilderMovingAverage {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, quote: &QuoteTick) {
+    fn handle_quote(&mut self, quote: &QuoteTick) {
         self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, trade: &TradeTick) {
+    fn handle_trade(&mut self, trade: &TradeTick) {
         self.update_raw((&trade.price).into());
     }
 
@@ -79,13 +78,13 @@ impl Indicator for WilderMovingAverage {
 }
 
 impl WilderMovingAverage {
-    pub fn new(period: usize, price_type: Option<PriceType>) -> Result<Self> {
-        // Inputs don't require validation, however we return a `Result`
-        // to standardize with other indicators which do need validation.
+    /// Creates a new [`WilderMovingAverage`] instance.
+    #[must_use]
+    pub fn new(period: usize, price_type: Option<PriceType>) -> Self {
         // The Wilder Moving Average is The Wilder's Moving Average is simply
         // an Exponential Moving Average (EMA) with a modified alpha.
         // alpha = 1 / period
-        Ok(Self {
+        Self {
             period,
             price_type: price_type.unwrap_or(PriceType::Last),
             alpha: 1.0 / (period as f64),
@@ -93,7 +92,7 @@ impl WilderMovingAverage {
             count: 0,
             has_inputs: false,
             initialized: false,
-        })
+        }
     }
 }
 
@@ -128,7 +127,7 @@ impl MovingAverage for WilderMovingAverage {
 #[cfg(test)]
 mod tests {
     use nautilus_model::{
-        data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+        data::{Bar, QuoteTick, TradeTick},
         enums::PriceType,
     };
     use rstest::rstest;
@@ -190,28 +189,28 @@ mod tests {
     }
 
     #[rstest]
-    fn test_handle_quote_tick_single(indicator_rma_10: WilderMovingAverage, quote_tick: QuoteTick) {
+    fn test_handle_quote_tick_single(indicator_rma_10: WilderMovingAverage, stub_quote: QuoteTick) {
         let mut rma = indicator_rma_10;
-        rma.handle_quote_tick(&quote_tick);
+        rma.handle_quote(&stub_quote);
         assert!(rma.has_inputs());
         assert_eq!(rma.value, 1501.0);
     }
 
     #[rstest]
     fn test_handle_quote_tick_multi(mut indicator_rma_10: WilderMovingAverage) {
-        let tick1 = quote_tick("1500.0", "1502.0");
-        let tick2 = quote_tick("1502.0", "1504.0");
+        let tick1 = stub_quote("1500.0", "1502.0");
+        let tick2 = stub_quote("1502.0", "1504.0");
 
-        indicator_rma_10.handle_quote_tick(&tick1);
-        indicator_rma_10.handle_quote_tick(&tick2);
+        indicator_rma_10.handle_quote(&tick1);
+        indicator_rma_10.handle_quote(&tick2);
         assert_eq!(indicator_rma_10.count, 2);
         assert_eq!(indicator_rma_10.value, 1_501.2);
     }
 
     #[rstest]
-    fn test_handle_trade_tick(indicator_rma_10: WilderMovingAverage, trade_tick: TradeTick) {
+    fn test_handle_trade_tick(indicator_rma_10: WilderMovingAverage, stub_trade: TradeTick) {
         let mut rma = indicator_rma_10;
-        rma.handle_trade_tick(&trade_tick);
+        rma.handle_trade(&stub_trade);
         assert!(rma.has_inputs());
         assert_eq!(rma.value, 1500.0);
     }

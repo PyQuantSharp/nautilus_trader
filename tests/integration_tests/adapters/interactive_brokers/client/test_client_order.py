@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,25 +22,40 @@ from unittest.mock import Mock
 import pytest
 
 from nautilus_trader.adapters.interactive_brokers.client.common import AccountOrderRef
+from nautilus_trader.adapters.interactive_brokers.common import IBContract
 from tests.integration_tests.adapters.interactive_brokers.test_kit import IBTestContractStubs
 from tests.integration_tests.adapters.interactive_brokers.test_kit import IBTestExecStubs
 
 
 def test_place_order(ib_client):
-    # Arrange
+    """
+    Test case for placing an order with the Interactive Brokers client.
+
+    This test verifies that the placeOrder method is called with the correct parameters.
+
+    """
+    # Arrange: Set up the order and mock the placeOrder method
     ib_order = IBTestExecStubs.aapl_buy_ib_order(order_id=1)
     ib_order.contract = IBTestContractStubs.aapl_equity_ib_contract()
     ib_client._eclient.placeOrder = MagicMock()
 
-    # Act
+    # Act: Place the order using the ib_client
     ib_client.place_order(ib_order)
 
-    # Assert
-    ib_client._eclient.placeOrder.assert_called_with(
+    # Assert: Verify that the placeOrder method was called with the correct parameters
+    ib_client._eclient.placeOrder.assert_called_once_with(
         ib_order.orderId,
         ib_order.contract,
         ib_order,
     )
+
+    # Additional assertions to verify the attributes of the order
+    assert ib_order.orderId == 1
+    assert ib_order.action == "BUY"
+    assert ib_order.totalQuantity == Decimal("100")
+    assert ib_order.orderType == "MKT"
+    assert ib_order.account == "DU123456"
+    assert ib_order.tif == "IOC"
 
 
 def test_cancel_order(ib_client):
@@ -103,7 +118,8 @@ def test_next_order_id(ib_client):
     ib_client._eclient.reqIds.assert_called_with(-1)
 
 
-def test_openOrder(ib_client):
+@pytest.mark.asyncio
+async def test_openOrder(ib_client):
     # Arrange
     mock_request = Mock()
     mock_request.result = []
@@ -119,11 +135,11 @@ def test_openOrder(ib_client):
     order_state = IBTestExecStubs.ib_order_state(state="PreSubmitted")
 
     # Act
-    ib_client.openOrder(
-        order_id,
-        contract,
-        order,
-        order_state,
+    await ib_client.process_open_order(
+        order_id=order_id,
+        contract=contract,
+        order=order,
+        order_state=order_state,
     )
 
     # Assert
@@ -132,7 +148,35 @@ def test_openOrder(ib_client):
     handler_mock.assert_not_called()
 
 
-def test_orderStatus(ib_client):
+@pytest.mark.asyncio
+async def test_process_open_order_when_request_not_present(ib_client):
+    # Arrange
+    handler_mock = Mock()
+    ib_client._event_subscriptions = Mock()
+    ib_client._event_subscriptions.get = Mock(return_value=handler_mock)
+
+    order_id = 1
+    contract = IBTestContractStubs.aapl_equity_contract()
+    order = IBTestExecStubs.aapl_buy_ib_order(order_id=order_id)
+    order_state = IBTestExecStubs.ib_order_state(state="PreSubmitted")
+
+    # Act
+    await ib_client.process_open_order(
+        order_id=order_id,
+        contract=contract,
+        order=order,
+        order_state=order_state,
+    )
+
+    # Assert
+    kwargs = handler_mock.call_args_list[-1].kwargs
+    assert kwargs["order_ref"] == "O-20240102-1754-001-000-1"
+    assert kwargs["order"].contract == IBContract(**contract.__dict__)
+    assert kwargs["order"].order_state == order_state
+
+
+@pytest.mark.asyncio
+async def test_orderStatus(ib_client):
     # Arrange
     ib_client._order_id_to_order_ref = {
         1: AccountOrderRef(order_id=1, account_id="DU123456"),
@@ -142,18 +186,18 @@ def test_orderStatus(ib_client):
     ib_client._event_subscriptions.get = MagicMock(return_value=handler_func)
 
     # Act
-    ib_client.orderStatus(
-        1,
-        "Filled",
-        Decimal("100"),
-        Decimal("0"),
-        100.0,
-        1916994655,
-        0,
-        100.0,
-        1,
-        "",
-        0.0,
+    await ib_client.process_order_status(
+        order_id=1,
+        status="Filled",
+        filled=Decimal("100"),
+        remaining=Decimal("0"),
+        avg_fill_price=100.0,
+        perm_id=1916994655,
+        parent_id=0,
+        last_fill_price=100.0,
+        client_id=1,
+        why_held="",
+        mkt_cap_price=0.0,
     )
 
     # Assert
@@ -164,7 +208,8 @@ def test_orderStatus(ib_client):
     )
 
 
-def test_execDetails(ib_client):
+@pytest.mark.asyncio
+async def test_execDetails(ib_client):
     # Arrange
     req_id = 1
     contract = Mock()
@@ -188,10 +233,10 @@ def test_execDetails(ib_client):
     ib_client._event_subscriptions.get = MagicMock(return_value=handler_func)
 
     # Act
-    ib_client.execDetails(
-        req_id,
-        contract,
-        execution,
+    await ib_client.process_exec_details(
+        req_id=req_id,
+        contract=contract,
+        execution=execution,
     )
 
     # Assert
@@ -202,7 +247,8 @@ def test_execDetails(ib_client):
     )
 
 
-def test_commissionReport(ib_client):
+@pytest.mark.asyncio
+async def test_commissionReport(ib_client):
     # Arrange
     execution = IBTestExecStubs.execution(
         order_id=1,
@@ -223,7 +269,7 @@ def test_commissionReport(ib_client):
     ib_client._event_subscriptions.get = MagicMock(return_value=handler_func)
 
     # Act
-    ib_client.commissionReport(commission_report)
+    await ib_client.process_commission_report(commission_report=commission_report)
 
     # Assert
     handler_func.assert_called_with(

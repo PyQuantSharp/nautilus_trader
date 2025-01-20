@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,9 +24,13 @@ def is_nautilus_class(cls: type) -> bool:
     """
     if cls.__module__.startswith("nautilus_trader.core.nautilus_pyo3.model"):
         return True
+    if cls.__module__.startswith("nautilus_trader.model.greeks"):
+        return False
     if cls.__module__.startswith("nautilus_trader.model"):
         return True
     if cls.__module__.startswith("nautilus_trader.common"):
+        if cls.__name__.startswith("Signal"):
+            return False  # Custom user signal
         return True
     if cls.__module__.startswith("nautilus_trader.test_kit"):
         return False

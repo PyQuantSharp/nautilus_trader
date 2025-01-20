@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,6 +20,8 @@ from abc import ABCMeta
 from abc import abstractmethod
 from typing import Any
 
+import pandas as pd
+
 from nautilus_trader.core.data import Data
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import CustomData
@@ -27,6 +29,7 @@ from nautilus_trader.model.data import DataType
 from nautilus_trader.model.data import InstrumentClose
 from nautilus_trader.model.data import InstrumentStatus
 from nautilus_trader.model.data import OrderBookDelta
+from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import OrderBookDepth10
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
@@ -64,6 +67,16 @@ class BaseDataCatalog(ABC, metaclass=_CombinedMeta):
         bar_types: list[str] | None = None,
         **kwargs: Any,
     ) -> list[Data]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def query_last_timestamp(
+        self,
+        data_cls: type,
+        instrument_id: str | None = None,
+        bar_type: str | None = None,
+        ts_column: str = "ts_init",
+    ) -> pd.Timestamp | None:
         raise NotImplementedError
 
     def _query_subclasses(
@@ -119,9 +132,11 @@ class BaseDataCatalog(ABC, metaclass=_CombinedMeta):
     def order_book_deltas(
         self,
         instrument_ids: list[str] | None = None,
+        batched: bool = False,
         **kwargs: Any,
-    ) -> list[OrderBookDelta]:
-        return self.query(data_cls=OrderBookDelta, instrument_ids=instrument_ids, **kwargs)
+    ) -> list[OrderBookDelta] | list[OrderBookDeltas]:
+        data_cls = OrderBookDeltas if batched else OrderBookDelta
+        return self.query(data_cls=data_cls, instrument_ids=instrument_ids, **kwargs)
 
     def order_book_depth10(
         self,

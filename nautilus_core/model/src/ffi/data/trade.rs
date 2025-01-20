@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,19 +22,18 @@ use std::{
 use nautilus_core::ffi::string::str_to_cstr;
 
 use crate::{
-    data::trade::TradeTick,
+    data::TradeTick,
     enums::AggressorSide,
-    identifiers::{instrument_id::InstrumentId, trade_id::TradeId},
-    types::{price::Price, quantity::Quantity},
+    identifiers::{InstrumentId, TradeId},
+    types::{Price, Quantity},
 };
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn trade_tick_new(
     instrument_id: InstrumentId,
-    price_raw: i64,
-    price_prec: u8,
-    size_raw: u64,
-    size_prec: u8,
+    price: Price,
+    size: Quantity,
     aggressor_side: AggressorSide,
     trade_id: TradeId,
     ts_event: u64,
@@ -42,12 +41,12 @@ pub extern "C" fn trade_tick_new(
 ) -> TradeTick {
     TradeTick::new(
         instrument_id,
-        Price::from_raw(price_raw, price_prec).unwrap(),
-        Quantity::from_raw(size_raw, size_prec).unwrap(),
+        price,
+        size,
         aggressor_side,
         trade_id,
-        ts_event,
-        ts_init,
+        ts_event.into(),
+        ts_init.into(),
     )
 }
 
@@ -65,6 +64,6 @@ pub extern "C" fn trade_tick_hash(delta: &TradeTick) -> u64 {
 
 /// Returns a [`TradeTick`] as a C string pointer.
 #[no_mangle]
-pub extern "C" fn trade_tick_to_cstr(tick: &TradeTick) -> *const c_char {
-    str_to_cstr(&tick.to_string())
+pub extern "C" fn trade_tick_to_cstr(trade: &TradeTick) -> *const c_char {
+    str_to_cstr(&trade.to_string())
 }

@@ -4,12 +4,16 @@ from libc.stdint cimport uint8_t, uint64_t, uintptr_t
 
 cdef extern from "../includes/core.h":
 
+    # Number of milliseconds in one second.
     const uint64_t MILLISECONDS_IN_SECOND # = 1000
 
+    # Number of nanoseconds in one second.
     const uint64_t NANOSECONDS_IN_SECOND # = 1000000000
 
+    # Number of nanoseconds in one millisecond.
     const uint64_t NANOSECONDS_IN_MILLISECOND # = 1000000
 
+    # Number of nanoseconds in one microsecond.
     const uint64_t NANOSECONDS_IN_MICROSECOND # = 1000
 
     # `CVec` is a C compatible struct that stores an opaque pointer to a block of
@@ -27,10 +31,10 @@ cdef extern from "../includes/core.h":
         # Used when deallocating the memory
         uintptr_t cap;
 
-    # Represents a pseudo-random UUID (universally unique identifier)
+    # Represents a Universally Unique Identifier (UUID)
     # version 4 based on a 128-bit label as specified in RFC 4122.
     cdef struct UUID4_t:
-        # The UUID v4 C string value as a fixed-length byte array.
+        # The UUID v4 value as a fixed-length C string byte array (includes null terminator).
         uint8_t value[37];
 
     # Converts seconds to nanoseconds (ns).
@@ -58,8 +62,12 @@ cdef extern from "../includes/core.h":
 
     CVec cvec_new();
 
-    # Converts a UNIX nanoseconds timestamp to an ISO 8601 formatted C string pointer.
+    # Converts a UNIX nanoseconds timestamp to an ISO 8601 (RFC 3339) format C string pointer.
     const char *unix_nanos_to_iso8601_cstr(uint64_t timestamp_ns);
+
+    # Converts a UNIX nanoseconds timestamp to an ISO 8601 (RFC 3339) format C string pointer
+    # with millisecond precision.
+    const char *unix_nanos_to_iso8601_millis_cstr(uint64_t timestamp_ns);
 
     # Return the decimal precision inferred from the given C string.
     #
@@ -69,8 +77,21 @@ cdef extern from "../includes/core.h":
     #
     # # Panics
     #
+    # This function panics:
     # - If `ptr` is null.
     uint8_t precision_from_cstr(const char *ptr);
+
+    # Return the minimum price increment decimal precision inferred from the given C string.
+    #
+    # # Safety
+    #
+    # - Assumes `ptr` is a valid C string pointer.
+    #
+    # # Panics
+    #
+    # This function panics:
+    # - If `ptr` is null.
+    uint8_t min_increment_precision_from_cstr(const char *ptr);
 
     # Drops the C string memory at the pointer.
     #
@@ -80,6 +101,7 @@ cdef extern from "../includes/core.h":
     #
     # # Panics
     #
+    # This function panics:
     # - If `ptr` is null.
     void cstr_drop(const char *ptr);
 
@@ -93,6 +115,7 @@ cdef extern from "../includes/core.h":
     #
     # # Panics
     #
+    # This function panics:
     # - If `ptr` cannot be cast to a valid C string.
     UUID4_t uuid4_from_cstr(const char *ptr);
 

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,15 +17,15 @@ import asyncio
 
 import pytest
 
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
+from nautilus_trader.adapters.bybit.common.urls import get_http_base_url
+from nautilus_trader.adapters.bybit.common.urls import get_ws_base_url_public
 from nautilus_trader.adapters.bybit.config import BybitDataClientConfig
 from nautilus_trader.adapters.bybit.config import BybitExecClientConfig
 from nautilus_trader.adapters.bybit.data import BybitDataClient
 from nautilus_trader.adapters.bybit.execution import BybitExecutionClient
 from nautilus_trader.adapters.bybit.factories import BybitLiveDataClientFactory
 from nautilus_trader.adapters.bybit.factories import BybitLiveExecClientFactory
-from nautilus_trader.adapters.bybit.factories import _get_http_base_url
-from nautilus_trader.adapters.bybit.factories import _get_ws_base_url_public
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import LiveClock
 from nautilus_trader.common.component import MessageBus
@@ -51,29 +51,78 @@ class TestBybitFactories:
         self.cache = Cache(database=self.cache_db)
 
     @pytest.mark.parametrize(
-        ("is_testnet", "expected"),
+        ("is_demo", "is_testnet", "expected"),
         [
-            [False, "https://api.bytick.com"],
-            [True, "https://api-testnet.bybit.com"],
+            [False, False, "https://api.bybit.com"],
+            [False, True, "https://api-testnet.bybit.com"],
+            [True, False, "https://api-demo.bybit.com"],
         ],
     )
-    def test_get_http_base_url(self, is_testnet, expected):
-        base_url = _get_http_base_url(is_testnet)
+    def test_get_http_base_url(self, is_demo, is_testnet, expected):
+        base_url = get_http_base_url(is_demo, is_testnet)
         assert base_url == expected
 
     @pytest.mark.parametrize(
-        ("account_type", "is_testnet", "expected"),
+        ("product_type", "is_demo", "is_testnet", "expected"),
         [
-            [BybitInstrumentType.SPOT, False, "wss://stream.bybit.com/v5/public/spot"],
-            [BybitInstrumentType.SPOT, True, "wss://stream-testnet.bybit.com/v5/public/spot"],
-            [BybitInstrumentType.LINEAR, False, "wss://stream.bybit.com/v5/public/linear"],
-            [BybitInstrumentType.LINEAR, True, "wss://stream-testnet.bybit.com/v5/public/linear"],
-            [BybitInstrumentType.INVERSE, False, "wss://stream.bybit.com/v5/public/inverse"],
-            [BybitInstrumentType.INVERSE, True, "wss://stream-testnet.bybit.com/v5/public/inverse"],
+            [
+                BybitProductType.SPOT,
+                False,
+                False,
+                "wss://stream.bybit.com/v5/public/spot",
+            ],
+            [
+                BybitProductType.SPOT,
+                False,
+                True,
+                "wss://stream-testnet.bybit.com/v5/public/spot",
+            ],
+            [
+                BybitProductType.SPOT,
+                True,
+                False,
+                "wss://stream-demo.bybit.com/v5/public/spot",
+            ],
+            [
+                BybitProductType.LINEAR,
+                False,
+                False,
+                "wss://stream.bybit.com/v5/public/linear",
+            ],
+            [
+                BybitProductType.LINEAR,
+                False,
+                True,
+                "wss://stream-testnet.bybit.com/v5/public/linear",
+            ],
+            [
+                BybitProductType.LINEAR,
+                True,
+                False,
+                "wss://stream-demo.bybit.com/v5/public/linear",
+            ],
+            [
+                BybitProductType.INVERSE,
+                False,
+                False,
+                "wss://stream.bybit.com/v5/public/inverse",
+            ],
+            [
+                BybitProductType.INVERSE,
+                False,
+                True,
+                "wss://stream-testnet.bybit.com/v5/public/inverse",
+            ],
+            [
+                BybitProductType.INVERSE,
+                True,
+                False,
+                "wss://stream-demo.bybit.com/v5/public/inverse",
+            ],
         ],
     )
-    def test_get_ws_base_url(self, account_type, is_testnet, expected):
-        base_url = _get_ws_base_url_public(account_type, is_testnet)
+    def test_get_ws_base_url(self, product_type, is_demo, is_testnet, expected):
+        base_url = get_ws_base_url_public(product_type, is_demo, is_testnet)
         assert base_url == expected
 
     def test_create_bybit_live_data_client(self, bybit_http_client):
@@ -83,7 +132,7 @@ class TestBybitFactories:
             config=BybitDataClientConfig(
                 api_key="SOME_BYBIT_API_KEY",
                 api_secret="SOME_BYBIT_API_SECRET",
-                instrument_types=[BybitInstrumentType.LINEAR],
+                product_types=[BybitProductType.LINEAR],
             ),
             msgbus=self.msgbus,
             cache=self.cache,
@@ -98,7 +147,7 @@ class TestBybitFactories:
             config=BybitExecClientConfig(
                 api_key="SOME_BYBIT_API_KEY",
                 api_secret="SOME_BYBIT_API_SECRET",
-                instrument_types=[BybitInstrumentType.LINEAR],
+                product_types=[BybitProductType.LINEAR],
             ),
             msgbus=self.msgbus,
             cache=self.cache,

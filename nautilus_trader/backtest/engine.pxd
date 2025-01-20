@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -43,6 +43,8 @@ cdef class BacktestEngine:
     cdef datetime _backtest_end
 
     cdef dict[Venue, SimulatedExchange] _venues
+    cdef set[InstrumentId] _has_data
+    cdef set[InstrumentId] _has_book_data
     cdef list[Data] _data
     cdef uint64_t _data_len
     cdef uint64_t _index
@@ -55,4 +57,21 @@ cdef class BacktestEngine:
         CVec raw_handlers,
         uint64_t ts_now,
         bint only_now,
+        bint asof_now=*,
     )
+
+
+cdef inline bint should_skip_time_event(
+    uint64_t ts_event_init,
+    uint64_t ts_now,
+    bint only_now,
+    bint asof_now,
+):
+    if only_now and ts_event_init < ts_now:
+        return True
+    if (not only_now) and (ts_event_init == ts_now):
+        return True
+    if asof_now and ts_event_init > ts_now:
+        return True
+
+    return False

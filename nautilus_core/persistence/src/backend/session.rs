@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,13 +20,13 @@ use datafusion::{
     error::Result, logical_expr::expr::Sort, physical_plan::SendableRecordBatchStream, prelude::*,
 };
 use futures::StreamExt;
-use nautilus_core::ffi::cvec::CVec;
-use nautilus_model::data::{Data, HasTsInit};
-
-use super::kmerge_batch::{EagerStream, ElementBatchIter, KMerge};
-use crate::arrow::{
+use nautilus_core::{ffi::cvec::CVec, UnixNanos};
+use nautilus_model::data::{Data, GetTsInit};
+use nautilus_serialization::arrow::{
     DataStreamingError, DecodeDataFromRecordBatch, EncodeToRecordBatch, WriteStream,
 };
+
+use super::kmerge_batch::{EagerStream, ElementBatchIter, KMerge};
 
 #[derive(Debug, Default)]
 pub struct TsInitComparator;
@@ -41,7 +41,7 @@ where
         r: &ElementBatchIter<I, Data>,
     ) -> std::cmp::Ordering {
         // Max heap ordering must be reversed
-        l.item.get_ts_init().cmp(&r.item.get_ts_init()).reverse()
+        l.item.ts_init().cmp(&r.item.ts_init()).reverse()
     }
 }
 
@@ -64,14 +64,19 @@ pub struct DataBackendSession {
 }
 
 impl DataBackendSession {
+    /// Creates a new [`DataBackendSession`] instance.
     #[must_use]
     pub fn new(chunk_size: usize) -> Self {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
+        let session_cfg = SessionConfig::new()
+            .set_str("datafusion.optimizer.repartition_file_scans", "false")
+            .set_str("datafusion.optimizer.prefer_existing_sort", "true");
+        let session_ctx = SessionContext::new_with_config(session_cfg);
         Self {
-            session_ctx: SessionContext::default(),
+            session_ctx,
             batch_streams: Vec::default(),
             chunk_size,
             runtime: Arc::new(runtime),
@@ -112,11 +117,11 @@ impl DataBackendSession {
     {
         let parquet_options = ParquetReadOptions::<'_> {
             skip_metadata: Some(false),
-            file_sort_order: vec![vec![Expr::Sort(Sort {
-                expr: Box::new(col("ts_init")),
+            file_sort_order: vec![vec![Sort {
+                expr: col("ts_init"),
                 asc: true,
-                nulls_first: true,
-            })]],
+                nulls_first: false,
+            }]],
             ..Default::default()
         };
         self.runtime.block_on(self.session_ctx.register_parquet(
@@ -125,7 +130,7 @@ impl DataBackendSession {
             parquet_options,
         ))?;
 
-        let default_query = format!("SELECT * FROM {}", &table_name);
+        let default_query = format!("SELECT * FROM {} ORDER BY ts_init", &table_name);
         let sql_query = sql_query.unwrap_or(&default_query);
         let query = self.runtime.block_on(self.session_ctx.sql(sql_query))?;
 
@@ -143,7 +148,7 @@ impl DataBackendSession {
             Ok(batch) => T::decode_data_batch(batch.schema().metadata(), batch)
                 .unwrap()
                 .into_iter(),
-            Err(_err) => panic!("Error getting next batch from RecordBatchStream"),
+            Err(e) => panic!("Error getting next batch from RecordBatchStream: {e}"),
         });
 
         self.batch_streams
@@ -171,6 +176,45 @@ impl DataBackendSession {
 // Note: Intended to be used on a single Python thread
 unsafe impl Send for DataBackendSession {}
 
+#[must_use]
+pub fn build_query(
+    table: &str,
+    start: Option<UnixNanos>,
+    end: Option<UnixNanos>,
+    where_clause: Option<&str>,
+) -> String {
+    let mut conditions = Vec::new();
+
+    // Add where clause if provided
+    if let Some(clause) = where_clause {
+        conditions.push(clause.to_string());
+    }
+
+    // Add start condition if provided
+    if let Some(start_ts) = start {
+        conditions.push(format!("ts_init >= {start_ts}"));
+    }
+
+    // Add end condition if provided
+    if let Some(end_ts) = end {
+        conditions.push(format!("ts_init <= {end_ts}"));
+    }
+
+    // Build base query
+    let mut query = format!("SELECT * FROM {table}");
+
+    // Add WHERE clause if there are conditions
+    if !conditions.is_empty() {
+        query.push_str(" WHERE ");
+        query.push_str(&conditions.join(" AND "));
+    }
+
+    // Add ORDER BY clause
+    query.push_str(" ORDER BY ts_init");
+
+    query
+}
+
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.persistence")
@@ -183,8 +227,9 @@ pub struct DataQueryResult {
 }
 
 impl DataQueryResult {
+    /// Creates a new [`DataQueryResult`] instance.
     #[must_use]
-    pub fn new(result: QueryResult, size: usize) -> Self {
+    pub const fn new(result: QueryResult, size: usize) -> Self {
         Self {
             chunk: None,
             result,
@@ -238,6 +283,7 @@ impl Iterator for DataQueryResult {
 impl Drop for DataQueryResult {
     fn drop(&mut self) {
         self.drop_chunk();
+        self.result.clear();
     }
 }
 

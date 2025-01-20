@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,8 +20,9 @@ from typing import Any
 import pandas as pd
 import pytz
 
+from nautilus_trader.adapters.databento.common import instrument_id_to_pyo3
 from nautilus_trader.adapters.databento.constants import ALL_SYMBOLS
-from nautilus_trader.adapters.databento.constants import PUBLISHERS_PATH
+from nautilus_trader.adapters.databento.constants import PUBLISHERS_FILEPATH
 from nautilus_trader.adapters.databento.enums import DatabentoSchema
 from nautilus_trader.adapters.databento.loaders import DatabentoDataLoader
 from nautilus_trader.common.component import LiveClock
@@ -65,7 +66,7 @@ class DatabentoInstrumentProvider(InstrumentProvider):
         live_gateway: str | None = None,
         loader: DatabentoDataLoader | None = None,
         config: InstrumentProviderConfig | None = None,
-    ):
+    ) -> None:
         super().__init__(config=config)
 
         self._clock = clock
@@ -83,7 +84,7 @@ class DatabentoInstrumentProvider(InstrumentProvider):
             "(potentially millions)",
         )
 
-    async def load_ids_async(
+    async def load_ids_async(  # noqa: C901 (too complex)
         self,
         instrument_ids: list[InstrumentId],
         filters: dict | None = None,
@@ -121,58 +122,86 @@ class DatabentoInstrumentProvider(InstrumentProvider):
         live_client = nautilus_pyo3.DatabentoLiveClient(
             key=self._live_api_key,
             dataset=dataset,
-            publishers_path=str(PUBLISHERS_PATH),
+            publishers_filepath=str(PUBLISHERS_FILEPATH),
         )
 
         parent_symbols = list(filters.get("parent_symbols", [])) if filters is not None else None
+        # use_exchange_as_venue = filters.get("use_exchange_as_venue", True) if filters else True
 
         pyo3_instruments = []
-        success_msg = "All instruments received and decoded."
+
+        success_msg = "All instruments received and decoded"
+        timeout_secs = 2.0  # Inactivity timeout when receiving instruments
+        check_interval_secs = 0.1  # Check for inactivity interval
+        started_receiving = False
+        last_received_time = self._clock.timestamp()
+
+        self._log.info(
+            "Awaiting instrument definitions...",
+            LogColor.BLUE,
+        )
 
         def receive_instruments(pyo3_instrument: Any) -> None:
+            nonlocal last_received_time, started_receiving
+            started_receiving = True
             pyo3_instruments.append(pyo3_instrument)
             instrument_ids_to_decode.discard(pyo3_instrument.id.value)
+            last_received_time = self._clock.timestamp()
+
+            # Cancel task once all expected instruments received
             if not parent_symbols and not instrument_ids_to_decode:
                 raise asyncio.CancelledError(success_msg)
 
         live_client.subscribe(
             schema=DatabentoSchema.DEFINITION.value,
-            symbols=",".join(sorted([i.symbol.value for i in instrument_ids])),
+            instrument_ids=sorted(  # type: ignore[type-var]
+                [instrument_id_to_pyo3(instrument_id) for instrument_id in instrument_ids],
+            ),
             start=0,  # From start of current week (latest definitions)
+            # use_exchange_as_venue=use_exchange_as_venue,  # TODO
         )
 
         if parent_symbols:
-            self._log.info(f"Requesting parent symbols {parent_symbols}.", LogColor.BLUE)
+            self._log.info(f"Requesting parent symbols {parent_symbols}", LogColor.BLUE)
             live_client.subscribe(
                 schema=DatabentoSchema.DEFINITION.value,
-                stype_in="parent",
-                symbols=",".join(parent_symbols),
+                instrument_ids=[
+                    instrument_id_to_pyo3(InstrumentId.from_str(f"{parent_symbol}.GLBX"))
+                    for parent_symbol in parent_symbols
+                ],
                 start=0,  # From start of current week (latest definitions)
             )
 
+        async def monitor_inactivity():
+            nonlocal last_received_time
+            while True:
+                await asyncio.sleep(check_interval_secs)
+                if started_receiving and (
+                    self._clock.timestamp() - last_received_time > timeout_secs
+                ):
+                    raise asyncio.CancelledError(success_msg)
+
         try:
-            await asyncio.wait_for(
+            await asyncio.gather(
                 asyncio.ensure_future(
                     live_client.start(callback=receive_instruments, callback_pyo3=print),
                 ),
-                timeout=5.0,
+                monitor_inactivity(),
             )
-        except ValueError as e:
+        except asyncio.CancelledError as e:
             if success_msg in str(e):
-                # Expected on decode completion, continue
                 self._log.info(success_msg)
             else:
-                self._log.error(repr(e))
+                self._log.warning(str(e))
+        except Exception as e:
+            self._log.error(repr(e))
 
         instruments = instruments_from_pyo3(pyo3_instruments)
 
         for instrument in instruments:
             self.add(instrument=instrument)
-            self._log.debug(f"Added instrument {instrument.id}.")
+            self._log.debug(f"Added instrument {instrument.id}")
 
-        # Update the CME Globex exchange venue map
-        glbx_exchange_map = live_client.get_glbx_exchange_map()
-        self._loader.load_glbx_exchange_map(glbx_exchange_map)
         live_client.close()
 
     async def load_async(
@@ -199,7 +228,7 @@ class DatabentoInstrumentProvider(InstrumentProvider):
         Calling this method will incur a cost to your Databento account in USD.
 
         """
-        await self.load_ids_async([instrument_id])
+        await self.load_ids_async([instrument_id], filters=filters)
 
     async def get_range(
         self,
@@ -235,12 +264,16 @@ class DatabentoInstrumentProvider(InstrumentProvider):
 
         """
         dataset = self._check_all_datasets_equal(instrument_ids)
+        use_exchange_as_venue = filters.get("use_exchange_as_venue", True) if filters else True
 
+        # Here the NULL venue is overridden and so is used as a
+        # placeholder to conform to instrument ID conventions.
         pyo3_instruments = await self._http_client.get_range_instruments(
             dataset=dataset,
-            symbols=ALL_SYMBOLS,
+            instrument_ids=[instrument_id_to_pyo3(InstrumentId.from_str(f"{ALL_SYMBOLS}.NULL"))],
             start=pd.Timestamp(start, tz=pytz.utc).value,
             end=pd.Timestamp(end, tz=pytz.utc).value if end is not None else None,
+            use_exchange_as_venue=use_exchange_as_venue,
         )
 
         instruments = instruments_from_pyo3(pyo3_instruments)

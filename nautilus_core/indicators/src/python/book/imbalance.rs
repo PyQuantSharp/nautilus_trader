@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,11 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::python::to_pyvalue_err;
-use nautilus_model::{
-    orderbook::{book_mbo::OrderBookMbo, book_mbp::OrderBookMbp},
-    types::quantity::Quantity,
-};
+use nautilus_model::{orderbook::OrderBook, types::Quantity};
 use pyo3::prelude::*;
 
 use crate::{book::imbalance::BookImbalanceRatio, indicator::Indicator};
@@ -25,8 +21,8 @@ use crate::{book::imbalance::BookImbalanceRatio, indicator::Indicator};
 #[pymethods]
 impl BookImbalanceRatio {
     #[new]
-    fn py_new() -> PyResult<Self> {
-        Self::new().map_err(to_pyvalue_err)
+    const fn py_new() -> Self {
+        Self::new()
     }
 
     fn __repr__(&self) -> String {
@@ -41,13 +37,13 @@ impl BookImbalanceRatio {
 
     #[getter]
     #[pyo3(name = "count")]
-    fn py_count(&self) -> usize {
+    const fn py_count(&self) -> usize {
         self.count
     }
 
     #[getter]
     #[pyo3(name = "value")]
-    fn py_value(&self) -> f64 {
+    const fn py_value(&self) -> f64 {
         self.value
     }
 
@@ -59,21 +55,17 @@ impl BookImbalanceRatio {
 
     #[getter]
     #[pyo3(name = "initialized")]
-    fn py_initialized(&self) -> bool {
+    const fn py_initialized(&self) -> bool {
         self.initialized
     }
 
-    #[pyo3(name = "handle_book_mbo")]
-    fn py_handle_book_mbo(&mut self, book: &OrderBookMbo) {
-        self.handle_book_mbo(book);
-    }
-
-    #[pyo3(name = "handle_book_mbp")]
-    fn py_handle_book_mbp(&mut self, book: &OrderBookMbp) {
-        self.handle_book_mbp(book);
+    #[pyo3(name = "handle_book")]
+    fn py_handle_book(&mut self, book: &OrderBook) {
+        self.handle_book(book);
     }
 
     #[pyo3(name = "update")]
+    #[pyo3(signature = (best_bid=None, best_ask=None))]
     fn py_update(&mut self, best_bid: Option<Quantity>, best_ask: Option<Quantity>) {
         self.update(best_bid, best_ask);
     }

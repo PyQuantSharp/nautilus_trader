@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -36,6 +36,7 @@ from betfair_parser.spec.streaming import OrderMarketChange
 from betfair_parser.spec.streaming import OrderRunnerChange
 from betfair_parser.spec.streaming import stream_decode
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.adapters.betfair.client import BetfairHttpClient
 from nautilus_trader.adapters.betfair.common import BETFAIR_TICK_SCHEME
 from nautilus_trader.adapters.betfair.constants import BETFAIR_PRICE_PRECISION
@@ -56,14 +57,15 @@ from nautilus_trader.config import LoggingConfig
 from nautilus_trader.config import RiskEngineConfig
 from nautilus_trader.config import StreamingConfig
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
+from nautilus_trader.model.currencies import GBP
 from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import TraderId
 from nautilus_trader.model.instruments.betting import BettingInstrument
 from nautilus_trader.model.instruments.betting import null_handicap
+from nautilus_trader.model.objects import Money
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
-from tests import TEST_DATA_DIR
 
 
 RESOURCES_PATH = pathlib.Path(__file__).parent.joinpath("resources")
@@ -150,7 +152,7 @@ class BetfairTestStubs:
 
     @staticmethod
     def make_order_place_response(
-        market_id="1.182127885",
+        market_id="1-182127885",
         customer_order_ref="O-20210418-015047-001-001-3",
         bet_id="230486317487",
     ):
@@ -188,14 +190,17 @@ class BetfairTestStubs:
         yield from parser.parse(stream_decode(line))
 
     @staticmethod
-    def betfair_venue_config(name="BETFAIR") -> BacktestVenueConfig:
-        return BacktestVenueConfig(  # typing: ignore
+    def betfair_venue_config(
+        name: str = "BETFAIR",
+        book_type: str = "L1_MBP",
+    ) -> BacktestVenueConfig:
+        return BacktestVenueConfig(
             name=name,
             oms_type="NETTING",
             account_type="BETTING",
             base_currency="GBP",
             starting_balances=["10000 GBP"],
-            book_type="L2_MBP",
+            book_type=book_type,
         )
 
     @staticmethod
@@ -203,15 +208,17 @@ class BetfairTestStubs:
         catalog_path: str,
         catalog_fs_protocol: str = "memory",
         flush_interval_ms: int | None = None,
+        include_types: list[type] | None = None,
     ) -> StreamingConfig:
         return StreamingConfig(
             catalog_path=catalog_path,
             fs_protocol=catalog_fs_protocol,
             flush_interval_ms=flush_interval_ms,
+            include_types=include_types,
         )
 
     @staticmethod
-    def betfair_backtest_run_config(
+    def backtest_run_config(
         catalog_path: str,
         instrument_id: InstrumentId,
         catalog_fs_protocol: str = "memory",
@@ -222,6 +229,7 @@ class BetfairTestStubs:
         bypass_logging: bool = True,
         log_level: str = "WARNING",
         venue_name: str = "BETFAIR",
+        book_type: str = "L2_MBP",
     ) -> BacktestRunConfig:
         engine_config = BacktestEngineConfig(
             logging=LoggingConfig(
@@ -250,26 +258,27 @@ class BetfairTestStubs:
                     ),
                 ]
                 if add_strategy
-                else None
+                else []
             ),
         )
-        run_config = BacktestRunConfig(  # typing: ignore
+        run_config = BacktestRunConfig(
             engine=engine_config,
-            venues=[BetfairTestStubs.betfair_venue_config(name=venue_name)],
+            venues=[BetfairTestStubs.betfair_venue_config(name=venue_name, book_type=book_type)],
             data=[
-                BacktestDataConfig(  # typing: ignore
+                BacktestDataConfig(
                     data_cls=TradeTick.fully_qualified_name(),
                     catalog_path=catalog_path,
                     catalog_fs_protocol=catalog_fs_protocol,
                     instrument_id=instrument_id,
                 ),
-                BacktestDataConfig(  # typing: ignore
+                BacktestDataConfig(
                     data_cls=OrderBookDelta.fully_qualified_name(),
                     catalog_path=catalog_path,
                     catalog_fs_protocol=catalog_fs_protocol,
                     instrument_id=instrument_id,
                 ),
             ],
+            chunk_size=5_000,
         )
         return run_config
 
@@ -319,7 +328,7 @@ class BetfairRequests:
 
 class BetfairResponses:
     @staticmethod
-    def load(filename: str):
+    def load(filename: str) -> None:
         raw = (RESOURCES_PATH / "responses" / filename).read_bytes()
         data = msgspec.json.decode(raw)
         return data
@@ -406,9 +415,9 @@ class BetfairResponses:
         selection_id: int,
         customer_order_ref: str = "",
         customer_strategy_ref: str = "",
-    ):
+    ) -> None:
         raw = BetfairResponses.load("list_current_orders_single.json")
-        raw["result"]["currentOrders"][0].update(
+        raw["result"]["currentOrders"][0].update(  # type: ignore
             {
                 "marketId": market_id,
                 "selectionId": selection_id,
@@ -423,10 +432,10 @@ class BetfairResponses:
         return BetfairResponses.load("list_market_catalogue.json")
 
     @staticmethod
-    def betting_list_market_catalogue(filter_: MarketFilter | None = None):
+    def betting_list_market_catalogue(filter_: MarketFilter | None = None) -> dict:
         result = BetfairResponses.load("betting_list_market_catalogue.json")
         if filter_:
-            result = [r for r in result if r["marketId"] in filter_.market_ids]
+            result = [r for r in result if r["marketId"] in filter_.market_ids]  # type: ignore
         return {"jsonrpc": "2.0", "result": result, "id": 1}
 
     @staticmethod
@@ -644,14 +653,14 @@ class BetfairStreaming:
 class BetfairDataProvider:
     @staticmethod
     def betting_instrument(
-        market_id: str = "1.179082386",
+        market_id: str = "1-179082386",
         selection_id: str = "50214",
         handicap: str | None = None,
     ) -> BettingInstrument:
         return BettingInstrument(
             venue_name=BETFAIR_VENUE.value,
             betting_type="ODDS",
-            competition_id="12282733",
+            competition_id=12282733,
             competition_name="NFL",
             event_country_code="GB",
             event_id="29678534",
@@ -667,6 +676,7 @@ class BetfairDataProvider:
             selection_id=selection_id,
             selection_name="Kansas City Chiefs",
             currency="GBP",
+            min_notional=Money(1, GBP),
             ts_event=0,
             ts_init=0,
         )
@@ -741,7 +751,7 @@ class BetfairDataProvider:
         ]
 
     @staticmethod
-    def read_lines(filename: str = "1.166811431.bz2") -> list[bytes]:
+    def read_lines(filename: str = "1-166811431.bz2") -> list[bytes]:
         path = TEST_DATA_DIR / "betfair" / filename
 
         if path.suffix == ".bz2":
@@ -758,13 +768,13 @@ class BetfairDataProvider:
         return [stream_decode(line) for line in BetfairDataProvider.read_lines(filename)]
 
     @staticmethod
-    def market_updates(filename="1.166811431.bz2", runner1="60424", runner2="237478") -> list:
+    def market_updates(filename="1-166811431.bz2", runner1="60424", runner2="237478") -> list:
         market_id = pathlib.Path(filename).name
-        assert market_id.startswith("1.")
+        assert market_id.startswith("1-")
 
         def _fix_ids(r):
             return (
-                r.replace(market_id.encode(), b"1.180737206")
+                r.replace(market_id.encode(), b"1-180737206")
                 .replace(runner1.encode(), b"19248890")
                 .replace(runner2.encode(), b"38848248")
             )
@@ -784,7 +794,7 @@ class BetfairDataProvider:
         return instruments
 
     @staticmethod
-    def betfair_feed_parsed(market_id: str = "1.166564490"):
+    def betfair_feed_parsed(market_id: str = "1-166564490"):
         parser = BetfairParser(currency="GBP")
 
         instruments: list[BettingInstrument] = []
@@ -803,7 +813,7 @@ class BetfairDataProvider:
 
 
 def betting_instrument(
-    market_id: MarketId = "1.179082386",
+    market_id: MarketId = "1-179082386",
     selection_id: SelectionId = 50214,
     selection_handicap: Handicap | None = None,
 ) -> BettingInstrument:
@@ -828,6 +838,7 @@ def betting_instrument(
         currency="GBP",
         price_precision=BETFAIR_PRICE_PRECISION,
         size_precision=BETFAIR_QUANTITY_PRECISION,
+        min_notional=Money(1, GBP),
         tick_scheme_name=BETFAIR_TICK_SCHEME.name,
         ts_event=0,
         ts_init=0,
@@ -847,7 +858,7 @@ def betting_instrument_handicap() -> BettingInstrument:
             "event_country_code": "AU",
             "event_open_date": "2021-08-13T09:50:00+00:00",
             "betting_type": "ASIAN_HANDICAP_DOUBLE_LINE",
-            "market_id": "1.186249896",
+            "market_id": "1-186249896",
             "market_name": "Handicap",
             "market_start_time": "2021-08-13T09:50:00+00:00",
             "market_type": "HANDICAP",
@@ -864,7 +875,7 @@ def betting_instrument_handicap() -> BettingInstrument:
 
 
 def load_betfair_data(catalog: ParquetDataCatalog) -> ParquetDataCatalog:
-    filename = TEST_DATA_DIR / "betfair" / "1.166564490.bz2"
+    filename = TEST_DATA_DIR / "betfair" / "1-166564490.bz2"
 
     # Write betting instruments
     instruments = betting_instruments_from_file(filename, currency="GBP", ts_event=0, ts_init=0)

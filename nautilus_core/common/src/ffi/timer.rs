@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,10 +17,39 @@ use std::ffi::c_char;
 
 use nautilus_core::{
     ffi::string::{cstr_to_ustr, str_to_cstr},
-    uuid::UUID4,
+    UUID4,
 };
 
-use crate::timer::{TimeEvent, TimeEventHandler};
+use crate::timer::{TimeEvent, TimeEventCallback, TimeEventHandlerV2};
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+/// Legacy time event handler for Cython/FFI inter-operatbility
+///
+/// TODO: Remove once Cython is deprecated
+///
+/// `TimeEventHandler` associates a `TimeEvent` with a callback function that is triggered
+/// when the event's timestamp is reached.
+pub struct TimeEventHandler {
+    /// The time event.
+    pub event: TimeEvent,
+    /// The callable raw pointer.
+    pub callback_ptr: *mut c_char,
+}
+
+impl From<TimeEventHandlerV2> for TimeEventHandler {
+    fn from(value: TimeEventHandlerV2) -> Self {
+        Self {
+            event: value.event,
+            callback_ptr: match value.callback {
+                TimeEventCallback::Python(callback) => callback.as_ptr().cast::<c_char>(),
+                TimeEventCallback::Rust(_) => {
+                    panic!("Legacy time event handler is not supported for Rust callback")
+                }
+            },
+        }
+    }
+}
 
 /// # Safety
 ///
@@ -32,7 +61,12 @@ pub unsafe extern "C" fn time_event_new(
     ts_event: u64,
     ts_init: u64,
 ) -> TimeEvent {
-    TimeEvent::new(cstr_to_ustr(name_ptr), event_id, ts_event, ts_init)
+    TimeEvent::new(
+        cstr_to_ustr(name_ptr),
+        event_id,
+        ts_event.into(),
+        ts_init.into(),
+    )
 }
 
 /// Returns a [`TimeEvent`] as a C string pointer.
@@ -43,6 +77,6 @@ pub extern "C" fn time_event_to_cstr(event: &TimeEvent) -> *const c_char {
 
 // This function only exists so that `TimeEventHandler` is included in the definitions
 #[no_mangle]
-pub extern "C" fn dummy(v: TimeEventHandler) -> TimeEventHandler {
+pub const extern "C" fn dummy(v: TimeEventHandler) -> TimeEventHandler {
     v
 }

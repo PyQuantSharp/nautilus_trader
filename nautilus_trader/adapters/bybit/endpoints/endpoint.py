@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,18 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
-from nautilus_trader.adapters.bybit.schemas.symbol import BybitSymbol
+from nautilus_trader.adapters.bybit.common.symbol import BybitSymbol
+
+
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 
 
 def enc_hook(obj: Any) -> Any:
@@ -46,17 +51,20 @@ class BybitHttpEndpoint:
         self._method_request: dict[BybitEndpointType, Any] = {
             BybitEndpointType.NONE: self.client.send_request,
             BybitEndpointType.MARKET: self.client.send_request,
+            BybitEndpointType.ASSET: self.client.sign_request,
             BybitEndpointType.ACCOUNT: self.client.sign_request,
             BybitEndpointType.TRADE: self.client.sign_request,
+            BybitEndpointType.POSITION: self.client.sign_request,
+            BybitEndpointType.USER: self.client.sign_request,
         }
 
     async def _method(
         self,
         method_type: Any,
-        parameters: Any | None = None,
+        params: Any | None = None,
         ratelimiter_keys: Any | None = None,
     ) -> bytes:
-        payload: dict = self.decoder.decode(self.encoder.encode(parameters))
+        payload: dict = self.decoder.decode(self.encoder.encode(params))
         method_call = self._method_request[self.endpoint_type]
         raw: bytes = await method_call(
             http_method=method_type,

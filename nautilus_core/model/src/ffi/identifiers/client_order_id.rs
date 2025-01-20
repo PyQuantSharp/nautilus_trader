@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,9 @@
 
 use std::ffi::c_char;
 
-use nautilus_core::ffi::string::cstr_to_str;
+use nautilus_core::ffi::string::cstr_as_str;
 
-use crate::identifiers::client_order_id::ClientOrderId;
+use crate::identifiers::ClientOrderId;
 
 /// Returns a Nautilus identifier from a C string pointer.
 ///
@@ -26,10 +26,10 @@ use crate::identifiers::client_order_id::ClientOrderId;
 /// - Assumes `ptr` is a valid C string pointer.
 #[no_mangle]
 pub unsafe extern "C" fn client_order_id_new(ptr: *const c_char) -> ClientOrderId {
-    ClientOrderId::from(cstr_to_str(ptr))
+    ClientOrderId::from(cstr_as_str(ptr))
 }
 
 #[no_mangle]
 pub extern "C" fn client_order_id_hash(id: &ClientOrderId) -> u64 {
-    id.value.precomputed_hash()
+    id.inner().precomputed_hash()
 }

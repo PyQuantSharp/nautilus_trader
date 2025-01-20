@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
+
 import hashlib
 from functools import lru_cache
 
@@ -25,6 +26,7 @@ from nautilus_trader.adapters.betfair.constants import BETFAIR_VENUE
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.nautilus_pyo3 import OrderSide
 from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import BettingInstrument
 from nautilus_trader.model.instruments.betting import make_symbol
 from nautilus_trader.model.instruments.betting import null_handicap
 
@@ -44,7 +46,7 @@ def betfair_instrument_id(
     Create an instrument ID from betfair fields.
 
     >>> betfair_instrument_id(market_id="1.201070830", selection_id=123456, selection_handicap=None)
-    InstrumentId('1.201070830-123456-None.BETFAIR')
+    InstrumentId('1-201070830-123456-None.BETFAIR')
 
     """
     PyCondition.not_empty(market_id, "market_id")
@@ -55,7 +57,7 @@ def betfair_instrument_id(
 def instrument_id_betfair_ids(
     instrument_id: InstrumentId,
 ) -> tuple[MarketId, SelectionId, Handicap | None]:
-    parts = instrument_id.symbol.value.split("-", maxsplit=2)
+    parts = instrument_id.symbol.value.rsplit("-", maxsplit=2)
     return (
         MarketId(parts[0]),
         SelectionId(parts[1]),
@@ -87,3 +89,21 @@ def bet_side_to_order_side(side: BetSide) -> OrderSide:
         return OrderSide.SELL
     else:
         raise RuntimeError(f"Unknown side: {side}")
+
+
+def merge_instrument_fields(
+    old: BettingInstrument,
+    new: BettingInstrument,
+    logger,
+) -> BettingInstrument:
+    old_dict = old.to_dict(old)
+    new_dict = new.to_dict(new)
+    for key, value in new_dict.items():
+        if key in ("type", "id", "info"):
+            continue
+        if value != old_dict[key] and value:
+            old_value = old_dict[key]
+            logger.debug(f"Got updated field for {old.id}: {key=} {value=} {old_value=}")
+            old_dict[key] = value
+
+    return BettingInstrument.from_dict(old_dict)

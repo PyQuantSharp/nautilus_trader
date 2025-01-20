@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,10 +17,9 @@ use std::{collections::HashMap, io::Cursor, str::FromStr};
 
 use datafusion::arrow::ipc::reader::StreamReader;
 use nautilus_core::python::to_pyvalue_err;
-use nautilus_model::{data::trade::TradeTick, identifiers::instrument_id::InstrumentId};
+use nautilus_model::{data::TradeTick, identifiers::InstrumentId};
+use nautilus_serialization::arrow::DecodeFromRecordBatch;
 use pyo3::prelude::*;
-
-use crate::arrow::DecodeFromRecordBatch;
 
 #[pyclass]
 pub struct TradeTickDataWrangler {
@@ -51,16 +50,16 @@ impl TradeTickDataWrangler {
     }
 
     #[getter]
-    fn price_precision(&self) -> u8 {
+    const fn price_precision(&self) -> u8 {
         self.price_precision
     }
 
     #[getter]
-    fn size_precision(&self) -> u8 {
+    const fn size_precision(&self) -> u8 {
         self.size_precision
     }
 
-    fn process_record_batch_bytes(&self, _py: Python, data: &[u8]) -> PyResult<Vec<TradeTick>> {
+    fn process_record_batch_bytes(&self, data: &[u8]) -> PyResult<Vec<TradeTick>> {
         // Create a StreamReader (from Arrow IPC)
         let cursor = Cursor::new(data);
         let reader = match StreamReader::try_new(cursor, None) {

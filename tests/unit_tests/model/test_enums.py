@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,11 +24,11 @@ from nautilus_trader.model.enums import BookAction
 from nautilus_trader.model.enums import BookType
 from nautilus_trader.model.enums import ContingencyType
 from nautilus_trader.model.enums import CurrencyType
-from nautilus_trader.model.enums import HaltReason
 from nautilus_trader.model.enums import InstrumentClass
 from nautilus_trader.model.enums import InstrumentCloseType
 from nautilus_trader.model.enums import LiquiditySide
 from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import MarketStatusAction
 from nautilus_trader.model.enums import OmsType
 from nautilus_trader.model.enums import OptionKind
 from nautilus_trader.model.enums import OrderSide
@@ -36,6 +36,7 @@ from nautilus_trader.model.enums import OrderStatus
 from nautilus_trader.model.enums import OrderType
 from nautilus_trader.model.enums import PositionSide
 from nautilus_trader.model.enums import PriceType
+from nautilus_trader.model.enums import RecordFlag
 from nautilus_trader.model.enums import TimeInForce
 from nautilus_trader.model.enums import TradingState
 from nautilus_trader.model.enums import TrailingOffsetType
@@ -58,14 +59,14 @@ from nautilus_trader.model.enums import contingency_type_from_str
 from nautilus_trader.model.enums import contingency_type_to_str
 from nautilus_trader.model.enums import currency_type_from_str
 from nautilus_trader.model.enums import currency_type_to_str
-from nautilus_trader.model.enums import halt_reason_from_str
-from nautilus_trader.model.enums import halt_reason_to_str
 from nautilus_trader.model.enums import instrument_class_from_str
 from nautilus_trader.model.enums import instrument_class_to_str
 from nautilus_trader.model.enums import instrument_close_type_from_str
 from nautilus_trader.model.enums import instrument_close_type_to_str
 from nautilus_trader.model.enums import liquidity_side_from_str
 from nautilus_trader.model.enums import liquidity_side_to_str
+from nautilus_trader.model.enums import market_status_action_from_str
+from nautilus_trader.model.enums import market_status_action_to_str
 from nautilus_trader.model.enums import market_status_from_str
 from nautilus_trader.model.enums import market_status_to_str
 from nautilus_trader.model.enums import oms_type_from_str
@@ -82,6 +83,8 @@ from nautilus_trader.model.enums import position_side_from_str
 from nautilus_trader.model.enums import position_side_to_str
 from nautilus_trader.model.enums import price_type_from_str
 from nautilus_trader.model.enums import price_type_to_str
+from nautilus_trader.model.enums import record_flag_from_str
+from nautilus_trader.model.enums import record_flag_to_str
 from nautilus_trader.model.enums import time_in_force_from_str
 from nautilus_trader.model.enums import time_in_force_to_str
 from nautilus_trader.model.enums import trading_state_from_str
@@ -244,6 +247,7 @@ class TestInstrumentClass:
             [InstrumentClass.OPTION_SPREAD, "OPTION_SPREAD"],
             [InstrumentClass.WARRANT, "WARRANT"],
             [InstrumentClass.SPORTS_BETTING, "SPORTS_BETTING"],
+            [InstrumentClass.BINARY_OPTION, "BINARY_OPTION"],
         ],
     )
     def test_instrument_class_to_str(self, enum, expected):
@@ -267,6 +271,7 @@ class TestInstrumentClass:
             ["OPTION_SPREAD", InstrumentClass.OPTION_SPREAD],
             ["WARRANT", InstrumentClass.WARRANT],
             ["SPORTS_BETTING", InstrumentClass.SPORTS_BETTING],
+            ["BINARY_OPTION", InstrumentClass.BINARY_OPTION],
         ],
     )
     def test_instrument_class_from_str(self, string, expected):
@@ -502,38 +507,6 @@ class TestOptionKind:
         assert result == expected
 
 
-class TestHaltReason:
-    @pytest.mark.parametrize(
-        ("enum", "expected"),
-        [
-            [HaltReason.NOT_HALTED, "NOT_HALTED"],
-            [HaltReason.GENERAL, "GENERAL"],
-            [HaltReason.VOLATILITY, "VOLATILITY"],
-        ],
-    )
-    def test_halt_reason_to_str(self, enum, expected):
-        # Arrange, Act
-        result = halt_reason_to_str(enum)
-
-        # Assert
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        ("string", "expected"),
-        [
-            ["NOT_HALTED", HaltReason.NOT_HALTED],
-            ["GENERAL", HaltReason.GENERAL],
-            ["VOLATILITY", HaltReason.VOLATILITY],
-        ],
-    )
-    def test_halt_reason_from_str(self, string, expected):
-        # Arrange, Act
-        result = halt_reason_from_str(string)
-
-        # Assert
-        assert result == expected
-
-
 class TestInstrumentCloseType:
     @pytest.mark.parametrize(
         ("enum", "expected"),
@@ -600,11 +573,11 @@ class TestMarketStatus:
     @pytest.mark.parametrize(
         ("enum", "expected"),
         [
-            [MarketStatus.CLOSED, "CLOSED"],
-            [MarketStatus.PRE_OPEN, "PRE_OPEN"],
             [MarketStatus.OPEN, "OPEN"],
-            [MarketStatus.PAUSE, "PAUSE"],
-            [MarketStatus.PRE_CLOSE, "PRE_CLOSE"],
+            [MarketStatus.CLOSED, "CLOSED"],
+            [MarketStatus.PAUSED, "PAUSED"],
+            [MarketStatus.SUSPENDED, "SUSPENDED"],
+            [MarketStatus.NOT_AVAILABLE, "NOT_AVAILABLE"],
         ],
     )
     def test_market_status_to_str(self, enum, expected):
@@ -617,16 +590,74 @@ class TestMarketStatus:
     @pytest.mark.parametrize(
         ("string", "expected"),
         [
-            ["CLOSED", MarketStatus.CLOSED],
-            ["PRE_OPEN", MarketStatus.PRE_OPEN],
             ["OPEN", MarketStatus.OPEN],
-            ["PAUSE", MarketStatus.PAUSE],
-            ["PRE_CLOSE", MarketStatus.PRE_CLOSE],
+            ["CLOSED", MarketStatus.CLOSED],
+            ["PAUSED", MarketStatus.PAUSED],
+            ["SUSPENDED", MarketStatus.SUSPENDED],
+            ["NOT_AVAILABLE", MarketStatus.NOT_AVAILABLE],
         ],
     )
     def test_market_status_from_str(self, string, expected):
         # Arrange, Act
         result = market_status_from_str(string)
+
+        # Assert
+        assert result == expected
+
+
+class TestMarketStatusAction:
+    @pytest.mark.parametrize(
+        ("enum", "expected"),
+        [
+            [MarketStatusAction.NONE, "NONE"],
+            [MarketStatusAction.PRE_OPEN, "PRE_OPEN"],
+            [MarketStatusAction.PRE_CROSS, "PRE_CROSS"],
+            [MarketStatusAction.QUOTING, "QUOTING"],
+            [MarketStatusAction.CROSS, "CROSS"],
+            [MarketStatusAction.ROTATION, "ROTATION"],
+            [MarketStatusAction.NEW_PRICE_INDICATION, "NEW_PRICE_INDICATION"],
+            [MarketStatusAction.TRADING, "TRADING"],
+            [MarketStatusAction.HALT, "HALT"],
+            [MarketStatusAction.PAUSE, "PAUSE"],
+            [MarketStatusAction.SUSPEND, "SUSPEND"],
+            [MarketStatusAction.PRE_CLOSE, "PRE_CLOSE"],
+            [MarketStatusAction.CLOSE, "CLOSE"],
+            [MarketStatusAction.POST_CLOSE, "POST_CLOSE"],
+            [MarketStatusAction.SHORT_SELL_RESTRICTION_CHANGE, "SHORT_SELL_RESTRICTION_CHANGE"],
+            [MarketStatusAction.NOT_AVAILABLE_FOR_TRADING, "NOT_AVAILABLE_FOR_TRADING"],
+        ],
+    )
+    def test_market_status_action_to_str(self, enum, expected):
+        # Arrange, Act
+        result = market_status_action_to_str(enum)
+
+        # Assert
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        ("string", "expected"),
+        [
+            ["NONE", MarketStatusAction.NONE],
+            ["PRE_OPEN", MarketStatusAction.PRE_OPEN],
+            ["PRE_CROSS", MarketStatusAction.PRE_CROSS],
+            ["QUOTING", MarketStatusAction.QUOTING],
+            ["CROSS", MarketStatusAction.CROSS],
+            ["ROTATION", MarketStatusAction.ROTATION],
+            ["NEW_PRICE_INDICATION", MarketStatusAction.NEW_PRICE_INDICATION],
+            ["TRADING", MarketStatusAction.TRADING],
+            ["HALT", MarketStatusAction.HALT],
+            ["PAUSE", MarketStatusAction.PAUSE],
+            ["SUSPEND", MarketStatusAction.SUSPEND],
+            ["PRE_CLOSE", MarketStatusAction.PRE_CLOSE],
+            ["CLOSE", MarketStatusAction.CLOSE],
+            ["POST_CLOSE", MarketStatusAction.POST_CLOSE],
+            ["SHORT_SELL_RESTRICTION_CHANGE", MarketStatusAction.SHORT_SELL_RESTRICTION_CHANGE],
+            ["NOT_AVAILABLE_FOR_TRADING", MarketStatusAction.NOT_AVAILABLE_FOR_TRADING],
+        ],
+    )
+    def test_market_status_action_from_str(self, string, expected):
+        # Arrange, Act
+        result = market_status_action_from_str(string)
 
         # Assert
         assert result == expected
@@ -785,6 +816,40 @@ class TestOrderType:
     def test_order_type_from_str(self, string, expected):
         # Arrange, Act
         result = order_type_from_str(string)
+
+        # Assert
+        assert result == expected
+
+
+class TestRecordFlag:
+    @pytest.mark.parametrize(
+        ("enum", "expected"),
+        [
+            [RecordFlag.F_LAST, "F_LAST"],
+            [RecordFlag.F_TOB, "F_TOB"],
+            [RecordFlag.F_SNAPSHOT, "F_SNAPSHOT"],
+            [RecordFlag.F_MBP, "F_MBP"],
+        ],
+    )
+    def test_record_flag_to_str(self, enum, expected):
+        # Arrange, Act
+        result = record_flag_to_str(enum)
+
+        # Assert
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        ("string", "expected"),
+        [
+            ["F_LAST", RecordFlag.F_LAST],
+            ["F_TOB", RecordFlag.F_TOB],
+            ["F_SNAPSHOT", RecordFlag.F_SNAPSHOT],
+            ["F_MBP", RecordFlag.F_MBP],
+        ],
+    )
+    def test_record_flag_from_str(self, string, expected):
+        # Arrange, Act
+        result = record_flag_from_str(string)
 
         # Assert
         assert result == expected
@@ -971,7 +1036,7 @@ class TestTriggerType:
         [
             [TriggerType.NO_TRIGGER, "NO_TRIGGER"],
             [TriggerType.DEFAULT, "DEFAULT"],
-            [TriggerType.LAST_TRADE, "LAST_TRADE"],
+            [TriggerType.LAST_PRICE, "LAST_PRICE"],
             [TriggerType.BID_ASK, "BID_ASK"],
             [TriggerType.DOUBLE_LAST, "DOUBLE_LAST"],
             [TriggerType.DOUBLE_BID_ASK, "DOUBLE_BID_ASK"],
@@ -993,7 +1058,7 @@ class TestTriggerType:
         [
             ["NO_TRIGGER", TriggerType.NO_TRIGGER],
             ["DEFAULT", TriggerType.DEFAULT],
-            ["LAST_TRADE", TriggerType.LAST_TRADE],
+            ["LAST_PRICE", TriggerType.LAST_PRICE],
             ["BID_ASK", TriggerType.BID_ASK],
             ["DOUBLE_LAST", TriggerType.DOUBLE_LAST],
             ["DOUBLE_BID_ASK", TriggerType.DOUBLE_BID_ASK],

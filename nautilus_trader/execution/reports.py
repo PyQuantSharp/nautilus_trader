@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -98,15 +98,20 @@ class OrderStatusReport(ExecutionReport):
     report_id : UUID4
         The report ID.
     ts_accepted : int
-        The UNIX timestamp (nanoseconds) when the reported order was accepted.
+        UNIX timestamp (nanoseconds) when the reported order was accepted.
     ts_last : int
-        The UNIX timestamp (nanoseconds) of the last order status change.
+        UNIX timestamp (nanoseconds) of the last order status change.
     ts_init : int
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_order_id : ClientOrderId, optional
         The reported client order ID.
     order_list_id : OrderListId, optional
         The reported order list ID associated with the order.
+    venue_position_id : PositionId, optional
+        The reported venue position ID for the order. If the trading venue has
+        associated a position ID / ticket with the order then pass that here,
+        otherwise pass ``None`` and the execution engine OMS will handle
+        position ID resolution.
     contingency_type : ContingencyType, default ``NO_CONTINGENCY``
         The reported order contingency type.
     expire_time : datetime, optional
@@ -134,7 +139,7 @@ class OrderStatusReport(ExecutionReport):
     cancel_reason : str, optional
         The reported reason for order cancellation.
     ts_triggered : int, optional
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     Raises
     ------
@@ -166,6 +171,7 @@ class OrderStatusReport(ExecutionReport):
         ts_init: int,
         client_order_id: ClientOrderId | None = None,  # (None if external order)
         order_list_id: OrderListId | None = None,
+        venue_position_id: PositionId | None = None,  # (None if not assigned by venue)
         contingency_type: ContingencyType = ContingencyType.NO_CONTINGENCY,
         expire_time: datetime | None = None,
         price: Price | None = None,
@@ -202,6 +208,7 @@ class OrderStatusReport(ExecutionReport):
         self.client_order_id = client_order_id
         self.order_list_id = order_list_id
         self.venue_order_id = venue_order_id
+        self.venue_position_id = venue_position_id
         self.order_side = order_side
         self.order_type = order_type
         self.contingency_type = contingency_type
@@ -217,7 +224,7 @@ class OrderStatusReport(ExecutionReport):
         self.quantity = quantity
         self.filled_qty = filled_qty
         self.leaves_qty = Quantity(
-            self.quantity - self.filled_qty,
+            float(self.quantity - self.filled_qty),
             self.quantity.precision,
         )
         self.display_qty = display_qty
@@ -228,6 +235,24 @@ class OrderStatusReport(ExecutionReport):
         self.ts_accepted = ts_accepted
         self.ts_triggered = ts_triggered or 0
         self.ts_last = ts_last
+
+    @property
+    def is_open(self) -> bool:
+        """
+        Return whether the reported order status is 'open'.
+
+        Returns
+        -------
+        bool
+
+        """
+        return self.order_status in (
+            OrderStatus.ACCEPTED,
+            OrderStatus.TRIGGERED,
+            OrderStatus.PENDING_CANCEL,
+            OrderStatus.PENDING_UPDATE,
+            OrderStatus.PARTIALLY_FILLED,
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, OrderStatusReport):
@@ -247,6 +272,7 @@ class OrderStatusReport(ExecutionReport):
             f"client_order_id={self.client_order_id}, "
             f"order_list_id={self.order_list_id}, "  # Can be None
             f"venue_order_id={self.venue_order_id}, "  # Can be None
+            f"venue_position_id={self.venue_position_id}, "  # Can be None
             f"order_side={order_side_to_str(self.order_side)}, "
             f"order_type={order_type_to_str(self.order_type)}, "
             f"contingency_type={contingency_type_to_str(self.contingency_type)}, "
@@ -259,9 +285,9 @@ class OrderStatusReport(ExecutionReport):
             f"limit_offset={self.limit_offset}, "
             f"trailing_offset={self.trailing_offset}, "
             f"trailing_offset_type={trailing_offset_type_to_str(self.trailing_offset_type)}, "
-            f"quantity={self.quantity.to_str()}, "
-            f"filled_qty={self.filled_qty.to_str()}, "
-            f"leaves_qty={self.leaves_qty.to_str()}, "
+            f"quantity={self.quantity.to_formatted_str()}, "
+            f"filled_qty={self.filled_qty.to_formatted_str()}, "
+            f"leaves_qty={self.leaves_qty.to_formatted_str()}, "
             f"display_qty={self.display_qty}, "
             f"avg_px={self.avg_px}, "
             f"post_only={self.post_only}, "
@@ -295,14 +321,17 @@ class FillReport(ExecutionReport):
         The reported quantity of the trade.
     last_px : Price
         The reported price of the trade.
+    commission : Money
+        The reported commission for the trade.
+        If no commission then use a zero `Money` amount of the commission currency.
     liquidity_side : LiquiditySide {``NO_LIQUIDITY_SIDE``, ``MAKER``, ``TAKER``}
         The reported liquidity side for the trade.
     report_id : UUID4
         The report ID.
     ts_event : int
-        The UNIX timestamp (nanoseconds) when the trade occurred.
+        UNIX timestamp (nanoseconds) when the trade occurred.
     ts_init : int
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     client_order_id : ClientOrderId, optional
         The reported client order ID for the trade.
     venue_position_id : PositionId, optional
@@ -310,8 +339,6 @@ class FillReport(ExecutionReport):
         assigned a position ID / ticket for the trade then pass that here,
         otherwise pass ``None`` and the execution engine OMS will handle
         position ID resolution.
-    commission : Money, optional
-        The reported commission for the trade (can be ``None``).
 
     Raises
     ------
@@ -329,13 +356,13 @@ class FillReport(ExecutionReport):
         order_side: OrderSide,
         last_qty: Quantity,
         last_px: Price,
+        commission: Money,
         liquidity_side: LiquiditySide,
         report_id: UUID4,
         ts_event: int,
         ts_init: int,
         client_order_id: ClientOrderId | None = None,  # (None if external order)
         venue_position_id: PositionId | None = None,
-        commission: Money | None = None,
     ) -> None:
         PyCondition.positive(last_qty, "last_qty")
 
@@ -377,9 +404,9 @@ class FillReport(ExecutionReport):
             f"venue_position_id={self.venue_position_id}, "
             f"trade_id={self.trade_id}, "
             f"order_side={order_side_to_str(self.order_side)}, "
-            f"last_qty={self.last_qty.to_str()}, "
-            f"last_px={self.last_px}, "
-            f"commission={self.commission.to_str() if self.commission is not None else None}, "
+            f"last_qty={self.last_qty.to_formatted_str()}, "
+            f"last_px={self.last_px.to_formatted_str()}, "
+            f"commission={self.commission.to_formatted_str() if self.commission is not None else None}, "
             f"liquidity_side={liquidity_side_to_str(self.liquidity_side)}, "
             f"report_id={self.id}, "
             f"ts_event={self.ts_event}, "
@@ -404,9 +431,9 @@ class PositionStatusReport(ExecutionReport):
     report_id : UUID4
         The report ID.
     ts_last : int
-        The UNIX timestamp (nanoseconds) of the last position change.
+        UNIX timestamp (nanoseconds) of the last position change.
     ts_init : int
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
     venue_position_id : PositionId, optional
         The reported venue position ID (assigned by the venue). If the trading
         venue has assigned a position ID / ticket for the trade then pass that
@@ -449,7 +476,7 @@ class PositionStatusReport(ExecutionReport):
             f"instrument_id={self.instrument_id}, "
             f"venue_position_id={self.venue_position_id}, "
             f"position_side={position_side_to_str(self.position_side)}, "
-            f"quantity={self.quantity.to_str()}, "
+            f"quantity={self.quantity.to_formatted_str()}, "
             f"signed_decimal_qty={self.signed_decimal_qty}, "
             f"report_id={self.id}, "
             f"ts_last={self.ts_last}, "
@@ -473,7 +500,7 @@ class ExecutionMassStatus(Document):
     report_id : UUID4
         The report ID.
     ts_init : int
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     """
 
@@ -510,9 +537,10 @@ class ExecutionMassStatus(Document):
             f"ts_init={self.ts_init})"
         )
 
+    @property
     def order_reports(self) -> dict[VenueOrderId, OrderStatusReport]:
         """
-        Return the order status reports.
+        The order status reports.
 
         Returns
         -------
@@ -521,9 +549,10 @@ class ExecutionMassStatus(Document):
         """
         return self._order_reports.copy()
 
+    @property
     def fill_reports(self) -> dict[VenueOrderId, list[FillReport]]:
         """
-        Return the fill reports.
+        The fill reports.
 
         Returns
         -------
@@ -532,9 +561,10 @@ class ExecutionMassStatus(Document):
         """
         return self._fill_reports.copy()
 
+    @property
     def position_reports(self) -> dict[InstrumentId, list[PositionStatusReport]]:
         """
-        Return the position status reports.
+        The position status reports.
 
         Returns
         -------

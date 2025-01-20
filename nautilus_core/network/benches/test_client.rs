@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,8 +12,6 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
-
-use std::collections::HashMap;
 
 use nautilus_network::http::InnerHttpClient;
 use reqwest::Method;
@@ -30,14 +28,15 @@ async fn main() {
             reqs.push(client.send_request(
                 Method::GET,
                 "http://127.0.0.1:3000".to_string(),
-                HashMap::new(),
+                None,
+                None,
                 None,
             ));
         }
 
         let resp = futures::future::join_all(reqs.drain(0..)).await;
         assert!(resp.iter().all(|res| if let Ok(resp) = res {
-            resp.status == 200
+            resp.status.is_success()
         } else {
             false
         }));

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -44,6 +44,8 @@ class TestBetfairPersistence:
                 side=OrderSide.BUY,
                 order_id=1,
             ),
+            flags=0,
+            sequence=0,
             ts_event=1635313844283000000,
             ts_init=1635313844283000000,
         )

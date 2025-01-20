@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,7 +22,7 @@ from nautilus_trader.adapters.binance.common.constants import BINANCE_VENUE
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
 from nautilus_trader.adapters.binance.common.enums import BinanceSymbolFilterType
 from nautilus_trader.adapters.binance.common.schemas.market import BinanceSymbolFilter
-from nautilus_trader.adapters.binance.common.schemas.symbol import BinanceSymbol
+from nautilus_trader.adapters.binance.common.symbol import BinanceSymbol
 from nautilus_trader.adapters.binance.futures.enums import BinanceFuturesContractStatus
 from nautilus_trader.adapters.binance.futures.enums import BinanceFuturesContractType
 from nautilus_trader.adapters.binance.futures.http.account import BinanceFuturesAccountHttpAPI
@@ -40,6 +40,7 @@ from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.datetime import millis_to_nanos
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import Symbol
+from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.instruments.crypto_future import CryptoFuture
 from nautilus_trader.model.instruments.crypto_perpetual import CryptoPerpetual
 from nautilus_trader.model.objects import PRICE_MAX
@@ -53,7 +54,7 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceFuturesInstrumentProvider(InstrumentProvider):
     """
-    Provides a means of loading instruments from the `Binance Futures` exchange.
+    Provides a means of loading instruments from the Binance Futures exchange.
 
     Parameters
     ----------
@@ -70,12 +71,14 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
         clock: LiveClock,
         account_type: BinanceAccountType = BinanceAccountType.USDT_FUTURE,
         config: InstrumentProviderConfig | None = None,
-    ):
+        venue: Venue = BINANCE_VENUE,
+    ) -> None:
         super().__init__(config=config)
 
         self._clock = clock
         self._client = client
         self._account_type = account_type
+        self._venue = venue
 
         self._http_account = BinanceFuturesAccountHttpAPI(
             self._client,
@@ -99,8 +102,9 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
         # These fee rates assume USD-M Futures Trading without the 10% off for using BNB or BUSD.
         # The next step is to enable users to pass their own fee rates map via the config.
         # In the future, we aim to represent this fee model with greater accuracy for backtesting.
+        # https://www.binance.com/en/fee/futureFee
         self._fee_rates = {
-            0: BinanceFuturesFeeRates(feeTier=0, maker="0.000200", taker="0.000400"),
+            0: BinanceFuturesFeeRates(feeTier=0, maker="0.000200", taker="0.000500"),
             1: BinanceFuturesFeeRates(feeTier=1, maker="0.000160", taker="0.000400"),
             2: BinanceFuturesFeeRates(feeTier=2, maker="0.000140", taker="0.000350"),
             3: BinanceFuturesFeeRates(feeTier=3, maker="0.000120", taker="0.000320"),
@@ -140,15 +144,12 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
         filters: dict | None = None,
     ) -> None:
         if not instrument_ids:
-            self._log.info("No instrument IDs given for loading.")
+            self._log.warning("No instrument IDs given for loading.")
             return
 
         # Check all instrument IDs
         for instrument_id in instrument_ids:
-            PyCondition.equal(instrument_id.venue, BINANCE_VENUE, "instrument_id.venue", "BINANCE")
-
-        filters_str = "..." if not filters else f" with filters {filters}..."
-        self._log.info(f"Loading instruments {instrument_ids}{filters_str}.")
+            PyCondition.equal(instrument_id.venue, self._venue, "instrument_id.venue", "BINANCE")
 
         # Extract all symbol strings
         symbols = [
@@ -184,7 +185,7 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
 
     async def load_async(self, instrument_id: InstrumentId, filters: dict | None = None) -> None:
         PyCondition.not_none(instrument_id, "instrument_id")
-        PyCondition.equal(instrument_id.venue, BINANCE_VENUE, "instrument_id.venue", "BINANCE")
+        PyCondition.equal(instrument_id.venue, self._venue, "instrument_id.venue", "BINANCE")
 
         filters_str = "..." if not filters else f" with filters {filters}..."
         self._log.debug(f"Loading instrument {instrument_id}{filters_str}.")
@@ -238,7 +239,7 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
                 self._account_type,
             )
             nautilus_symbol = Symbol(parsed_symbol)
-            instrument_id = InstrumentId(symbol=nautilus_symbol, venue=BINANCE_VENUE)
+            instrument_id = InstrumentId(symbol=nautilus_symbol, venue=self._venue)
 
             # Parse instrument filters
             filters: dict[BinanceSymbolFilterType, BinanceSymbolFilter] = {
@@ -250,8 +251,8 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
                 BinanceSymbolFilterType.MIN_NOTIONAL,
             )
 
-            tick_size = price_filter.tickSize.rstrip("0")
-            step_size = lot_size_filter.stepSize.rstrip("0")
+            tick_size = price_filter.tickSize
+            step_size = lot_size_filter.stepSize
             PyCondition.in_range(float(tick_size), PRICE_MIN, PRICE_MAX, "tick_size")
             PyCondition.in_range(float(step_size), QUANTITY_MIN, QUANTITY_MAX, "step_size")
 
@@ -263,7 +264,7 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
             min_quantity = Quantity(float(lot_size_filter.minQty), precision=size_precision)
             min_notional = None
             if filters.get(BinanceSymbolFilterType.MIN_NOTIONAL):
-                min_notional = Money(min_notional_filter.minNotional, currency=quote_currency)
+                min_notional = Money(min_notional_filter.notional, currency=quote_currency)
             max_notional = (
                 Money(position_risk.maxNotionalValue, currency=quote_currency)
                 if position_risk
@@ -334,6 +335,7 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
                     underlying=base_currency,
                     quote_currency=quote_currency,
                     settlement_currency=settlement_currency,
+                    is_inverse=False,  # No inverse instruments trade on Binance
                     activation_ns=activation.value,
                     expiration_ns=expiration.value,
                     price_precision=price_precision,
@@ -366,4 +368,4 @@ class BinanceFuturesInstrumentProvider(InstrumentProvider):
             self._log.debug(f"Added instrument {instrument.id}.")
         except ValueError as e:
             if self._log_warnings:
-                self._log.warning(f"Unable to parse instrument {symbol_info.symbol}, {e}.")
+                self._log.warning(f"Unable to parse instrument {symbol_info.symbol}: {e}.")

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -51,20 +51,18 @@ class EMACrossConfig(StrategyConfig, frozen=True):
         The instrument ID for the strategy.
     bar_type : BarType
         The bar type for the strategy.
-    trade_size : str
-        The position size per trade (interpreted as Decimal).
+    trade_size : Decimal
+        The position size per trade.
     fast_ema_period : int, default 10
         The fast EMA period.
     slow_ema_period : int, default 20
         The slow EMA period.
+    subscribe_trade_ticks : bool, default True
+        If trades should be subscribed to.
+    subscribe_quote_ticks : bool, default False
+        If quotes should be subscribed to.
     close_positions_on_stop : bool, default True
         If all open positions should be closed on strategy stop.
-    order_id_tag : str
-        The unique order ID tag for the strategy. Must be unique
-        amongst all running strategies for a particular trader ID.
-    oms_type : OmsType
-        The order management system type for the strategy. This will determine
-        how the `ExecutionEngine` handles position IDs (see docs).
 
     """
 
@@ -73,6 +71,8 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     trade_size: Decimal
     fast_ema_period: PositiveInt = 10
     slow_ema_period: PositiveInt = 20
+    subscribe_trade_ticks: bool = True
+    subscribe_quote_ticks: bool = False
     close_positions_on_stop: bool = True
 
 
@@ -82,8 +82,6 @@ class EMACross(Strategy):
 
     When the fast EMA crosses the slow EMA then enter a position at the market
     in that direction.
-
-    Cancels all orders and closes all positions on stop.
 
     Parameters
     ----------
@@ -98,16 +96,11 @@ class EMACross(Strategy):
     """
 
     def __init__(self, config: EMACrossConfig) -> None:
-        PyCondition.true(
+        PyCondition.is_true(
             config.fast_ema_period < config.slow_ema_period,
             "{config.fast_ema_period=} must be less than {config.slow_ema_period=}",
         )
         super().__init__(config)
-
-        # Configuration
-        self.instrument_id = config.instrument_id
-        self.bar_type = config.bar_type
-        self.trade_size = config.trade_size
 
         # Create the indicators for the strategy
         self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
@@ -120,28 +113,31 @@ class EMACross(Strategy):
         """
         Actions to be performed on strategy start.
         """
-        self.instrument = self.cache.instrument(self.instrument_id)
+        self.instrument = self.cache.instrument(self.config.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Could not find instrument for {self.instrument_id}")
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
             self.stop()
             return
 
         # Register the indicators for updating
-        self.register_indicator_for_bars(self.bar_type, self.fast_ema)
-        self.register_indicator_for_bars(self.bar_type, self.slow_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
+        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
 
         # Get historical data
-        self.request_bars(self.bar_type, start=self._clock.utc_now() - pd.Timedelta(days=1))
-        # self.request_quote_ticks(self.instrument_id)
-        # self.request_trade_ticks(self.instrument_id)
+        self.request_bars(self.config.bar_type, start=self._clock.utc_now() - pd.Timedelta(days=1))
+        # self.request_quote_ticks(self.config.instrument_id)
+        # self.request_trade_ticks(self.config.instrument_id)
 
         # Subscribe to live data
-        self.subscribe_bars(self.bar_type)
-        self.subscribe_quote_ticks(self.instrument_id)
-        # self.subscribe_trade_ticks(self.instrument_id)
-        # self.subscribe_ticker(self.instrument_id)  # For debugging
-        # self.subscribe_order_book_deltas(self.instrument_id, depth=20)  # For debugging
-        # self.subscribe_order_book_snapshots(self.instrument_id, depth=20)  # For debugging
+        self.subscribe_bars(self.config.bar_type)
+
+        if self.config.subscribe_quote_ticks:
+            self.subscribe_quote_ticks(self.config.instrument_id)
+        if self.config.subscribe_trade_ticks:
+            self.subscribe_trade_ticks(self.config.instrument_id)
+
+        # self.subscribe_order_book_deltas(self.config.instrument_id, depth=20)  # For debugging
+        # self.subscribe_order_book_at_interval(self.config.instrument_id, depth=20)  # For debugging
 
     def on_instrument(self, instrument: Instrument) -> None:
         """
@@ -194,7 +190,7 @@ class EMACross(Strategy):
 
         """
         # For debugging (must add a subscription)
-        # self.log.info(repr(tick), LogColor.CYAN)
+        self.log.info(repr(tick), LogColor.CYAN)
 
     def on_trade_tick(self, tick: TradeTick) -> None:
         """
@@ -207,7 +203,7 @@ class EMACross(Strategy):
 
         """
         # For debugging (must add a subscription)
-        # self.log.info(repr(tick), LogColor.CYAN)
+        self.log.info(repr(tick), LogColor.CYAN)
 
     def on_bar(self, bar: Bar) -> None:
         """
@@ -224,7 +220,7 @@ class EMACross(Strategy):
         # Check if indicators ready
         if not self.indicators_initialized():
             self.log.info(
-                f"Waiting for indicators to warm up [{self.cache.bar_count(self.bar_type)}]...",
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
                 color=LogColor.BLUE,
             )
             return  # Wait for indicators to warm up...
@@ -235,17 +231,17 @@ class EMACross(Strategy):
 
         # BUY LOGIC
         if self.fast_ema.value >= self.slow_ema.value:
-            if self.portfolio.is_flat(self.instrument_id):
+            if self.portfolio.is_flat(self.config.instrument_id):
                 self.buy()
-            elif self.portfolio.is_net_short(self.instrument_id):
-                self.close_all_positions(self.instrument_id)
+            elif self.portfolio.is_net_short(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
                 self.buy()
         # SELL LOGIC
         elif self.fast_ema.value < self.slow_ema.value:
-            if self.portfolio.is_flat(self.instrument_id):
+            if self.portfolio.is_flat(self.config.instrument_id):
                 self.sell()
-            elif self.portfolio.is_net_long(self.instrument_id):
-                self.close_all_positions(self.instrument_id)
+            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.close_all_positions(self.config.instrument_id)
                 self.sell()
 
     def buy(self) -> None:
@@ -253,9 +249,9 @@ class EMACross(Strategy):
         Users simple buy method (example).
         """
         order: MarketOrder = self.order_factory.market(
-            instrument_id=self.instrument_id,
+            instrument_id=self.config.instrument_id,
             order_side=OrderSide.BUY,
-            quantity=self.instrument.make_qty(self.trade_size),
+            quantity=self.instrument.make_qty(self.config.trade_size),
             # time_in_force=TimeInForce.FOK,
         )
 
@@ -266,9 +262,9 @@ class EMACross(Strategy):
         Users simple sell method (example).
         """
         order: MarketOrder = self.order_factory.market(
-            instrument_id=self.instrument_id,
+            instrument_id=self.config.instrument_id,
             order_side=OrderSide.SELL,
-            quantity=self.instrument.make_qty(self.trade_size),
+            quantity=self.instrument.make_qty(self.config.trade_size),
             # time_in_force=TimeInForce.FOK,
         )
 
@@ -300,17 +296,16 @@ class EMACross(Strategy):
         """
         Actions to be performed when the strategy is stopped.
         """
-        self.cancel_all_orders(self.instrument_id)
+        self.cancel_all_orders(self.config.instrument_id)
         if self.close_positions_on_stop:
-            self.close_all_positions(self.instrument_id)
+            self.close_all_positions(self.config.instrument_id)
 
         # Unsubscribe from data
-        self.unsubscribe_bars(self.bar_type)
-        # self.unsubscribe_quote_ticks(self.instrument_id)
-        # self.unsubscribe_trade_ticks(self.instrument_id)
-        # self.unsubscribe_ticker(self.instrument_id)
-        # self.unsubscribe_order_book_deltas(self.instrument_id)
-        # self.unsubscribe_order_book_snapshots(self.instrument_id)
+        self.unsubscribe_bars(self.config.bar_type)
+        # self.unsubscribe_quote_ticks(self.config.instrument_id)
+        self.unsubscribe_trade_ticks(self.config.instrument_id)
+        # self.unsubscribe_order_book_deltas(self.config.instrument_id)
+        # self.unsubscribe_order_book_at_interval(self.config.instrument_id)
 
     def on_reset(self) -> None:
         """

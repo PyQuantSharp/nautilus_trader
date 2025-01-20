@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,8 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -84,12 +83,12 @@ impl Indicator for AdaptiveMovingAverage {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, tick: &QuoteTick) {
-        self.update_raw(tick.extract_price(self.price_type).into());
+    fn handle_quote(&mut self, quote: &QuoteTick) {
+        self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, tick: &TradeTick) {
-        self.update_raw((&tick.price).into());
+    fn handle_trade(&mut self, trade: &TradeTick) {
+        self.update_raw((&trade.price).into());
     }
 
     fn handle_bar(&mut self, bar: &Bar) {
@@ -105,15 +104,15 @@ impl Indicator for AdaptiveMovingAverage {
 }
 
 impl AdaptiveMovingAverage {
+    /// Creates a new [`AdaptiveMovingAverage`] instance.
+    #[must_use]
     pub fn new(
         period_efficiency_ratio: usize,
         period_fast: usize,
         period_slow: usize,
         price_type: Option<PriceType>,
-    ) -> Result<Self> {
-        // Inputs don't require validation, however we return a `Result`
-        // to standardize with other indicators which do need validation.
-        Ok(Self {
+    ) -> Self {
+        Self {
             period_efficiency_ratio,
             period_fast,
             period_slow,
@@ -125,8 +124,8 @@ impl AdaptiveMovingAverage {
             prior_value: None,
             has_inputs: false,
             initialized: false,
-            efficiency_ratio: EfficiencyRatio::new(period_efficiency_ratio, price_type)?,
-        })
+            efficiency_ratio: EfficiencyRatio::new(period_efficiency_ratio, price_type),
+        }
     }
 
     #[must_use]
@@ -171,6 +170,7 @@ impl MovingAverage for AdaptiveMovingAverage {
             .powi(2);
 
         // Calculate the AMA
+        // TODO: Remove unwraps
         self.value = smoothing_constant
             .mul_add(value - self.prior_value.unwrap(), self.prior_value.unwrap());
         if self.efficiency_ratio.initialized() {
@@ -184,7 +184,7 @@ impl MovingAverage for AdaptiveMovingAverage {
 ////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
-    use nautilus_model::data::{bar::Bar, quote::QuoteTick, trade::TradeTick};
+    use nautilus_model::data::{Bar, QuoteTick, TradeTick};
     use rstest::rstest;
 
     use crate::{
@@ -247,8 +247,8 @@ mod tests {
     }
 
     #[rstest]
-    fn test_handle_quote_tick(mut indicator_ama_10: AdaptiveMovingAverage, quote_tick: QuoteTick) {
-        indicator_ama_10.handle_quote_tick(&quote_tick);
+    fn test_handle_quote_tick(mut indicator_ama_10: AdaptiveMovingAverage, stub_quote: QuoteTick) {
+        indicator_ama_10.handle_quote(&stub_quote);
         assert!(indicator_ama_10.has_inputs);
         assert!(!indicator_ama_10.initialized);
         assert_eq!(indicator_ama_10.value, 1501.0);
@@ -257,9 +257,9 @@ mod tests {
     #[rstest]
     fn test_handle_trade_tick_update(
         mut indicator_ama_10: AdaptiveMovingAverage,
-        trade_tick: TradeTick,
+        stub_trade: TradeTick,
     ) {
-        indicator_ama_10.handle_trade_tick(&trade_tick);
+        indicator_ama_10.handle_trade(&stub_trade);
         assert!(indicator_ama_10.has_inputs);
         assert!(!indicator_ama_10.initialized);
         assert_eq!(indicator_ama_10.value, 1500.0);

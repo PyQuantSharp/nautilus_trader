@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,7 +19,9 @@ import pickle
 import pandas as pd
 import pytest
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.adapters.databento.loaders import DatabentoDataLoader
+from nautilus_trader.model import convert_to_raw_int
 from nautilus_trader.model.book import OrderBook
 from nautilus_trader.model.data import BookOrder
 from nautilus_trader.model.data import OrderBookDelta
@@ -33,7 +35,6 @@ from nautilus_trader.model.objects import Quantity
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.stubs.data import TestDataStubs
 from nautilus_trader.test_kit.stubs.identifiers import TestIdStubs
-from tests import TEST_DATA_DIR
 
 
 class TestOrderBook:
@@ -282,11 +283,11 @@ class TestOrderBook:
         assert len(book.asks()) == 1
         assert (
             repr(book.bids())
-            == "[Level(price=10.0, orders=[BookOrder { side: Buy, price: 10.0, size: 5, order_id: 10000000000 }])]"
+            == f"[BookLevel(price=10.0, orders=[BookOrder(side=BUY, price=10.0, size=5, order_id={convert_to_raw_int(10, 0)})])]"
         )
         assert (
             repr(book.asks())
-            == "[Level(price=11.0, orders=[BookOrder { side: Sell, price: 11.0, size: 6, order_id: 11000000000 }])]"
+            == f"[BookLevel(price=11.0, orders=[BookOrder(side=SELL, price=11.0, size=6, order_id={convert_to_raw_int(11, 0)})])]"
         )
         bid_level = book.bids()[0]
         ask_level = book.asks()[0]
@@ -294,26 +295,6 @@ class TestOrderBook:
         assert len(ask_level.orders()) == 1
         assert bid_level.price == Price.from_str("10.0")
         assert ask_level.price == Price.from_str("11.0")
-
-    def test_adding_to_mbp_l1_book_raises(self) -> None:
-        # Arrange
-        book = OrderBook(
-            instrument_id=self.instrument.id,
-            book_type=BookType.L1_MBP,
-        )
-
-        # Act, Assert
-        with pytest.raises(RuntimeError):
-            book.add(
-                BookOrder(
-                    price=Price(11.0, 1),
-                    size=Quantity(5.0, 0),
-                    side=OrderSide.BUY,
-                    order_id=0,
-                ),
-                0,
-                0,
-            )
 
     def test_repr(self):
         # Arrange
@@ -466,6 +447,7 @@ class TestOrderBook:
                 Quantity(672.45, 2),
                 0,  # "4a25c3f6-76e7-7584-c5a3-4ec84808e240",
             ),
+            flags=0,
             sequence=1,
             ts_event=0,
             ts_init=0,
@@ -490,6 +472,7 @@ class TestOrderBook:
                 Quantity(672.45, 2),
                 0,
             ),
+            flags=0,
             sequence=1,
             ts_event=0,
             ts_init=0,
@@ -514,6 +497,7 @@ class TestOrderBook:
                 Quantity(672.45, 2),
                 0,  # "4a25c3f6-76e7-7584-c5a3-4ec84808e240",
             ),
+            flags=0,
             sequence=1,
             ts_event=pd.Timestamp.utcnow().timestamp() * 1e9,
             ts_init=pd.Timestamp.utcnow().timestamp() * 1e9,
@@ -639,7 +623,7 @@ class TestOrderBook:
         )
         # Act
         pickled = pickle.dumps(book)
-        unpickled = pickle.loads(pickled)  # noqa
+        unpickled = pickle.loads(pickled)  # noqa: S301 (pickle safe here)
 
         # Assert
         assert str(book) == str(unpickled)
@@ -660,6 +644,8 @@ class TestOrderBook:
             return TestDataStubs.order_book_delta(
                 instrument_id=instrument_id,
                 order=order,
+                flags=0,
+                sequence=0,
                 ts_init=ts,
                 ts_event=ts,
             )
@@ -763,3 +749,47 @@ class TestOrderBook:
         assert book.best_bid_price() > book.best_ask_price()
         with pytest.raises(RuntimeError):
             book.check_integrity()
+
+    @pytest.mark.parametrize(
+        ("book_type"),
+        [
+            BookType.L2_MBP,
+            BookType.L3_MBO,
+        ],
+    )
+    def test_update_quote_tick_other_than_l1_raises_exception(
+        self,
+        book_type: BookType,
+    ) -> None:
+        # Arrange
+        book = OrderBook(
+            instrument_id=self.instrument.id,
+            book_type=book_type,
+        )
+
+        # Act, Assert
+        quote = TestDataStubs.quote_tick(self.instrument)
+        with pytest.raises(RuntimeError):
+            book.update_quote_tick(quote)
+
+    @pytest.mark.parametrize(
+        ("book_type"),
+        [
+            BookType.L2_MBP,
+            BookType.L3_MBO,
+        ],
+    )
+    def test_update_trade_tick_other_than_l1_raises_exception(
+        self,
+        book_type: BookType,
+    ) -> None:
+        # Arrange
+        book = OrderBook(
+            instrument_id=self.instrument.id,
+            book_type=book_type,
+        )
+
+        # Act, Assert
+        trade = TestDataStubs.trade_tick(self.instrument)
+        with pytest.raises(RuntimeError):
+            book.update_trade_tick(trade)

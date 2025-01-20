@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -45,7 +45,7 @@ class OrderBookImbalanceConfig(StrategyConfig, frozen=True):
     ----------
     instrument_id : InstrumentId
         The instrument ID for the strategy.
-    max_trade_size : str
+    max_trade_size : Decimal
         The max position size per trade (volume on the level can be less).
     trigger_min_size : PositiveFloat, default 100.0
         The minimum size on the larger side to trigger an order.
@@ -59,15 +59,7 @@ class OrderBookImbalanceConfig(StrategyConfig, frozen=True):
     book_type : str, default 'L2_MBP'
         The order book type for the strategy.
     use_quote_ticks : bool, default False
-        If quote ticks should be used.
-    subscribe_ticker : bool, default False
-        If tickers should be subscribed to.
-    order_id_tag : str
-        The unique order ID tag for the strategy. Must be unique
-        amongst all running strategies for a particular trader ID.
-    oms_type : OmsType
-        The order management system type for the strategy. This will determine
-        how the `ExecutionEngine` handles position IDs (see docs).
+        If quotes should be used.
 
     """
 
@@ -78,7 +70,6 @@ class OrderBookImbalanceConfig(StrategyConfig, frozen=True):
     min_seconds_between_triggers: NonNegativeFloat = 1.0
     book_type: str = "L2_MBP"
     use_quote_ticks: bool = False
-    subscribe_ticker: bool = False
 
 
 class OrderBookImbalance(Strategy):
@@ -99,25 +90,20 @@ class OrderBookImbalance(Strategy):
         assert 0 < config.trigger_imbalance_ratio < 1
         super().__init__(config)
 
-        # Configuration
-        self.instrument_id = config.instrument_id
-        self.max_trade_size = config.max_trade_size
-        self.trigger_min_size = config.trigger_min_size
-        self.trigger_imbalance_ratio = config.trigger_imbalance_ratio
-        self.min_seconds_between_triggers = config.min_seconds_between_triggers
-        self._last_trigger_timestamp: datetime.datetime | None = None
+        # Initialized in on_start
         self.instrument: Instrument | None = None
         if self.config.use_quote_ticks:
             assert self.config.book_type == "L1_MBP"
         self.book_type: BookType = book_type_from_str(self.config.book_type)
+        self._last_trigger_timestamp: datetime.datetime | None = None
 
     def on_start(self) -> None:
         """
         Actions to be performed on strategy start.
         """
-        self.instrument = self.cache.instrument(self.instrument_id)
+        self.instrument = self.cache.instrument(self.config.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Could not find instrument for {self.instrument_id}")
+            self.log.error(f"Could not find instrument for {self.config.instrument_id}")
             self.stop()
             return
 
@@ -127,10 +113,6 @@ class OrderBookImbalance(Strategy):
         else:
             self.book_type = book_type_from_str(self.config.book_type)
             self.subscribe_order_book_deltas(self.instrument.id, self.book_type)
-
-        # TODO: Need to subscribe for custom data type
-        # if self.config.subscribe_ticker:
-        #     self.subscribe_ticker(self.instrument.id)
 
         self._last_trigger_timestamp = self.clock.utc_now()
 
@@ -157,13 +139,13 @@ class OrderBookImbalance(Strategy):
         Check for trigger conditions.
         """
         if not self.instrument:
-            self.log.error("No instrument loaded.")
+            self.log.error("No instrument loaded")
             return
 
         # Fetch book from the cache being maintained by the `DataEngine`
-        book = self.cache.order_book(self.instrument_id)
+        book = self.cache.order_book(self.config.instrument_id)
         if not book:
-            self.log.error("No book being maintained.")
+            self.log.error("No book being maintained")
             return
 
         if not book.spread():
@@ -172,7 +154,7 @@ class OrderBookImbalance(Strategy):
         bid_size: Quantity | None = book.best_bid_size()
         ask_size: Quantity | None = book.best_ask_size()
         if (bid_size is None or bid_size <= 0) or (ask_size is None or ask_size <= 0):
-            self.log.warning("No market yet.")
+            self.log.warning("No market yet")
             return
 
         smaller = min(bid_size, ask_size)
@@ -185,14 +167,14 @@ class OrderBookImbalance(Strategy):
             self.clock.utc_now() - self._last_trigger_timestamp
         ).total_seconds()
 
-        if larger > self.trigger_min_size and ratio < self.trigger_imbalance_ratio:
+        if larger > self.config.trigger_min_size and ratio < self.config.trigger_imbalance_ratio:
             self.log.info(
                 "Trigger conditions met, checking for existing orders and time since last order",
             )
             if len(self.cache.orders_inflight(strategy_id=self.id)) > 0:
                 self.log.info("Already have orders in flight - skipping.")
-            elif seconds_since_last_trigger < self.min_seconds_between_triggers:
-                self.log.info("Time since last order < min_seconds_between_triggers - skipping.")
+            elif seconds_since_last_trigger < self.config.min_seconds_between_triggers:
+                self.log.info("Time since last order < min_seconds_between_triggers - skipping")
             elif bid_size > ask_size:
                 order = self.order_factory.limit(
                     instrument_id=self.instrument.id,

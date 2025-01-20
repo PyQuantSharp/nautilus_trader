@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,6 +20,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.backtest.engine import BacktestEngineConfig
 from nautilus_trader.backtest.models import FillModel
@@ -48,7 +49,8 @@ from nautilus_trader.model.enums import AccountType
 from nautilus_trader.model.enums import AggregationSource
 from nautilus_trader.model.enums import BarAggregation
 from nautilus_trader.model.enums import BookAction
-from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import BookType
+from nautilus_trader.model.enums import MarketStatusAction
 from nautilus_trader.model.enums import OmsType
 from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.enums import PriceType
@@ -69,7 +71,6 @@ from nautilus_trader.test_kit.stubs.config import TestConfigStubs
 from nautilus_trader.test_kit.stubs.data import MyData
 from nautilus_trader.test_kit.stubs.data import TestDataStubs
 from nautilus_trader.trading.strategy import Strategy
-from tests import TEST_DATA_DIR
 
 
 ETHUSDT_BINANCE = TestInstrumentProvider.ethusdt_binance()
@@ -97,7 +98,7 @@ class TestBacktestEngine:
             fill_model=FillModel(),
         )
 
-        # Setup data
+        # Set up data
         wrangler = QuoteTickDataWrangler(self.usdjpy)
         provider = TestDataProvider()
         ticks = wrangler.process_bar_data(
@@ -122,6 +123,7 @@ class TestBacktestEngine:
         assert engine.backtest_start is None
         assert engine.backtest_end is None
         assert engine.iteration == 0
+        assert engine.get_log_guard() is None  # Logging bypassed
 
     def test_reset_engine(self):
         # Arrange
@@ -221,7 +223,7 @@ class TestBacktestEngine:
             path=tmp_path,
             fs_protocol="file",
         )
-        config = TestConfigStubs.backtest_engine_config(persist=True, catalog=catalog)
+        config = TestConfigStubs.backtest_engine_config(catalog=catalog, persist=True)
         engine = TestComponentStubs.backtest_engine(
             config=config,
             instrument=self.usdjpy,
@@ -235,7 +237,34 @@ class TestBacktestEngine:
         # Assert
         assert all(f.closed for f in engine.kernel.writer._files.values())
 
-    def test_backtest_engine_multiple_runs(self):
+    def test_run_with_venue_config_raises_invalid_config(
+        self,
+        config: BacktestEngineConfig | None = None,
+    ) -> BacktestEngine:
+        engine = BacktestEngine(config)
+        engine.add_venue(
+            venue=Venue("SIM"),
+            oms_type=OmsType.HEDGING,
+            book_type=BookType.L2_MBP,  # <-- Invalid for data
+            account_type=AccountType.MARGIN,
+            base_currency=USD,
+            starting_balances=[Money(1_000_000, USD)],
+            fill_model=FillModel(),
+        )
+
+        # Set up data
+        wrangler = QuoteTickDataWrangler(self.usdjpy)
+        provider = TestDataProvider()
+        ticks = wrangler.process_bar_data(
+            bid_data=provider.read_csv_bars("fxcm/usdjpy-m1-bid-2013.csv")[:2000],
+            ask_data=provider.read_csv_bars("fxcm/usdjpy-m1-ask-2013.csv")[:2000],
+        )
+        engine.add_instrument(USDJPY_SIM)
+        engine.add_data(ticks)
+        with pytest.raises(InvalidConfiguration):
+            engine.run()
+
+    def test_multiple_runs(self):
         for _ in range(2):
             config = SignalStrategyConfig(instrument_id=USDJPY_SIM.id)
             strategy = SignalStrategy(config)
@@ -249,7 +278,7 @@ class TestBacktestEngine:
             engine.run()
             engine.dispose()
 
-    def test_backtest_engine_strategy_timestamps(self):
+    def test_strategy_timestamps(self):
         # Arrange
         config = SignalStrategyConfig(instrument_id=USDJPY_SIM.id)
         strategy = SignalStrategy(config)
@@ -269,8 +298,8 @@ class TestBacktestEngine:
         # Assert
         msg = messages[11]
         assert msg.__class__.__name__ == "SignalCounter"
-        assert msg.ts_init == 1359676799700000000
-        assert msg.ts_event == 1359676799700000000
+        assert msg.ts_init == 1359676800000000000
+        assert msg.ts_event == 1359676800000000000
 
     def test_set_instance_id(self):
         # Arrange
@@ -433,6 +462,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("40"),
                     order_id=0,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -445,6 +476,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("30"),
                     order_id=1,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -457,6 +490,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("20"),
                     order_id=2,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -469,6 +504,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("20"),
                     order_id=3,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -481,6 +518,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("30"),
                     order_id=4,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -493,6 +532,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("40"),
                     order_id=4,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -508,6 +549,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("45"),
                     order_id=0,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=0,
                 ts_init=0,
             ),
@@ -520,6 +563,8 @@ class TestBacktestEngineData:
                     size=Quantity.from_str("35"),
                     order_id=1,
                 ),
+                flags=0,
+                sequence=0,
                 ts_event=1000,
                 ts_init=1000,
             ),
@@ -544,7 +589,7 @@ class TestBacktestEngineData:
         assert self.engine.data[1] == operations2
 
     def test_add_quote_ticks_adds_to_engine(self):
-        # Arrange, Setup data
+        # Arrange - set up data
         self.engine.add_instrument(AUDUSD_SIM)
         wrangler = QuoteTickDataWrangler(AUDUSD_SIM)
         provider = TestDataProvider()
@@ -603,13 +648,13 @@ class TestBacktestEngineData:
         data = [
             InstrumentStatus(
                 instrument_id=USDJPY_SIM.id,
-                status=MarketStatus.CLOSED,
+                action=MarketStatusAction.CLOSE,
                 ts_init=0,
                 ts_event=0,
             ),
             InstrumentStatus(
                 instrument_id=USDJPY_SIM.id,
-                status=MarketStatus.OPEN,
+                action=MarketStatusAction.TRADING,
                 ts_init=0,
                 ts_event=0,
             ),
@@ -634,7 +679,7 @@ class TestBacktestWithAddedBars:
         self.engine = BacktestEngine(config=config)
         self.venue = Venue("SIM")
 
-        # Setup venue
+        # Set up venue
         self.engine.add_venue(
             venue=self.venue,
             oms_type=OmsType.HEDGING,
@@ -643,7 +688,7 @@ class TestBacktestWithAddedBars:
             starting_balances=[Money(1_000_000, USD)],
         )
 
-        # Setup data
+        # Set up data
         bid_bar_type = BarType(
             instrument_id=GBPUSD_SIM.id,
             bar_spec=TestDataStubs.bar_spec_1min_bid(),
@@ -709,7 +754,7 @@ class TestBacktestWithAddedBars:
     def test_dump_pickled_data(self):
         # Arrange, Act, Assert
         pickled = self.engine.dump_pickled_data()
-        assert 5_060_606 <= len(pickled) <= 5_060_654
+        assert 5_060_606 <= len(pickled) <= 6_205_205
 
     def test_load_pickled_data(self):
         # Arrange

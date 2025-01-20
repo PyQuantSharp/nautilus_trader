@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,15 +15,15 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
 use crate::indicator::Indicator;
 
 /// An indicator which calculates the efficiency ratio across a rolling window.
+///
 /// The Kaufman Efficiency measures the ratio of the relative market speed in
 /// relation to the volatility, this could be thought of as a proxy for noise.
 #[repr(C)]
@@ -60,11 +60,11 @@ impl Indicator for EfficiencyRatio {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, quote: &QuoteTick) {
+    fn handle_quote(&mut self, quote: &QuoteTick) {
         self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, trade: &TradeTick) {
+    fn handle_trade(&mut self, trade: &TradeTick) {
         self.update_raw((&trade.price).into());
     }
 
@@ -80,15 +80,17 @@ impl Indicator for EfficiencyRatio {
 }
 
 impl EfficiencyRatio {
-    pub fn new(period: usize, price_type: Option<PriceType>) -> Result<Self> {
-        Ok(Self {
+    /// Creates a new [`EfficiencyRatio`] instance.
+    #[must_use]
+    pub fn new(period: usize, price_type: Option<PriceType>) -> Self {
+        Self {
             period,
             price_type: price_type.unwrap_or(PriceType::Last),
             value: 0.0,
             inputs: Vec::with_capacity(period),
             deltas: Vec::with_capacity(period),
             initialized: false,
-        })
+        }
     }
 
     pub fn update_raw(&mut self, value: f64) {
@@ -213,11 +215,11 @@ mod tests {
 
     #[rstest]
     fn test_handle_quote_tick(mut efficiency_ratio_10: EfficiencyRatio) {
-        let quote_tick1 = quote_tick("1500.0", "1502.0");
-        let quote_tick2 = quote_tick("1502.0", "1504.0");
+        let quote_tick1 = stub_quote("1500.0", "1502.0");
+        let quote_tick2 = stub_quote("1502.0", "1504.0");
 
-        efficiency_ratio_10.handle_quote_tick(&quote_tick1);
-        efficiency_ratio_10.handle_quote_tick(&quote_tick2);
+        efficiency_ratio_10.handle_quote(&quote_tick1);
+        efficiency_ratio_10.handle_quote(&quote_tick2);
         assert_eq!(efficiency_ratio_10.value, 1.0);
     }
 

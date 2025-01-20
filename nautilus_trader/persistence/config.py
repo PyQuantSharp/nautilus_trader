@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,13 @@
 
 from __future__ import annotations
 
+from datetime import time
+
 import fsspec
+import pandas as pd
 
 from nautilus_trader.common.config import NautilusConfig
+from nautilus_trader.persistence.writer import RotationMode
 
 
 class StreamingConfig(NautilusConfig, frozen=True):
@@ -38,7 +42,17 @@ class StreamingConfig(NautilusConfig, frozen=True):
         If any existing feather files should be replaced.
     include_types : list[type], optional
         A list of Arrow serializable types to write.
-        If this is specified then *only* the included types will be written.
+        If this is specified then **only** the included types will be written.
+    rotation_mode : RotationMode, default RotationMode.NO_ROTATION
+        The mode for file rotation.
+    max_file_size : int, default 1GB
+        The maximum file size in bytes before rotation (for SIZE mode).
+    rotation_interval : pd.Timedelta, default 1 day
+        The time interval for file rotation (for INTERVAL mode and SCHEDULED_DATES mode).
+    rotation_time : time, default 00:00
+        The time of day for file rotation (for SCHEDULED_DATES mode).
+    rotation_timezone : str, default 'UTC'
+        The timezone for rotation calculations (for SCHEDULED_DATES mode).
 
     """
 
@@ -48,6 +62,11 @@ class StreamingConfig(NautilusConfig, frozen=True):
     flush_interval_ms: int | None = None
     replace_existing: bool = False
     include_types: list[type] | None = None
+    rotation_mode: RotationMode = RotationMode.NO_ROTATION
+    max_file_size: int = 1024 * 1024 * 1024  # 1GB
+    rotation_interval: pd.Timedelta = pd.Timedelta(days=1)
+    rotation_time: time = time(0, 0, 0, 0)
+    rotation_timezone: str = "UTC"
 
     @property
     def fs(self):
@@ -81,3 +100,4 @@ class DataCatalogConfig(NautilusConfig, frozen=True):
     path: str
     fs_protocol: str | None = None
     fs_storage_options: dict | None = None
+    name: str | None = None

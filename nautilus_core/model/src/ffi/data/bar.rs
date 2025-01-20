@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,15 +21,15 @@ use std::{
 };
 
 use nautilus_core::{
-    ffi::string::{cstr_to_str, str_to_cstr},
-    time::UnixNanos,
+    ffi::string::{cstr_as_str, str_to_cstr},
+    UnixNanos,
 };
 
 use crate::{
     data::bar::{Bar, BarSpecification, BarType},
     enums::{AggregationSource, BarAggregation, PriceType},
-    identifiers::instrument_id::InstrumentId,
-    types::{price::Price, quantity::Quantity},
+    identifiers::InstrumentId,
+    types::{Price, Quantity},
 };
 
 #[no_mangle]
@@ -39,13 +39,9 @@ pub extern "C" fn bar_specification_new(
     price_type: u8,
 ) -> BarSpecification {
     let aggregation =
-        BarAggregation::from_repr(aggregation as usize).expect("cannot parse enum value");
-    let price_type = PriceType::from_repr(price_type as usize).expect("cannot parse enum value");
-    BarSpecification {
-        step,
-        aggregation,
-        price_type,
-    }
+        BarAggregation::from_repr(aggregation as usize).expect("Error converting enum");
+    let price_type = PriceType::from_repr(price_type as usize).expect("Error converting enum");
+    BarSpecification::new(step, aggregation, price_type)
 }
 
 /// Returns a [`BarSpecification`] as a C string pointer.
@@ -92,13 +88,69 @@ pub extern "C" fn bar_type_new(
     spec: BarSpecification,
     aggregation_source: u8,
 ) -> BarType {
-    let aggregation_source = AggregationSource::from_repr(aggregation_source as usize)
-        .expect("Error converting enum from integer");
-    BarType {
+    let aggregation_source =
+        AggregationSource::from_repr(aggregation_source as usize).expect("Error converting enum");
+
+    BarType::Standard {
         instrument_id,
         spec,
         aggregation_source,
     }
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_new_composite(
+    instrument_id: InstrumentId,
+    spec: BarSpecification,
+    aggregation_source: AggregationSource,
+
+    composite_step: usize,
+    composite_aggregation: BarAggregation,
+    composite_aggregation_source: AggregationSource,
+) -> BarType {
+    BarType::new_composite(
+        instrument_id,
+        spec,
+        aggregation_source,
+        composite_step,
+        composite_aggregation,
+        composite_aggregation_source,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_is_standard(bar_type: &BarType) -> u8 {
+    bar_type.is_standard() as u8
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_is_composite(bar_type: &BarType) -> u8 {
+    bar_type.is_composite() as u8
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_standard(bar_type: &BarType) -> BarType {
+    bar_type.standard()
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_composite(bar_type: &BarType) -> BarType {
+    bar_type.composite()
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_instrument_id(bar_type: &BarType) -> InstrumentId {
+    bar_type.instrument_id()
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_spec(bar_type: &BarType) -> BarSpecification {
+    bar_type.spec()
+}
+
+#[no_mangle]
+pub extern "C" fn bar_type_aggregation_source(bar_type: &BarType) -> AggregationSource {
+    bar_type.aggregation_source()
 }
 
 /// Returns any [`BarType`] parsing error from the provided C string pointer.
@@ -108,7 +160,7 @@ pub extern "C" fn bar_type_new(
 /// - Assumes `ptr` is a valid C string pointer.
 #[no_mangle]
 pub unsafe extern "C" fn bar_type_check_parsing(ptr: *const c_char) -> *const c_char {
-    match BarType::from_str(cstr_to_str(ptr)) {
+    match BarType::from_str(cstr_as_str(ptr)) {
         Ok(_) => str_to_cstr(""),
         Err(e) => str_to_cstr(&e.to_string()),
     }
@@ -121,7 +173,7 @@ pub unsafe extern "C" fn bar_type_check_parsing(ptr: *const c_char) -> *const c_
 /// - Assumes `ptr` is a valid C string pointer.
 #[no_mangle]
 pub unsafe extern "C" fn bar_type_from_cstr(ptr: *const c_char) -> BarType {
-    BarType::from(cstr_to_str(ptr))
+    BarType::from(cstr_as_str(ptr))
 }
 
 #[no_mangle]
@@ -163,6 +215,7 @@ pub extern "C" fn bar_type_to_cstr(bar_type: &BarType) -> *const c_char {
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn bar_new(
     bar_type: BarType,
     open: Price,
@@ -180,31 +233,6 @@ pub extern "C" fn bar_new(
         low,
         close,
         volume,
-        ts_event,
-        ts_init,
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn bar_new_from_raw(
-    bar_type: BarType,
-    open: i64,
-    high: i64,
-    low: i64,
-    close: i64,
-    price_prec: u8,
-    volume: u64,
-    size_prec: u8,
-    ts_event: UnixNanos,
-    ts_init: UnixNanos,
-) -> Bar {
-    Bar {
-        bar_type,
-        open: Price::from_raw(open, price_prec).unwrap(),
-        high: Price::from_raw(high, price_prec).unwrap(),
-        low: Price::from_raw(low, price_prec).unwrap(),
-        close: Price::from_raw(close, price_prec).unwrap(),
-        volume: Quantity::from_raw(volume, size_prec).unwrap(),
         ts_event,
         ts_init,
     }

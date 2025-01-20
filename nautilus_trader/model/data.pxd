@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,6 +21,7 @@ from libc.stdint cimport uint64_t
 
 from nautilus_trader.core.data cimport Data
 from nautilus_trader.core.rust.core cimport CVec
+from nautilus_trader.core.rust.model cimport AggregationSource
 from nautilus_trader.core.rust.model cimport AggressorSide
 from nautilus_trader.core.rust.model cimport Bar_t
 from nautilus_trader.core.rust.model cimport BarSpecification_t
@@ -28,14 +29,15 @@ from nautilus_trader.core.rust.model cimport BarType_t
 from nautilus_trader.core.rust.model cimport BookAction
 from nautilus_trader.core.rust.model cimport BookOrder_t
 from nautilus_trader.core.rust.model cimport BookType
-from nautilus_trader.core.rust.model cimport HaltReason
 from nautilus_trader.core.rust.model cimport InstrumentCloseType
-from nautilus_trader.core.rust.model cimport MarketStatus
+from nautilus_trader.core.rust.model cimport MarketStatusAction
 from nautilus_trader.core.rust.model cimport OrderBookDelta_t
 from nautilus_trader.core.rust.model cimport OrderBookDeltas_API
 from nautilus_trader.core.rust.model cimport OrderBookDepth10_t
 from nautilus_trader.core.rust.model cimport OrderSide
+from nautilus_trader.core.rust.model cimport PriceRaw
 from nautilus_trader.core.rust.model cimport PriceType
+from nautilus_trader.core.rust.model cimport QuantityRaw
 from nautilus_trader.core.rust.model cimport QuoteTick_t
 from nautilus_trader.core.rust.model cimport TradeTick_t
 from nautilus_trader.model.data cimport BarAggregation
@@ -144,6 +146,11 @@ cdef class BarType:
     cpdef bint is_externally_aggregated(self)
     cpdef bint is_internally_aggregated(self)
 
+    cpdef bint is_standard(self)
+    cpdef bint is_composite(self)
+    cpdef BarType standard(self)
+    cpdef BarType composite(self)
+
 
 cdef class Bar(Data):
     cdef Bar_t _mem
@@ -152,6 +159,34 @@ cdef class Bar(Data):
     """If this bar is a revision for a previous bar with the same `ts_event`.\n\n:returns: `bool`"""
 
     cdef str to_str(self)
+
+    @staticmethod
+    cdef Bar from_raw_c(
+        BarType bar_type,
+        PriceRaw open,
+        PriceRaw high,
+        PriceRaw low,
+        PriceRaw close,
+        uint8_t price_prec,
+        QuantityRaw volume,
+        uint8_t size_prec,
+        uint64_t ts_event,
+        uint64_t ts_init,
+    )
+
+    @staticmethod
+    cdef list[Bar] from_raw_arrays_to_list_c(
+        BarType bar_type,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] opens,
+        double[:] highs,
+        double[:] lows,
+        double[:] closes,
+        double[:] volumes,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
+    )
 
     @staticmethod
     cdef Bar from_mem_c(Bar_t mem)
@@ -177,9 +212,9 @@ cdef class BookOrder:
     @staticmethod
     cdef BookOrder from_raw_c(
         OrderSide side,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         uint64_t order_id,
     )
@@ -202,9 +237,9 @@ cdef class OrderBookDelta(Data):
         InstrumentId instrument_id,
         BookAction action,
         OrderSide side,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         uint64_t order_id,
         uint8_t flags,
@@ -228,9 +263,9 @@ cdef class OrderBookDelta(Data):
     @staticmethod
     cdef OrderBookDelta clear_c(
         InstrumentId instrument_id,
+        uint64_t sequence,
         uint64_t ts_event,
         uint64_t ts_init,
-        uint64_t sequence=*,
     )
 
     @staticmethod
@@ -275,36 +310,23 @@ cdef class OrderBookDepth10(Data):
     cdef object list_to_capsule_c(list items)
 
 
-cdef class VenueStatus(Data):
-    cdef readonly Venue venue
-    """The venue.\n\n:returns: `Venue`"""
-    cdef readonly MarketStatus status
-    """The venue market status.\n\n:returns: `MarketStatus`"""
-    cdef readonly uint64_t ts_event
-    """The UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
-    cdef readonly uint64_t ts_init
-    """The UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
-
-    @staticmethod
-    cdef VenueStatus from_dict_c(dict values)
-
-    @staticmethod
-    cdef dict to_dict_c(VenueStatus obj)
-
-
 cdef class InstrumentStatus(Data):
+    cdef object _is_trading
+    cdef object _is_quoting
+    cdef object _is_short_sell_restricted
+
     cdef readonly InstrumentId instrument_id
     """The instrument ID.\n\n:returns: `InstrumentId`"""
-    cdef readonly str trading_session
-    """The trading session name.\n\n:returns: `str`"""
-    cdef readonly MarketStatus status
-    """The instrument market status.\n\n:returns: `MarketStatus`"""
-    cdef readonly HaltReason halt_reason
-    """The halt reason.\n\n:returns: `HaltReason`"""
+    cdef readonly MarketStatusAction action
+    """The instrument market status action.\n\n:returns: `MarketStatusAction`"""
+    cdef readonly str reason
+    """Additional details about the cause of the status change.\n\n:returns: `str` or ``None``"""
+    cdef readonly str trading_event
+    """Further information about the status change (if provided).\n\n:returns: `str` or ``None``"""
     cdef readonly uint64_t ts_event
-    """The UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
     cdef readonly uint64_t ts_init
-    """The UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
 
     @staticmethod
     cdef InstrumentStatus from_dict_c(dict values)
@@ -321,9 +343,9 @@ cdef class InstrumentClose(Data):
     cdef readonly InstrumentCloseType close_type
     """The instrument close type.\n\n:returns: `InstrumentCloseType`"""
     cdef readonly uint64_t ts_event
-    """The UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
     cdef readonly uint64_t ts_init
-    """The UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
 
     @staticmethod
     cdef InstrumentClose from_dict_c(dict values)
@@ -340,16 +362,29 @@ cdef class QuoteTick(Data):
     @staticmethod
     cdef QuoteTick from_raw_c(
         InstrumentId instrument_id,
-        int64_t bid_price_raw,
-        int64_t ask_price_raw,
+        PriceRaw bid_price_raw,
+        PriceRaw ask_price_raw,
         uint8_t bid_price_prec,
         uint8_t ask_price_prec,
-        uint64_t bid_size_raw,
-        uint64_t ask_size_raw,
+        QuantityRaw bid_size_raw,
+        QuantityRaw ask_size_raw,
         uint8_t bid_size_prec,
         uint8_t ask_size_prec,
         uint64_t ts_event,
         uint64_t ts_init,
+    )
+
+    @staticmethod
+    cdef list[QuoteTick] from_raw_arrays_to_list_c(
+        InstrumentId instrument_id,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] bid_prices_raw,
+        double[:] ask_prices_raw,
+        double[:] bid_sizes_raw,
+        double[:] ask_sizes_raw,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
     )
 
     @staticmethod
@@ -371,7 +406,7 @@ cdef class QuoteTick(Data):
     cdef dict to_dict_c(QuoteTick obj)
 
     cpdef Price extract_price(self, PriceType price_type)
-    cpdef Quantity extract_volume(self, PriceType price_type)
+    cpdef Quantity extract_size(self, PriceType price_type)
 
 
 cdef class TradeTick(Data):
@@ -382,14 +417,27 @@ cdef class TradeTick(Data):
     @staticmethod
     cdef TradeTick from_raw_c(
         InstrumentId instrument_id,
-        int64_t price_raw,
+        PriceRaw price_raw,
         uint8_t price_prec,
-        uint64_t size_raw,
+        QuantityRaw size_raw,
         uint8_t size_prec,
         AggressorSide aggressor_side,
         TradeId trade_id,
         uint64_t ts_event,
         uint64_t ts_init,
+    )
+
+    @staticmethod
+    cdef list[TradeTick] from_raw_arrays_to_list_c(
+        InstrumentId instrument_id,
+        uint8_t price_prec,
+        uint8_t size_prec,
+        double[:] prices_raw,
+        double[:] sizes_raw,
+        uint8_t[:] aggressor_sides,
+        list[str] trade_ids,
+        uint64_t[:] ts_events,
+        uint64_t[:] ts_inits,
     )
 
     @staticmethod

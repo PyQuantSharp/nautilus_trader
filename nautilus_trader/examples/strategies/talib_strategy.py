@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -58,8 +58,8 @@ class TALibStrategy(Strategy):
     indicators to make decisions. It can identify conditions like EMA crossovers, overbought or
     oversold RSI levels, and MACD histogram values to log potential buy or sell signals.
 
-    Args
-    ----
+    Parameters
+    ----------
     config : TALibStrategyConfig
         The configuration object for the strategy, which includes the `bar_type` specifying the
         market data type (like minute bars, tick bars, etc.) to be used in the strategy.
@@ -79,14 +79,11 @@ class TALibStrategy(Strategy):
     def __init__(self, config: TALibStrategyConfig) -> None:
         PyCondition.type(config.bar_type, BarType, "config.bar_type")
         super().__init__(config)
-
-        # Configuration
         self.instrument_id = config.bar_type.instrument_id
-        self.bar_type = config.bar_type
 
         # Create the indicators for the strategy
         self.indicator_manager: TALibIndicatorManager = TALibIndicatorManager(
-            bar_type=self.bar_type,
+            bar_type=self.config.bar_type,
             period=2,
         )
 
@@ -118,10 +115,10 @@ class TALibStrategy(Strategy):
             return
 
         # Register the indicators for updating
-        self.register_indicator_for_bars(self.bar_type, self.indicator_manager)
+        self.register_indicator_for_bars(self.config.bar_type, self.indicator_manager)
 
         # Subscribe to live data
-        self.subscribe_bars(self.bar_type)
+        self.subscribe_bars(self.config.bar_type)
         self.subscribe_quote_ticks(self.instrument_id)
 
     def on_bar(self, bar: Bar) -> None:
@@ -139,7 +136,7 @@ class TALibStrategy(Strategy):
         # Check if indicators ready
         if not self.indicators_initialized():
             self.log.info(
-                f"Waiting for indicators to warm up [{self.cache.bar_count(self.bar_type)}]...",
+                f"Waiting for indicators to warm up [{self.cache.bar_count(self.config.bar_type)}]",
                 color=LogColor.BLUE,
             )
             return  # Wait for indicators to warm up...
@@ -177,4 +174,4 @@ class TALibStrategy(Strategy):
         Actions to be performed when the strategy is stopped.
         """
         # Unsubscribe from data
-        self.unsubscribe_bars(self.bar_type)
+        self.unsubscribe_bars(self.config.bar_type)

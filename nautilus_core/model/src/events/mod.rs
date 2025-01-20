@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,26 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Events for the trading domain model.
+
 pub mod account;
 pub mod order;
 pub mod position;
+
+// Re-exports
+pub use crate::events::{
+    account::state::AccountState,
+    order::{
+        accepted::OrderAccepted, any::OrderEventAny, cancel_rejected::OrderCancelRejected,
+        canceled::OrderCanceled, denied::OrderDenied, emulated::OrderEmulated,
+        expired::OrderExpired, filled::OrderFilled, initialized::OrderInitialized,
+        modify_rejected::OrderModifyRejected, pending_cancel::OrderPendingCancel,
+        pending_update::OrderPendingUpdate, rejected::OrderRejected, released::OrderReleased,
+        snapshot::OrderSnapshot, submitted::OrderSubmitted, triggered::OrderTriggered,
+        updated::OrderUpdated, OrderEvent, OrderEventType,
+    },
+    position::{
+        changed::PositionChanged, closed::PositionClosed, opened::PositionOpened,
+        snapshot::PositionSnapshot, PositionEvent,
+    },
+};

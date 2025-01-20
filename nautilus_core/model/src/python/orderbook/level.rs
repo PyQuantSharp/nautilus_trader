@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,16 +15,20 @@
 
 use pyo3::prelude::*;
 
-use crate::{data::order::BookOrder, orderbook::level::Level, types::price::Price};
+use crate::{
+    data::order::BookOrder,
+    orderbook::BookLevel,
+    types::{price::Price, quantity::QuantityRaw},
+};
 
 #[pymethods]
-impl Level {
-    fn __str__(&self) -> String {
-        // TODO: Return debug string for now
+impl BookLevel {
+    fn __repr__(&self) -> String {
         format!("{self:?}")
     }
 
-    fn __repr__(&self) -> String {
+    fn __str__(&self) -> String {
+        // TODO: Return debug string for now
         format!("{self:?}")
     }
 
@@ -50,7 +54,7 @@ impl Level {
     }
 
     #[pyo3(name = "size_raw")]
-    fn py_size_raw(&self) -> u64 {
+    fn py_size_raw(&self) -> QuantityRaw {
         self.size_raw()
     }
 
@@ -60,7 +64,7 @@ impl Level {
     }
 
     #[pyo3(name = "exposure_raw")]
-    fn py_exposure_raw(&self) -> u64 {
+    fn py_exposure_raw(&self) -> QuantityRaw {
         self.exposure_raw()
     }
 

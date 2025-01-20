@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -31,7 +31,7 @@ use super::nanos::Nanos;
 /// # Burst sizes
 /// There are multiple ways of expressing the same quota: a quota given as `Quota::per_second(1)`
 /// allows, on average, the same number of cells through as a quota given as `Quota::per_minute(60)`.
-/// However, the quota of `Quota::per_minute(60)` has a burst size of 60 cells, meaning it is
+/// The quota of `Quota::per_minute(60)` has a burst size of 60 cells, meaning it is
 /// possible to accomodate 60 cells in one go, after which the equivalent of a minute of inactivity
 /// is required for the burst allowance to be fully restored.
 ///
@@ -126,7 +126,7 @@ impl Quota {
     /// necessary.
     ///
     /// If the time interval is zero, returns `None`.
-    pub fn with_period(replenish_1_per: Duration) -> Option<Self> {
+    pub const fn with_period(replenish_1_per: Duration) -> Option<Self> {
         if replenish_1_per.as_nanos() == 0 {
             None
         } else {

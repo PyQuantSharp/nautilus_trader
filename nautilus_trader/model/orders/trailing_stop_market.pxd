@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -35,4 +35,4 @@ cdef class TrailingStopMarketOrder(Order):
     """The order expiration (UNIX epoch nanoseconds), zero for no expiration.\n\n:returns: `uint64_t`"""
 
     @staticmethod
-    cdef TrailingStopMarketOrder create(OrderInitialized init)
+    cdef TrailingStopMarketOrder create_c(OrderInitialized init)

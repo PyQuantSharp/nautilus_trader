@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,6 +18,7 @@ import pyarrow as pa
 
 from nautilus_trader.adapters.binance.common.types import BinanceBar
 from nautilus_trader.common.messages import ComponentStateChanged
+from nautilus_trader.common.messages import ShutdownSystem
 from nautilus_trader.common.messages import TradingStateChanged
 from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.model.data import Bar
@@ -27,11 +28,11 @@ from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import OrderBookDepth10
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
-from nautilus_trader.model.data import VenueStatus
 from nautilus_trader.model.events import OrderAccepted
 from nautilus_trader.model.events import OrderCanceled
 from nautilus_trader.model.events import OrderCancelRejected
 from nautilus_trader.model.events import OrderDenied
+from nautilus_trader.model.events import OrderEmulated
 from nautilus_trader.model.events import OrderExpired
 from nautilus_trader.model.events import OrderFilled
 from nautilus_trader.model.events import OrderInitialized
@@ -39,6 +40,7 @@ from nautilus_trader.model.events import OrderModifyRejected
 from nautilus_trader.model.events import OrderPendingCancel
 from nautilus_trader.model.events import OrderPendingUpdate
 from nautilus_trader.model.events import OrderRejected
+from nautilus_trader.model.events import OrderReleased
 from nautilus_trader.model.events import OrderSubmitted
 from nautilus_trader.model.events import OrderTriggered
 from nautilus_trader.model.events import OrderUpdated
@@ -75,15 +77,6 @@ NAUTILUS_ARROW_SCHEMA = {
             for k, v in nautilus_pyo3.Bar.get_fields().items()
         ],
     ),
-    VenueStatus: pa.schema(
-        {
-            "venue": pa.dictionary(pa.int16(), pa.string()),
-            "status": pa.dictionary(pa.int8(), pa.string()),
-            "ts_event": pa.uint64(),
-            "ts_init": pa.uint64(),
-        },
-        metadata={"type": "InstrumentStatus"},
-    ),
     InstrumentClose: pa.schema(
         {
             "instrument_id": pa.dictionary(pa.int64(), pa.string()),
@@ -97,13 +90,26 @@ NAUTILUS_ARROW_SCHEMA = {
     InstrumentStatus: pa.schema(
         {
             "instrument_id": pa.dictionary(pa.int64(), pa.string()),
-            "status": pa.dictionary(pa.int8(), pa.string()),
-            "trading_session": pa.string(),
-            "halt_reason": pa.dictionary(pa.int8(), pa.string()),
+            "action": pa.dictionary(pa.int8(), pa.string()),
+            "reason": pa.string(),
+            "trading_event": pa.string(),
+            "is_trading": pa.bool_(),
+            "is_quoting": pa.bool_(),
+            "is_short_sell_restricted": pa.bool_(),
             "ts_event": pa.uint64(),
             "ts_init": pa.uint64(),
         },
         metadata={"type": "InstrumentStatus"},
+    ),
+    ShutdownSystem: pa.schema(
+        {
+            "trader_id": pa.dictionary(pa.int16(), pa.string()),
+            "component_id": pa.dictionary(pa.int16(), pa.string()),
+            "reason": pa.string(),
+            "command_id": pa.string(),
+            "ts_init": pa.uint64(),
+        },
+        metadata={"type": "ShutdownSystem"},
     ),
     ComponentStateChanged: pa.schema(
         {
@@ -157,12 +163,12 @@ NAUTILUS_ARROW_SCHEMA = {
             "trigger_instrument_id": pa.string(),
             "contingency_type": pa.string(),
             "order_list_id": pa.string(),
-            "linked_order_ids": pa.string(),
+            "linked_order_ids": pa.binary(),
             "parent_order_id": pa.string(),
             "exec_algorithm_id": pa.string(),
             "exec_algorithm_params": pa.binary(),
             "exec_spawn_id": pa.string(),
-            "tags": pa.string(),
+            "tags": pa.binary(),
             "event_id": pa.string(),
             "ts_init": pa.uint64(),
             "reconciliation": pa.bool_(),
@@ -190,6 +196,17 @@ NAUTILUS_ARROW_SCHEMA = {
             "client_order_id": pa.string(),
             "reason": pa.dictionary(pa.int16(), pa.string()),
             "event_id": pa.string(),
+            "ts_init": pa.uint64(),
+        },
+    ),
+    OrderEmulated: pa.schema(
+        {
+            "trader_id": pa.dictionary(pa.int16(), pa.string()),
+            "strategy_id": pa.dictionary(pa.int16(), pa.string()),
+            "instrument_id": pa.dictionary(pa.int64(), pa.string()),
+            "client_order_id": pa.string(),
+            "event_id": pa.string(),
+            "ts_event": pa.uint64(),
             "ts_init": pa.uint64(),
         },
     ),
@@ -316,6 +333,18 @@ NAUTILUS_ARROW_SCHEMA = {
             "ts_event": pa.uint64(),
             "ts_init": pa.uint64(),
             "reconciliation": pa.bool_(),
+        },
+    ),
+    OrderReleased: pa.schema(
+        {
+            "trader_id": pa.dictionary(pa.int16(), pa.string()),
+            "strategy_id": pa.dictionary(pa.int16(), pa.string()),
+            "instrument_id": pa.dictionary(pa.int64(), pa.string()),
+            "client_order_id": pa.string(),
+            "released_price": pa.string(),
+            "event_id": pa.string(),
+            "ts_event": pa.uint64(),
+            "ts_init": pa.uint64(),
         },
     ),
     OrderModifyRejected: pa.schema(

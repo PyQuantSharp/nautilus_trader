@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -20,9 +20,9 @@ use std::{
     str::FromStr,
 };
 
-use nautilus_core::ffi::string::{cstr_to_str, str_to_cstr};
+use nautilus_core::ffi::string::{cstr_as_str, str_to_cstr};
 
-use crate::identifiers::{instrument_id::InstrumentId, symbol::Symbol, venue::Venue};
+use crate::identifiers::{InstrumentId, Symbol, Venue};
 
 #[no_mangle]
 pub extern "C" fn instrument_id_new(symbol: Symbol, venue: Venue) -> InstrumentId {
@@ -36,7 +36,7 @@ pub extern "C" fn instrument_id_new(symbol: Symbol, venue: Venue) -> InstrumentI
 /// - Assumes `ptr` is a valid C string pointer.
 #[no_mangle]
 pub unsafe extern "C" fn instrument_id_check_parsing(ptr: *const c_char) -> *const c_char {
-    match InstrumentId::from_str(cstr_to_str(ptr)) {
+    match InstrumentId::from_str(cstr_as_str(ptr)) {
         Ok(_) => str_to_cstr(""),
         Err(e) => str_to_cstr(&e.to_string()),
     }
@@ -49,7 +49,7 @@ pub unsafe extern "C" fn instrument_id_check_parsing(ptr: *const c_char) -> *con
 /// - Assumes `ptr` is a valid C string pointer.
 #[no_mangle]
 pub unsafe extern "C" fn instrument_id_from_cstr(ptr: *const c_char) -> InstrumentId {
-    InstrumentId::from(cstr_to_str(ptr))
+    InstrumentId::from(cstr_as_str(ptr))
 }
 
 /// Returns an [`InstrumentId`] as a C string pointer.
@@ -76,7 +76,7 @@ pub mod stubs {
 
     use rstest::fixture;
 
-    use crate::identifiers::{instrument_id::InstrumentId, stubs::*, symbol::Symbol, venue::Venue};
+    use crate::identifiers::{stubs::*, InstrumentId, Symbol, Venue};
 
     #[fixture]
     pub fn btc_usdt_perp_binance() -> InstrumentId {
@@ -102,7 +102,7 @@ mod tests {
     use rstest::rstest;
 
     use super::{InstrumentId, *};
-    use crate::identifiers::{symbol::Symbol, venue::Venue};
+    use crate::identifiers::{Symbol, Venue};
 
     #[rstest]
     fn test_to_cstr() {

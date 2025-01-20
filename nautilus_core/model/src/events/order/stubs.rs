@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,35 +15,26 @@
 
 use std::str::FromStr;
 
-use nautilus_core::uuid::UUID4;
+use nautilus_core::{UnixNanos, UUID4};
 use rstest::fixture;
 use ustr::Ustr;
 
 use crate::{
     enums::{ContingencyType, LiquiditySide, OrderSide, OrderType, TimeInForce, TriggerType},
-    events::order::{
-        accepted::OrderAccepted, cancel_rejected::OrderCancelRejected, denied::OrderDenied,
-        emulated::OrderEmulated, expired::OrderExpired, filled::OrderFilled,
-        initialized::OrderInitialized, modify_rejected::OrderModifyRejected,
-        pending_cancel::OrderPendingCancel, pending_update::OrderPendingUpdate,
-        rejected::OrderRejected, released::OrderReleased, submitted::OrderSubmitted,
-        triggered::OrderTriggered, updated::OrderUpdated,
+    events::{
+        OrderAccepted, OrderCancelRejected, OrderDenied, OrderEmulated, OrderExpired, OrderFilled,
+        OrderInitialized, OrderModifyRejected, OrderPendingCancel, OrderPendingUpdate,
+        OrderRejected, OrderReleased, OrderSubmitted, OrderTriggered, OrderUpdated,
     },
     identifiers::{
-        account_id::AccountId,
-        client_order_id::ClientOrderId,
-        instrument_id::InstrumentId,
-        order_list_id::OrderListId,
-        strategy_id::StrategyId,
         stubs::{
             account_id, client_order_id, instrument_id_btc_usdt, strategy_id_ema_cross, trader_id,
             uuid4, venue_order_id,
         },
-        trade_id::TradeId,
-        trader_id::TraderId,
-        venue_order_id::VenueOrderId,
+        AccountId, ClientOrderId, InstrumentId, OrderListId, StrategyId, TradeId, TraderId,
+        VenueOrderId,
     },
-    types::{currency::Currency, money::Money, price::Price, quantity::Quantity},
+    types::{Currency, Money, Price, Quantity},
 };
 
 #[fixture]
@@ -59,9 +50,9 @@ pub fn order_filled(
         strategy_id_ema_cross,
         instrument_id_btc_usdt,
         client_order_id,
-        VenueOrderId::new("123456").unwrap(),
-        AccountId::new("SIM-001").unwrap(),
-        TradeId::new("1").unwrap(),
+        VenueOrderId::new("123456"),
+        AccountId::new("SIM-001"),
+        TradeId::new("1"),
         OrderSide::Buy,
         OrderType::Limit,
         Quantity::from_str("0.561").unwrap(),
@@ -69,13 +60,12 @@ pub fn order_filled(
         Currency::from_str("USDT").unwrap(),
         LiquiditySide::Taker,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         None,
-        Some(Money::from_str("12.2 USDT").unwrap()),
+        Some(Money::from("12.2 USDT")),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -93,10 +83,9 @@ pub fn order_denied_max_submitted_rate(
         client_order_id,
         Ustr::from("Exceeded MAX_ORDER_SUBMIT_RATE"),
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -116,11 +105,10 @@ pub fn order_rejected_insufficient_margin(
         account_id,
         Ustr::from("INSUFFICIENT_MARGIN"),
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -131,8 +119,8 @@ pub fn order_initialized_buy_limit(
     client_order_id: ClientOrderId,
     uuid4: UUID4,
 ) -> OrderInitialized {
-    let order_list_id = OrderListId::new("1").unwrap();
-    let linked_order_ids = vec![ClientOrderId::new("O-2020872378424").unwrap()];
+    let order_list_id = OrderListId::new("1");
+    let linked_order_ids = vec![ClientOrderId::new("O-2020872378424")];
     OrderInitialized::new(
         trader_id,
         strategy_id_ema_cross,
@@ -147,8 +135,8 @@ pub fn order_initialized_buy_limit(
         false,
         false,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         Some(Price::from_str("22000").unwrap()),
         None,
         None,
@@ -168,7 +156,6 @@ pub fn order_initialized_buy_limit(
         None,
         None,
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -187,10 +174,9 @@ pub fn order_submitted(
         client_order_id,
         account_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -209,13 +195,12 @@ pub fn order_triggered(
         instrument_id_btc_usdt,
         client_order_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
         Some(account_id),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -232,10 +217,9 @@ pub fn order_emulated(
         instrument_id_btc_usdt,
         client_order_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -253,10 +237,9 @@ pub fn order_released(
         client_order_id,
         Price::from_str("22000").unwrap(),
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -276,15 +259,14 @@ pub fn order_updated(
         client_order_id,
         Quantity::from(100),
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
         Some(account_id),
         Some(Price::from("22000")),
         None,
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -304,12 +286,11 @@ pub fn order_pending_update(
         client_order_id,
         account_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -329,12 +310,11 @@ pub fn order_pending_cancel(
         client_order_id,
         account_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -354,13 +334,12 @@ pub fn order_modify_rejected(
         client_order_id,
         Ustr::from("ORDER_DOES_NOT_EXIST"),
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
         Some(account_id),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -381,11 +360,10 @@ pub fn order_accepted(
         venue_order_id,
         account_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -403,15 +381,14 @@ pub fn order_cancel_rejected(
         strategy_id_ema_cross,
         instrument_id_btc_usdt,
         client_order_id,
-        Ustr::from("ORDER_DOES_NOT_EXISTS"),
+        Ustr::from("ORDER_DOES_NOT_EXIST"),
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
         Some(account_id),
     )
-    .unwrap()
 }
 
 #[fixture]
@@ -430,11 +407,10 @@ pub fn order_expired(
         instrument_id_btc_usdt,
         client_order_id,
         uuid4,
-        0,
-        0,
+        UnixNanos::default(),
+        UnixNanos::default(),
         false,
         Some(venue_order_id),
         Some(account_id),
     )
-    .unwrap()
 }

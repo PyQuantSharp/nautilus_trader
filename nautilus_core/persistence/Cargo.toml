@@ -12,36 +12,52 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
 nautilus-core = { path = "../core" }
-nautilus-model = { path = "../model" }
+nautilus-model = { path = "../model", features = ["stubs"] }
+nautilus-serialization = { path = "../serialization" }
+
 anyhow = { workspace = true }
 futures = { workspace = true }
+heck = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
+parquet = { workspace = true }
 binary-heap-plus = "0.5.0"
 compare = "0.1.0"
-datafusion = { version = "36.0.0", default-features = false, features = ["compression", "regex_expressions", "unicode_expressions", "pyarrow"] }
-dotenv = "0.15.0"
-sqlx = { version = "0.7.3", features = ["sqlite", "postgres", "any", "runtime-tokio"] }
+datafusion = { version = "44.0.0", default-features = false, features = [
+  "compression",
+  "regex_expressions",
+  "unicode_expressions",
+  "pyarrow",
+] }
 
 [dev-dependencies]
+nautilus-test-kit = { path = "../test_kit" }
 criterion = { workspace = true }
 rstest = { workspace = true }
+tempfile = { workspace = true }
 quickcheck = "1"
 quickcheck_macros = "1"
+pretty_assertions = "1.4.1"
 [target.'cfg(target_os = "linux")'.dependencies]
-procfs = "0.16.0"
+procfs = "0.17.0"
 
 [features]
+default = ["ffi", "python"]
 extension-module = [
-  "pyo3/extension-module", 
-  "nautilus-core/extension-module", 
+  "pyo3/extension-module",
+  "nautilus-core/extension-module",
   "nautilus-model/extension-module",
+  "nautilus-serialization/extension-module",
 ]
 ffi = ["nautilus-core/ffi", "nautilus-model/ffi"]
-python = ["pyo3", "nautilus-core/python", "nautilus-model/python"]
-default = ["ffi", "python"]
+python = ["pyo3", "nautilus-core/python", "nautilus-model/python", "nautilus-serialization/python"]
+high-precision = ["nautilus-serialization/high-precision", "nautilus-model/high-precision", "nautilus-test-kit/high-precision"]
 
 [[bench]]
 name = "bench_persistence"

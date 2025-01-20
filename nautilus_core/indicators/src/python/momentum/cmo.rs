@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,8 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::python::to_pyvalue_err;
-use nautilus_model::data::{bar::Bar, quote::QuoteTick, trade::TradeTick};
+use nautilus_model::data::{Bar, QuoteTick, TradeTick};
 use pyo3::prelude::*;
 
 use crate::{
@@ -24,8 +23,10 @@ use crate::{
 #[pymethods]
 impl ChandeMomentumOscillator {
     #[new]
-    pub fn py_new(period: usize, ma_type: Option<MovingAverageType>) -> PyResult<Self> {
-        Self::new(period, ma_type).map_err(to_pyvalue_err)
+    #[pyo3(signature = (period, ma_type=None))]
+    #[must_use]
+    pub fn py_new(period: usize, ma_type: Option<MovingAverageType>) -> Self {
+        Self::new(period, ma_type)
     }
 
     #[getter]
@@ -36,7 +37,7 @@ impl ChandeMomentumOscillator {
 
     #[getter]
     #[pyo3(name = "period")]
-    fn py_period(&self) -> usize {
+    const fn py_period(&self) -> usize {
         self.period
     }
 
@@ -48,19 +49,19 @@ impl ChandeMomentumOscillator {
 
     #[getter]
     #[pyo3(name = "count")]
-    fn py_count(&self) -> usize {
+    const fn py_count(&self) -> usize {
         self.count
     }
 
     #[getter]
     #[pyo3(name = "value")]
-    fn py_value(&self) -> f64 {
+    const fn py_value(&self) -> f64 {
         self.value
     }
 
     #[getter]
     #[pyo3(name = "initialized")]
-    fn py_initialized(&self) -> bool {
+    const fn py_initialized(&self) -> bool {
         self.initialized
     }
 
@@ -70,12 +71,12 @@ impl ChandeMomentumOscillator {
     }
 
     #[pyo3(name = "handle_quote_tick")]
-    fn py_handle_quote_tick(&mut self, _tick: &QuoteTick) {
+    fn py_handle_quote_tick(&mut self, _quote: &QuoteTick) {
         // Function body intentionally left blank.
     }
 
     #[pyo3(name = "handle_trade_tick")]
-    fn py_handle_trade_tick(&mut self, _tick: &TradeTick) {
+    fn py_handle_trade_tick(&mut self, _trade: &TradeTick) {
         // Function body intentionally left blank.
     }
 

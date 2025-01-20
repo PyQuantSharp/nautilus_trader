@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 """
-Defines `Binance` Spot/Margin specific enums.
+Defines Binance Spot/Margin specific enums.
 
 References
 ----------
@@ -34,7 +34,7 @@ from nautilus_trader.model.orders import Order
 @unique
 class BinanceSpotPermissions(Enum):
     """
-    Represents `Binance Spot/Margin` trading permissions.
+    Represents Binance Spot/Margin trading permissions.
     """
 
     SPOT = "SPOT"
@@ -76,7 +76,7 @@ class BinanceSpotPermissions(Enum):
 @unique
 class BinanceSpotSymbolStatus(Enum):
     """
-    Represents a `Binance Spot/Margin` symbol status.
+    Represents a Binance Spot/Margin symbol status.
     """
 
     PRE_TRADING = "PRE_TRADING"
@@ -91,7 +91,7 @@ class BinanceSpotSymbolStatus(Enum):
 @unique
 class BinanceSpotEventType(Enum):
     """
-    Represents a `Binance Spot/Margin` event type.
+    Represents a Binance Spot/Margin event type.
     """
 
     outboundAccountPosition = "outboundAccountPosition"

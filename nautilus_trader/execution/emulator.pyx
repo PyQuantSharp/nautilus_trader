@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -27,9 +27,9 @@ from nautilus_trader.common.component cimport SENT
 from nautilus_trader.common.component cimport Clock
 from nautilus_trader.common.component cimport LogColor
 from nautilus_trader.common.component cimport MessageBus
+from nautilus_trader.common.component cimport is_logging_initialized
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.core.message cimport Event
-from nautilus_trader.core.rust.common cimport logging_is_initialized
 from nautilus_trader.core.rust.model cimport ContingencyType
 from nautilus_trader.core.rust.model cimport OrderSide
 from nautilus_trader.core.rust.model cimport OrderStatus
@@ -45,6 +45,8 @@ from nautilus_trader.execution.messages cimport ModifyOrder
 from nautilus_trader.execution.messages cimport SubmitOrder
 from nautilus_trader.execution.messages cimport TradingCommand
 from nautilus_trader.execution.trailing cimport TrailingStopCalculator
+from nautilus_trader.model.book cimport OrderBook
+from nautilus_trader.model.data cimport OrderBookDeltas
 from nautilus_trader.model.data cimport QuoteTick
 from nautilus_trader.model.data cimport TradeTick
 from nautilus_trader.model.events.order cimport OrderCanceled
@@ -73,7 +75,7 @@ from nautilus_trader.model.orders.market cimport MarketOrder
 from nautilus_trader.portfolio.base cimport PortfolioFacade
 
 
-cdef set SUPPORTED_TRIGGERS = {TriggerType.DEFAULT, TriggerType.BID_ASK, TriggerType.LAST_TRADE}
+cdef set SUPPORTED_TRIGGERS = {TriggerType.DEFAULT, TriggerType.BID_ASK, TriggerType.LAST_PRICE}
 
 
 cdef class OrderEmulator(Actor):
@@ -195,7 +197,7 @@ cdef class OrderEmulator(Actor):
     cpdef void on_start(self):
         cdef list emulated_orders = self.cache.orders_emulated()
         if not emulated_orders:
-            self._log.info("No emulated orders to reactivate.")
+            self._log.info("No emulated orders to reactivate")
             return
 
         cdef:
@@ -210,7 +212,7 @@ cdef class OrderEmulator(Actor):
             if order.parent_order_id is not None:
                 parent_order = self.cache.order(order.parent_order_id)
                 if parent_order is None:
-                    self._log.error("Cannot handle order: parent {order.parent_order_id!r} not found.")
+                    self._log.error("Cannot handle order: parent {order.parent_order_id!r} not found")
                     continue
                 position_id = parent_order.position_id
                 if parent_order.is_closed_c() and (position_id is None or self.cache.is_position_closed(position_id)):
@@ -293,7 +295,7 @@ cdef class OrderEmulator(Actor):
         Condition.not_none(command, "command")
 
         if self.debug:
-            self._log.info(f"{RECV}{CMD} {command}.", LogColor.MAGENTA)
+            self._log.info(f"{RECV}{CMD} {command}", LogColor.MAGENTA)
         self.command_count += 1
 
         if isinstance(command, SubmitOrder):
@@ -307,7 +309,7 @@ cdef class OrderEmulator(Actor):
         elif isinstance(command, CancelAllOrders):
             self._handle_cancel_all_orders(command)
         else:
-            self._log.error(f"Cannot handle command: unrecognized {command}.")
+            self._log.error(f"Cannot handle command: unrecognized {command}")
 
     cpdef MatchingCore create_matching_core(
         self,
@@ -347,7 +349,7 @@ cdef class OrderEmulator(Actor):
         self._matching_cores[instrument_id] = matching_core
 
         if self.debug:
-            self._log.info(f"Created matching core for {instrument_id}.", LogColor.MAGENTA)
+            self._log.info(f"Created matching core for {instrument_id}", LogColor.MAGENTA)
 
         return matching_core
 
@@ -359,7 +361,7 @@ cdef class OrderEmulator(Actor):
 
         if emulation_trigger not in SUPPORTED_TRIGGERS:
             self._log.error(
-                f"Cannot emulate order: `TriggerType` {trigger_type_to_str(emulation_trigger)} not supported.")
+                f"Cannot emulate order: `TriggerType` {trigger_type_to_str(emulation_trigger)} not supported")
             self._manager.cancel_order(order=order)
             return
 
@@ -372,7 +374,7 @@ cdef class OrderEmulator(Actor):
                 synthetic = self.cache.synthetic(trigger_instrument_id)
                 if synthetic is None:
                     self._log.error(
-                        f"Cannot emulate order: no synthetic instrument {trigger_instrument_id} for trigger.",
+                        f"Cannot emulate order: no synthetic instrument {trigger_instrument_id} for trigger",
                     )
                     self._manager.cancel_order(order=order)
                     return
@@ -381,7 +383,7 @@ cdef class OrderEmulator(Actor):
                 instrument = self.cache.instrument(trigger_instrument_id)
                 if instrument is None:
                     self._log.error(
-                        f"Cannot emulate order: no instrument {trigger_instrument_id} for trigger.",
+                        f"Cannot emulate order: no instrument {trigger_instrument_id} for trigger",
                     )
                     self._manager.cancel_order(order=order)
                     return
@@ -391,8 +393,8 @@ cdef class OrderEmulator(Actor):
         if order.order_type == OrderType.TRAILING_STOP_MARKET or order.order_type == OrderType.TRAILING_STOP_LIMIT:
             self._update_trailing_stop_order(matching_core, order)
             if order.trigger_price is None:
-                self.log.error(
-                    "Cannot handle trailing stop order with no `trigger_price` and no market updates.",
+                self._log.error(
+                    "Cannot handle trailing stop order with no `trigger_price` and no market updates",
                 )
                 self._manager.cancel_order(order)
                 return
@@ -406,9 +408,11 @@ cdef class OrderEmulator(Actor):
         # Check data subscription
         if emulation_trigger == TriggerType.DEFAULT or emulation_trigger == TriggerType.BID_ASK:
             if trigger_instrument_id not in self._subscribed_quotes:
+                if not trigger_instrument_id.is_synthetic():
+                    self.subscribe_order_book_deltas(trigger_instrument_id)
                 self.subscribe_quote_ticks(trigger_instrument_id)
                 self._subscribed_quotes.add(trigger_instrument_id)
-        elif emulation_trigger == TriggerType.LAST_TRADE:
+        elif emulation_trigger == TriggerType.LAST_PRICE:
             if trigger_instrument_id not in self._subscribed_trades:
                 self.subscribe_trade_ticks(trigger_instrument_id)
                 self._subscribed_trades.add(trigger_instrument_id)
@@ -445,7 +449,7 @@ cdef class OrderEmulator(Actor):
                 msg=event,
             )
 
-        self.log.info(f"Emulating {command.order}.", LogColor.MAGENTA)
+        self._log.info(f"Emulating {command.order}", LogColor.MAGENTA)
 
     cdef void _handle_submit_order_list(self, SubmitOrderList command):
         self._check_monitoring(command.strategy_id, command.position_id)
@@ -467,7 +471,7 @@ cdef class OrderEmulator(Actor):
         cdef Order order = self.cache.order(command.client_order_id)
         if order is None:
             self._log.error(
-                f"Cannot modify order: {repr(order.client_order_id)} not found.",
+                f"Cannot modify order: {repr(order.client_order_id)} not found",
             )
             return
 
@@ -501,7 +505,7 @@ cdef class OrderEmulator(Actor):
         cdef MatchingCore matching_core = self._matching_cores.get(trigger_instrument_id)
         if matching_core is None:
             self._log.error(
-                f"Cannot handle `ModifyOrder`: no matching core for trigger instrument {trigger_instrument_id}.",
+                f"Cannot handle `ModifyOrder`: no matching core for trigger instrument {trigger_instrument_id}",
             )
             return
 
@@ -517,7 +521,7 @@ cdef class OrderEmulator(Actor):
         cdef Order order = self.cache.order(command.client_order_id)
         if order is None:
             self._log.error(
-                f"Cannot cancel order: {repr(command.client_order_id)} not found.",
+                f"Cannot cancel order: {repr(command.client_order_id)} not found",
             )
             return
 
@@ -561,7 +565,7 @@ cdef class OrderEmulator(Actor):
             self._msgbus.subscribe(topic=f"events.order.{strategy_id.to_str()}", handler=self.on_event)
             self._msgbus.subscribe(topic=f"events.position.{strategy_id.to_str()}", handler=self.on_event)
             self._subscribed_strategies.add(strategy_id)
-            self._log.info(f"Subscribed to strategy {strategy_id.to_str()} order and position events.", LogColor.BLUE)
+            self._log.info(f"Subscribed to strategy {strategy_id.to_str()} order and position events", LogColor.BLUE)
 
         if position_id is not None and position_id not in self._monitored_positions:
             self._monitored_positions.add(position_id)
@@ -569,12 +573,12 @@ cdef class OrderEmulator(Actor):
     cpdef void _cancel_order(self, Order order):
         if order is None:
             self._log.error(
-                f"Cannot cancel order: order for {repr(order.client_order_id)} not found.",
+                f"Cannot cancel order: order for {repr(order.client_order_id)} not found",
             )
             return
 
         if self.debug:
-            self._log.info(f"Cancelling order {order.client_order_id!r}.", LogColor.MAGENTA)
+            self._log.info(f"Canceling order {order.client_order_id!r}", LogColor.MAGENTA)
 
         # Remove emulation trigger
         order.emulation_trigger = TriggerType.NO_TRIGGER
@@ -604,13 +608,13 @@ cdef class OrderEmulator(Actor):
     cpdef void _update_order(self, Order order, Quantity new_quantity):
         if order is None:
             self._log.error(
-                f"Cannot update order: order for {repr(order.client_order_id)} not found.",
+                f"Cannot update order: order for {repr(order.client_order_id)} not found",
             )
             return
 
         if self.debug:
             self._log.info(
-                f"Updating order {order.client_order_id} quantity to {new_quantity}.",
+                f"Updating order {order.client_order_id} quantity to {new_quantity}",
                 LogColor.MAGENTA,
             )
 
@@ -673,7 +677,7 @@ cdef class OrderEmulator(Actor):
             transformed,
             command.position_id,
             command.client_id,
-            override=True,
+            overwrite=True,
         )
 
         # Replace commands order with transformed order
@@ -708,7 +712,7 @@ cdef class OrderEmulator(Actor):
 
         self._manager.send_risk_event(event)
 
-        self.log.info(f"Releasing {transformed}...", LogColor.MAGENTA)
+        self._log.info(f"Releasing {transformed}", LogColor.MAGENTA)
 
         # Publish event
         self._msgbus.publish_c(
@@ -745,7 +749,7 @@ cdef class OrderEmulator(Actor):
             transformed,
             command.position_id,
             command.client_id,
-            override=True,
+            overwrite=True,
         )
 
         # Replace commands order with transformed order
@@ -780,7 +784,7 @@ cdef class OrderEmulator(Actor):
 
         self._manager.send_risk_event(event)
 
-        self.log.info(f"Releasing {transformed}...", LogColor.MAGENTA)
+        self._log.info(f"Releasing {transformed}", LogColor.MAGENTA)
 
         # Publish event
         self._msgbus.publish_c(
@@ -793,13 +797,41 @@ cdef class OrderEmulator(Actor):
         else:
             self._manager.send_exec_command(command)
 
+    cpdef void on_order_book_deltas(self, deltas):
+        cdef OrderBookDeltas _deltas = deltas  # C typing to optimize performance
+
+        if is_logging_initialized():
+            self._log.debug(f"Processing {repr(_deltas)}", LogColor.CYAN)
+
+
+        cdef MatchingCore matching_core = self._matching_cores.get(_deltas.instrument_id)
+        if matching_core is None:
+            self._log.error(f"Cannot handle `OrderBookDeltas`: no matching core for instrument {_deltas.instrument_id}")
+            return
+
+        cdef OrderBook book = self.cache.order_book(_deltas.instrument_id)
+        if book is None:
+            self.log.error(f"Cannot handle `OrderBookDeltas`: no book being maintained for {_deltas.instrument_id}")
+            return
+
+        cdef Price best_bid = book.best_bid_price()
+        cdef Price best_ask = book.best_ask_price()
+
+        if best_bid is not None:
+            matching_core.set_bid_raw(best_bid._mem.raw)
+
+        if best_ask is not None:
+            matching_core.set_ask_raw(best_ask._mem.raw)
+
+        self._iterate_orders(matching_core)
+
     cpdef void on_quote_tick(self, QuoteTick tick):
-        if logging_is_initialized():
-            self._log.debug(f"Processing {repr(tick)}...", LogColor.CYAN)
+        if is_logging_initialized():
+            self._log.debug(f"Processing {repr(tick)}", LogColor.CYAN)
 
         cdef MatchingCore matching_core = self._matching_cores.get(tick.instrument_id)
         if matching_core is None:
-            self._log.error(f"Cannot handle `QuoteTick`: no matching core for instrument {tick.instrument_id}.")
+            self._log.error(f"Cannot handle `QuoteTick`: no matching core for instrument {tick.instrument_id}")
             return
 
         matching_core.set_bid_raw(tick._mem.bid_price.raw)
@@ -808,12 +840,12 @@ cdef class OrderEmulator(Actor):
         self._iterate_orders(matching_core)
 
     cpdef void on_trade_tick(self, TradeTick tick):
-        if logging_is_initialized():
+        if is_logging_initialized():
             self._log.debug(f"Processing {repr(tick)}...", LogColor.CYAN)
 
         cdef MatchingCore matching_core = self._matching_cores.get(tick.instrument_id)
         if matching_core is None:
-            self._log.error(f"Cannot handle `TradeTick`: no matching core for instrument {tick.instrument_id}.")
+            self._log.error(f"Cannot handle `TradeTick`: no matching core for instrument {tick.instrument_id}")
             return
 
         matching_core.set_last_raw(tick._mem.price.raw)
@@ -837,7 +869,7 @@ cdef class OrderEmulator(Actor):
                 self._update_trailing_stop_order(matching_core, order)
 
     cdef void _update_trailing_stop_order(self, MatchingCore matching_core, Order order):
-        # TODO(cs): Improve efficiency of this ---------------------------------
+        # TODO: Improve efficiency of this ---------------------------------
         cdef Price bid = None
         cdef Price ask = None
         cdef Price last = None
@@ -856,7 +888,7 @@ cdef class OrderEmulator(Actor):
             ask = quote_tick.ask_price
         if last is None and trade_tick is not None:
             last = trade_tick.price
-        # TODO(cs): ------------------------------------------------------------
+        # TODO: ------------------------------------------------------------
 
         cdef tuple output
         try:

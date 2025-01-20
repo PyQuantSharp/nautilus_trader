@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,17 +13,24 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
 from nautilus_trader.adapters.bybit.common.enums import BybitKlineInterval
 from nautilus_trader.adapters.bybit.endpoints.endpoint import BybitHttpEndpoint
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 from nautilus_trader.adapters.bybit.schemas.market.kline import BybitKlinesResponse
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 
-class BybitKlinesGetParameters(msgspec.Struct, omit_defaults=True, frozen=False):
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+
+
+class BybitKlinesGetParams(msgspec.Struct, omit_defaults=True, frozen=True):
     category: str
     symbol: str
     interval: BybitKlineInterval
@@ -48,8 +55,8 @@ class BybitKlinesEndpoint(BybitHttpEndpoint):
 
     async def get(
         self,
-        parameters: BybitKlinesGetParameters,
+        params: BybitKlinesGetParams,
     ) -> BybitKlinesResponse:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._response_decoder.decode(raw)

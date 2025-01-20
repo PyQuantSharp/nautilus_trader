@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -42,7 +42,7 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceFuturesAsset(msgspec.Struct, frozen=True):
     """
-    HTTP response 'inner struct' from `Binance Futures` GET /fapi/v1/exchangeInfo.
+    HTTP response 'inner struct' from Binance Futures GET /fapi/v1/exchangeInfo.
     """
 
     asset: str
@@ -52,7 +52,7 @@ class BinanceFuturesAsset(msgspec.Struct, frozen=True):
 
 class BinanceFuturesSymbolInfo(msgspec.Struct, kw_only=True, frozen=True):
     """
-    HTTP response 'inner struct' from `Binance Futures` GET /fapi/v1/exchangeInfo.
+    HTTP response 'inner struct' from Binance Futures GET /fapi/v1/exchangeInfo.
     """
 
     symbol: str
@@ -84,7 +84,7 @@ class BinanceFuturesSymbolInfo(msgspec.Struct, kw_only=True, frozen=True):
         return Currency(
             code=self.baseAsset,
             precision=self.baseAssetPrecision,
-            iso4217=0,  # Currently undetermined for crypto assets
+            iso4217=0,  # Currently unspecified for crypto assets
             name=self.baseAsset,
             currency_type=CurrencyType.CRYPTO,
         )
@@ -93,7 +93,7 @@ class BinanceFuturesSymbolInfo(msgspec.Struct, kw_only=True, frozen=True):
         return Currency(
             code=self.quoteAsset,
             precision=self.quotePrecision,
-            iso4217=0,  # Currently undetermined for crypto assets
+            iso4217=0,  # Currently unspecified for crypto assets
             name=self.quoteAsset,
             currency_type=CurrencyType.CRYPTO,
         )
@@ -101,7 +101,7 @@ class BinanceFuturesSymbolInfo(msgspec.Struct, kw_only=True, frozen=True):
 
 class BinanceFuturesExchangeInfo(msgspec.Struct, kw_only=True, frozen=True):
     """
-    HTTP response from `Binance Futures` GET /fapi/v1/exchangeInfo.
+    HTTP response from Binance Futures GET /fapi/v1/exchangeInfo.
     """
 
     timezone: str
@@ -114,7 +114,7 @@ class BinanceFuturesExchangeInfo(msgspec.Struct, kw_only=True, frozen=True):
 
 class BinanceFuturesMarkFunding(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Future` GET /fapi/v1/premiumIndex.
+    HTTP response from Binance Futures GET /fapi/v1/premiumIndex.
     """
 
     symbol: str
@@ -131,7 +131,7 @@ class BinanceFuturesMarkFunding(msgspec.Struct, frozen=True):
 
 class BinanceFuturesFundRate(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Future` GET /fapi/v1/fundingRate.
+    HTTP response from Binance Futures GET /fapi/v1/fundingRate.
     """
 
     symbol: str
@@ -146,7 +146,7 @@ class BinanceFuturesFundRate(msgspec.Struct, frozen=True):
 
 class BinanceFuturesTradeData(msgspec.Struct, frozen=True):
     """
-    WebSocket message 'inner struct' for `Binance Futures` Trade Streams.
+    WebSocket message 'inner struct' for Binance Futures Trade Streams.
 
     Fields
     ------
@@ -165,12 +165,11 @@ class BinanceFuturesTradeData(msgspec.Struct, frozen=True):
 
     e: str  # Event type
     E: int  # Event time
-    T: int  # Trade time
     s: str  # Symbol
     t: int  # Trade ID
     p: str  # Price
     q: str  # Quantity
-    X: BinanceOrderType  # Buyer order type
+    T: int  # Trade time
     m: bool  # Is the buyer the market maker?
 
     def parse_to_trade_tick(
@@ -191,7 +190,7 @@ class BinanceFuturesTradeData(msgspec.Struct, frozen=True):
 
 class BinanceFuturesTradeMsg(msgspec.Struct, frozen=True):
     """
-    WebSocket message from `Binance Futures` Trade Streams.
+    WebSocket message from Binance Futures Trade Streams.
     """
 
     stream: str
@@ -200,7 +199,7 @@ class BinanceFuturesTradeMsg(msgspec.Struct, frozen=True):
 
 class BinanceFuturesMarkPriceData(msgspec.Struct, frozen=True):
     """
-    WebSocket message 'inner struct' for `Binance Futures` Mark Price Update events.
+    WebSocket message 'inner struct' for Binance Futures Mark Price Update events.
     """
 
     e: str  # Event type
@@ -231,7 +230,7 @@ class BinanceFuturesMarkPriceData(msgspec.Struct, frozen=True):
 
 class BinanceFuturesMarkPriceMsg(msgspec.Struct, frozen=True):
     """
-    WebSocket message from `Binance Futures` Mark Price Update events.
+    WebSocket message from Binance Futures Mark Price Update events.
     """
 
     stream: str

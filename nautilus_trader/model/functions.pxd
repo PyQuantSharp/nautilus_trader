@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,11 +21,11 @@ from nautilus_trader.core.rust.model cimport BookAction
 from nautilus_trader.core.rust.model cimport BookType
 from nautilus_trader.core.rust.model cimport ContingencyType
 from nautilus_trader.core.rust.model cimport CurrencyType
-from nautilus_trader.core.rust.model cimport HaltReason
 from nautilus_trader.core.rust.model cimport InstrumentClass
 from nautilus_trader.core.rust.model cimport InstrumentCloseType
 from nautilus_trader.core.rust.model cimport LiquiditySide
 from nautilus_trader.core.rust.model cimport MarketStatus
+from nautilus_trader.core.rust.model cimport MarketStatusAction
 from nautilus_trader.core.rust.model cimport OmsType
 from nautilus_trader.core.rust.model cimport OptionKind
 from nautilus_trader.core.rust.model cimport OrderSide
@@ -33,6 +33,7 @@ from nautilus_trader.core.rust.model cimport OrderStatus
 from nautilus_trader.core.rust.model cimport OrderType
 from nautilus_trader.core.rust.model cimport PositionSide
 from nautilus_trader.core.rust.model cimport PriceType
+from nautilus_trader.core.rust.model cimport RecordFlag
 from nautilus_trader.core.rust.model cimport TimeInForce
 from nautilus_trader.core.rust.model cimport TradingState
 from nautilus_trader.core.rust.model cimport TrailingOffsetType
@@ -80,8 +81,8 @@ cpdef str liquidity_side_to_str(LiquiditySide value)
 cpdef MarketStatus market_status_from_str(str value)
 cpdef str market_status_to_str(MarketStatus value)
 
-cpdef HaltReason halt_reason_from_str(str value)
-cpdef str halt_reason_to_str(HaltReason value)
+cpdef MarketStatusAction market_status_action_from_str(str value)
+cpdef str market_status_action_to_str(MarketStatusAction value)
 
 cpdef OmsType oms_type_from_str(str value)
 cpdef str oms_type_to_str(OmsType value)
@@ -97,6 +98,9 @@ cpdef str order_status_to_str(OrderStatus value)
 
 cpdef OrderType order_type_from_str(str value)
 cpdef str order_type_to_str(OrderType value)
+
+cpdef RecordFlag record_flag_from_str(str value)
+cpdef str record_flag_to_str(RecordFlag value)
 
 cpdef PositionSide position_side_from_str(str value)
 cpdef str position_side_to_str(PositionSide value)

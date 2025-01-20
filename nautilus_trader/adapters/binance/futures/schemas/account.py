@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,8 +17,8 @@ from decimal import Decimal
 
 import msgspec
 
+from nautilus_trader.adapters.binance.common.enums import BinanceFuturesPositionSide
 from nautilus_trader.adapters.binance.futures.enums import BinanceFuturesEnumParser
-from nautilus_trader.adapters.binance.futures.enums import BinanceFuturesPositionSide
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.execution.reports import PositionStatusReport
 from nautilus_trader.model.identifiers import AccountId
@@ -37,7 +37,7 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceFuturesBalanceInfo(msgspec.Struct, frozen=True):
     """
-    HTTP response 'inner struct' from `Binance Futures` GET /fapi/v2/account (HMAC
+    HTTP response 'inner struct' from Binance Futures GET /fapi/v2/account (HMAC
     SHA256).
     """
 
@@ -59,8 +59,12 @@ class BinanceFuturesBalanceInfo(msgspec.Struct, frozen=True):
 
     def parse_to_account_balance(self) -> AccountBalance:
         currency = Currency.from_str(self.asset)
+        # This calculation is currently mixing wallet cash balance and the available balance after
+        # considering margin collateral. As a temporary measure we're taking the `min` to
+        # disregard free amounts above the cash balance, but still considering where not all
+        # balance is available (so locked in some way, i.e. allocated as collateral).
         total = Decimal(self.walletBalance)
-        free = Decimal(self.availableBalance) if total != 0 else total
+        free = min(Decimal(self.availableBalance), total)
         locked = total - free
         return AccountBalance(
             total=Money(total, currency),
@@ -78,7 +82,7 @@ class BinanceFuturesBalanceInfo(msgspec.Struct, frozen=True):
 
 class BinanceFuturesAccountInfo(msgspec.Struct, kw_only=True, frozen=True):
     """
-    HTTP response from `Binance Futures` GET /fapi/v2/account (HMAC SHA256).
+    HTTP response from Binance Futures GET /fapi/v2/account (HMAC SHA256).
     """
 
     feeTier: int  # account commission tier
@@ -154,7 +158,7 @@ class BinanceFuturesPositionRisk(msgspec.Struct, kw_only=True, frozen=True):
 
 class BinanceFuturesDualSidePosition(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Futures` GET /fapi/v1/positionSide/dual (HMAC SHA256).
+    HTTP response from Binance Futures GET /fapi/v1/positionSide/dual (HMAC SHA256).
     """
 
     dualSidePosition: bool
@@ -162,7 +166,7 @@ class BinanceFuturesDualSidePosition(msgspec.Struct, frozen=True):
 
 class BinanceFuturesFeeRates(msgspec.Struct, frozen=True):
     """
-    Represents a `BinanceFutures` fee tier.
+    Represents a Binance Futures fee tier.
 
     https://www.binance.com/en/fee/futureFee
 

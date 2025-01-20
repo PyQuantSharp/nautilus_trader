@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,6 +30,7 @@ from nautilus_trader.config import StrategyConfig
 from nautilus_trader.config import TradingNodeConfig
 from nautilus_trader.live.node import TradingNode
 from nautilus_trader.model.book import OrderBook
+from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
@@ -44,9 +45,13 @@ from nautilus_trader.trading.strategy import Strategy
 # For correct subscription operation, you must specify all instruments to be immediately
 # subscribed for as part of the data client configuration
 instrument_ids = [
-    InstrumentId.from_str("ESM4.XCME"),
-    # InstrumentId.from_str("ESU4.XCME"),
+    InstrumentId.from_str("ES.c.0.GLBX"),  # TODO: Continuous contracts only work with GLBX for now
+    # InstrumentId.from_str("ESZ4.XCME"),
+    # InstrumentId.from_str("ES.FUT.XCME"),
+    # InstrumentId.from_str("CL.FUT.NYMEX"),
+    # InstrumentId.from_str("LO.OPT.NYMEX"),
     # InstrumentId.from_str("AAPL.XNAS"),
+    # InstrumentId.from_str("AAPL.IEXG"),
 ]
 
 # Configure the trading node
@@ -56,6 +61,9 @@ config_node = TradingNodeConfig(
     exec_engine=LiveExecEngineConfig(
         reconciliation=False,  # Not applicable
         inflight_check_interval_ms=0,  # Not applicable
+        # snapshot_orders=True,
+        # snapshot_positions=True,
+        # snapshot_positions_interval_secs=5.0,
     ),
     cache=CacheConfig(
         database=DatabaseConfig(),
@@ -72,21 +80,20 @@ config_node = TradingNodeConfig(
     #     use_instance_id=False,
     #     # types_filter=[QuoteTick],
     #     autotrim_mins=30,
+    #     heartbeat_interval_secs=1,
     # ),
-    # heartbeat_interval=1.0,
-    # snapshot_orders=True,
-    # snapshot_positions=True,
-    # snapshot_positions_interval=5.0,
     data_clients={
         DATABENTO: DatabentoDataClientConfig(
             api_key=None,  # 'DATABENTO_API_KEY' env var
             http_gateway=None,
             instrument_provider=InstrumentProviderConfig(load_all=True),
+            use_exchange_as_venue=True,
+            mbo_subscriptions_delay=10.0,
             instrument_ids=instrument_ids,
-            parent_symbols={"GLBX.MDP3": {"ES.FUT", "ES.OPT"}},
+            parent_symbols={"GLBX.MDP3": {"ES.FUT"}},
         ),
     },
-    timeout_connection=10.0,
+    timeout_connection=30.0,
     timeout_reconciliation=10.0,  # Not applicable
     timeout_portfolio=10.0,
     timeout_disconnection=10.0,
@@ -125,9 +132,6 @@ class DataSubscriber(Strategy):
     def __init__(self, config: DataSubscriberConfig) -> None:
         super().__init__(config)
 
-        # Configuration
-        self.instrument_ids = config.instrument_ids
-
     def on_start(self) -> None:
         """
         Actions to be performed when the strategy is started.
@@ -135,28 +139,42 @@ class DataSubscriber(Strategy):
         Here we specify the 'DATABENTO' client_id for subscriptions.
 
         """
-        for instrument_id in self.instrument_ids:
+        for instrument_id in self.config.instrument_ids:
             # from nautilus_trader.model.enums import BookType
-            #
+
             # self.subscribe_order_book_deltas(
             #     instrument_id=instrument_id,
             #     book_type=BookType.L3_MBO,
             #     client_id=DATABENTO_CLIENT_ID,
             # )
-            # self.subscribe_order_book_snapshots(
+            # self.subscribe_order_book_at_interval(
             #     instrument_id=instrument_id,
             #     book_type=BookType.L2_MBP,
             #     depth=10,
             #     client_id=DATABENTO_CLIENT_ID,
-            #     interval_ms=100,
+            #     interval_ms=1000,
             # )
+
+            # self.subscribe_instrument(parent_symbol, client_id=DATABENTO_CLIENT_ID)
             self.subscribe_quote_ticks(instrument_id, client_id=DATABENTO_CLIENT_ID)
-            # self.subscribe_trade_ticks(instrument_id, client_id=DATABENTO_CLIENT_ID)
+            self.subscribe_trade_ticks(instrument_id, client_id=DATABENTO_CLIENT_ID)
+            # self.subscribe_bars(BarType.from_str(f"{instrument_id}-1-SECOND-LAST-EXTERNAL"))
+            # self.subscribe_instrument_status(instrument_id, client_id=DATABENTO_CLIENT_ID)
+
             # self.request_quote_ticks(instrument_id)
             # self.request_trade_ticks(instrument_id)
 
+            # from nautilus_trader.model.data import DataType
+            # from nautilus_trader.model.data import InstrumentStatus
+            #
+            # status_data_type = DataType(
+            #     type=InstrumentStatus,
+            #     metadata={"instrument_id": instrument_id},
+            # )
+            # self.request_data(status_data_type, client_id=DATABENTO_CLIENT_ID)
+
             # from nautilus_trader.model.data import BarType
-            # self.request_bars(BarType.from_str(f"{instrument_id}-1-MINUTE-LAST-EXTERNAL"))
+            # self.request_bars(BarType.from_str(f"{instrument_id}-1-SECOND-LAST-EXTERNAL"))
 
             # # Imbalance
             # from nautilus_trader.adapters.databento import DatabentoImbalance
@@ -171,6 +189,10 @@ class DataSubscriber(Strategy):
             # from nautilus_trader.adapters.databento import DatabentoStatistics
             #
             # metadata = {"instrument_id": instrument_id}
+            # self.subscribe_data(
+            #     data_type=DataType(type=DatabentoStatistics, metadata=metadata),
+            #     client_id=DATABENTO_CLIENT_ID,
+            # )
             # self.request_data(
             #     data_type=DataType(type=DatabentoStatistics, metadata=metadata),
             #     client_id=DATABENTO_CLIENT_ID,
@@ -206,7 +228,7 @@ class DataSubscriber(Strategy):
         """
         Actions to be performed when an order book update is received.
         """
-        self.log.info("\n" + order_book.pprint(10), LogColor.CYAN)
+        self.log.info(f"\n{order_book.instrument_id}\n{order_book.pprint(10)}", LogColor.CYAN)
 
     def on_quote_tick(self, tick: QuoteTick) -> None:
         """
@@ -232,6 +254,18 @@ class DataSubscriber(Strategy):
         """
         self.log.info(repr(tick), LogColor.CYAN)
 
+    def on_bar(self, bar: Bar) -> None:
+        """
+        Actions to be performed when the strategy is running and receives a bar.
+
+        Parameters
+        ----------
+        bar : Bar
+            The bar received.
+
+        """
+        self.log.info(repr(bar), LogColor.CYAN)
+
 
 # Configure and initialize your strategy
 strat_config = DataSubscriberConfig(instrument_ids=instrument_ids)
@@ -240,7 +274,7 @@ strategy = DataSubscriber(config=strat_config)
 # Add your strategies and modules
 node.trader.add_strategy(strategy)
 
-# Register your client factories with the node (can take user defined factories)
+# Register your client factories with the node (can take user-defined factories)
 node.add_data_client_factory(DATABENTO, DatabentoLiveDataClientFactory)
 node.build()
 

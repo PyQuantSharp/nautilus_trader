@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,8 @@
 
 use std::fmt::{Display, Formatter};
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -66,11 +65,11 @@ impl Indicator for HullMovingAverage {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, quote: &QuoteTick) {
+    fn handle_quote(&mut self, quote: &QuoteTick) {
         self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, trade: &TradeTick) {
+    fn handle_trade(&mut self, trade: &TradeTick) {
         self.update_raw((&trade.price).into());
     }
 
@@ -90,14 +89,16 @@ impl Indicator for HullMovingAverage {
 }
 
 fn _get_weights(size: usize) -> Vec<f64> {
-    let mut weights: Vec<f64> = (1..size + 1).map(|x| x as f64).collect();
+    let mut weights: Vec<f64> = (1..=size).map(|x| x as f64).collect();
     let divisor: f64 = weights.iter().sum();
     weights = weights.iter().map(|x| x / divisor).collect();
     weights
 }
 
 impl HullMovingAverage {
-    pub fn new(period: usize, price_type: Option<PriceType>) -> Result<Self> {
+    /// Creates a new [`HullMovingAverage`] instance.
+    #[must_use]
+    pub fn new(period: usize, price_type: Option<PriceType>) -> Self {
         let period_halved = period / 2;
         let period_sqrt = (period as f64).sqrt() as usize;
 
@@ -105,21 +106,21 @@ impl HullMovingAverage {
         let w2 = _get_weights(period);
         let w3 = _get_weights(period_sqrt);
 
-        let _ma1 = WeightedMovingAverage::new(period_halved, w1, price_type)?;
-        let _ma2 = WeightedMovingAverage::new(period, w2, price_type)?;
-        let _ma3 = WeightedMovingAverage::new(period_sqrt, w3, price_type)?;
+        let ma1 = WeightedMovingAverage::new(period_halved, w1, price_type);
+        let ma2 = WeightedMovingAverage::new(period, w2, price_type);
+        let ma3 = WeightedMovingAverage::new(period_sqrt, w3, price_type);
 
-        Ok(Self {
+        Self {
             period,
             price_type: price_type.unwrap_or(PriceType::Last),
             value: 0.0,
             count: 0,
             has_inputs: false,
             initialized: false,
-            ma1: _ma1,
-            ma2: _ma2,
-            ma3: _ma3,
-        })
+            ma1,
+            ma2,
+            ma3,
+        }
     }
 }
 
@@ -157,7 +158,7 @@ impl MovingAverage for HullMovingAverage {
 ////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
-    use nautilus_model::data::{bar::Bar, quote::QuoteTick, trade::TradeTick};
+    use nautilus_model::data::{Bar, QuoteTick, TradeTick};
     use rstest::rstest;
 
     use crate::{
@@ -216,14 +217,14 @@ mod tests {
     }
 
     #[rstest]
-    fn test_handle_quote_tick(mut indicator_hma_10: HullMovingAverage, quote_tick: QuoteTick) {
-        indicator_hma_10.handle_quote_tick(&quote_tick);
+    fn test_handle_quote_tick(mut indicator_hma_10: HullMovingAverage, stub_quote: QuoteTick) {
+        indicator_hma_10.handle_quote(&stub_quote);
         assert_eq!(indicator_hma_10.value, 1501.0);
     }
 
     #[rstest]
-    fn test_handle_trade_tick(mut indicator_hma_10: HullMovingAverage, trade_tick: TradeTick) {
-        indicator_hma_10.handle_trade_tick(&trade_tick);
+    fn test_handle_trade_tick(mut indicator_hma_10: HullMovingAverage, stub_trade: TradeTick) {
+        indicator_hma_10.handle_trade(&stub_trade);
         assert_eq!(indicator_hma_10.value, 1500.0);
     }
 

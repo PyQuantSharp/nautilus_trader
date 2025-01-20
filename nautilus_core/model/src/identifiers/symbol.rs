@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,67 +13,129 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid ticker symbol ID for a tradable instrument.
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
 
-use anyhow::Result;
-use nautilus_core::correctness::check_valid_string;
+use nautilus_core::correctness::{check_valid_string, FAILED};
 use ustr::Ustr;
 
-/// Represents a valid ticker symbol ID for a tradable financial market instrument.
+/// Represents a valid ticker symbol ID for a tradable instrument.
 #[repr(C)]
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct Symbol {
-    /// The ticker symbol ID value.
-    pub value: Ustr,
-}
+pub struct Symbol(Ustr);
 
 impl Symbol {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`Symbol` value")?;
+    /// Creates a new [`Symbol`] instance with correctness checking.
+    ///
+    /// # Error
+    ///
+    /// Returns an error if `value` is not a valid string.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
+    }
 
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`Symbol`] instance.
+    ///
+    /// # Panic
+    ///
+    /// - If `value` is not a valid string.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
     }
 
     #[must_use]
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self {
-            value: Ustr::from(s),
+    pub fn from_str_unchecked<T: AsRef<str>>(s: T) -> Self {
+        Self(Ustr::from(s.as_ref()))
+    }
+
+    #[must_use]
+    pub const fn from_ustr_unchecked(s: Ustr) -> Self {
+        Self(s)
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Returns true if the symbol string contains a period (`.`).
+    #[must_use]
+    pub fn is_composite(&self) -> bool {
+        self.as_str().contains('.')
+    }
+
+    /// Returns the symbol root.
+    ///
+    /// The symbol root is the substring that appears before the first period (`.`)
+    /// in the full symbol string. It typically represents the underlying asset for
+    /// futures and options contracts. If no period is found, the entire symbol
+    /// string is considered the root.
+    #[must_use]
+    pub fn root(&self) -> &str {
+        let symbol_str = self.as_str();
+        if let Some(index) = symbol_str.find('.') {
+            &symbol_str[..index]
+        } else {
+            symbol_str
         }
     }
-}
 
-impl Default for Symbol {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("AUD/USD"),
+    /// Returns the symbol topic.
+    ///
+    /// The symbol topic is the root symbol with a wildcard (`*`) appended if the symbol has a root,
+    /// otherwise returns the full symbol string.
+    #[must_use]
+    pub fn topic(&self) -> String {
+        let root_str = self.root();
+        if root_str == self.as_str() {
+            root_str.to_string()
+        } else {
+            format!("{}*", root_str)
         }
     }
 }
 
 impl Debug for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.0)
     }
 }
 
-impl From<&str> for Symbol {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+impl From<Ustr> for Symbol {
+    fn from(value: Ustr) -> Self {
+        Self(value)
     }
 }
 
@@ -84,11 +146,44 @@ impl From<&str> for Symbol {
 mod tests {
     use rstest::rstest;
 
-    use crate::identifiers::{stubs::*, symbol::Symbol};
+    use crate::identifiers::{stubs::*, Symbol};
 
     #[rstest]
     fn test_string_reprs(symbol_eth_perp: Symbol) {
-        assert_eq!(symbol_eth_perp.to_string(), "ETH-PERP");
+        assert_eq!(symbol_eth_perp.as_str(), "ETH-PERP");
         assert_eq!(format!("{symbol_eth_perp}"), "ETH-PERP");
+    }
+
+    #[rstest]
+    #[case("AUDUSD", false)]
+    #[case("AUD/USD", false)]
+    #[case("CL.FUT", true)]
+    #[case("LO.OPT", true)]
+    #[case("ES.c.0", true)]
+    fn test_symbol_is_composite(#[case] input: &str, #[case] expected: bool) {
+        let symbol = Symbol::new(input);
+        assert_eq!(symbol.is_composite(), expected);
+    }
+
+    #[rstest]
+    #[case("AUDUSD", "AUDUSD")]
+    #[case("AUD/USD", "AUD/USD")]
+    #[case("CL.FUT", "CL")]
+    #[case("LO.OPT", "LO")]
+    #[case("ES.c.0", "ES")]
+    fn test_symbol_root(#[case] input: &str, #[case] expected_root: &str) {
+        let symbol = Symbol::new(input);
+        assert_eq!(symbol.root(), expected_root);
+    }
+
+    #[rstest]
+    #[case("AUDUSD", "AUDUSD")]
+    #[case("AUD/USD", "AUD/USD")]
+    #[case("CL.FUT", "CL*")]
+    #[case("LO.OPT", "LO*")]
+    #[case("ES.c.0", "ES*")]
+    fn test_symbol_topic(#[case] input: &str, #[case] expected_topic: &str) {
+        let symbol = Symbol::new(input);
+        assert_eq!(symbol.topic(), expected_topic);
     }
 }

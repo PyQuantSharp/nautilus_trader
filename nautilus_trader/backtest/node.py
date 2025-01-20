@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,15 +24,23 @@ from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.backtest.engine import BacktestEngineConfig
 from nautilus_trader.backtest.results import BacktestResult
 from nautilus_trader.common.component import Logger
+from nautilus_trader.common.component import LogGuard
+from nautilus_trader.common.component import init_logging
+from nautilus_trader.common.component import is_logging_initialized
 from nautilus_trader.common.config import ActorFactory
 from nautilus_trader.common.config import InvalidConfiguration
+from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.datetime import dt_to_unix_nanos
+from nautilus_trader.core.datetime import max_date
+from nautilus_trader.core.datetime import min_date
 from nautilus_trader.core.inspect import is_nautilus_class
 from nautilus_trader.core.nautilus_pyo3 import DataBackendSession
+from nautilus_trader.model import BOOK_DATA_TYPES
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import capsule_to_list
 from nautilus_trader.model.enums import AccountType
+from nautilus_trader.model.enums import BookType
 from nautilus_trader.model.enums import OmsType
 from nautilus_trader.model.enums import book_type_from_str
 from nautilus_trader.model.identifiers import ClientId
@@ -65,16 +73,16 @@ class BacktestNode:
     def __init__(self, configs: list[BacktestRunConfig]):
         PyCondition.not_none(configs, "configs")
         PyCondition.not_empty(configs, "configs")
-        PyCondition.true(
+        PyCondition.is_true(
             all(isinstance(config, BacktestRunConfig) for config in configs),
             "configs",
         )
 
         self._validate_configs(configs)
 
-        # Configuration
         self._configs: list[BacktestRunConfig] = configs
         self._engines: dict[str, BacktestEngine] = {}
+        self._log_guard: nautilus_pyo3.LogGuard | LogGuard | None = None
 
     @property
     def configs(self) -> list[BacktestRunConfig]:
@@ -87,6 +95,19 @@ class BacktestNode:
 
         """
         return self._configs
+
+    def get_log_guard(self) -> nautilus_pyo3.LogGuard | LogGuard | None:
+        """
+        Return the global logging systems log guard.
+
+        May return ``None`` if no internal engines are initialized yet.
+
+        Returns
+        -------
+        nautilus_pyo3.LogGuard | LogGuard | None
+
+        """
+        return self._log_guard
 
     def get_engine(self, run_config_id: str) -> BacktestEngine | None:
         """
@@ -115,13 +136,16 @@ class BacktestNode:
         """
         return list(self._engines.values())
 
-    def run(self) -> list[BacktestResult]:
+    def run(self, raise_exception=False) -> list[BacktestResult]:
         """
         Run the backtest node which will synchronously execute the list of loaded
         backtest run configs.
 
-        Any exceptions raised from a backtest will be printed to stdout and
-        the next backtest run will commence (if any).
+        Parameters
+        ----------
+        raise_exception : bool, default False
+            If True, an exception raised from a backtest will be re-raised and halt the node.
+            If False, exceptions raised from backtest(s) will be printed to stdout.
 
         Returns
         -------
@@ -137,18 +161,27 @@ class BacktestNode:
                     engine_config=config.engine,
                     venue_configs=config.venues,
                     data_configs=config.data,
-                    batch_size_bytes=config.batch_size_bytes,
+                    chunk_size=config.chunk_size,
+                    dispose_on_completion=config.dispose_on_completion,
+                    start=config.start,
+                    end=config.end,
                 )
                 results.append(result)
             except Exception as e:
                 # Broad catch all prevents a single backtest run from halting
                 # the execution of the other backtests (such as a zero balance exception).
-                Logger(type(self).__name__).error(f"Error running back: {e}")
-                Logger(type(self).__name__).info(f"Config: {config}")
+                if not is_logging_initialized():
+                    init_logging()
+                log = Logger(type(self).__name__)
+                log.error(f"Error running backtest: {e}")
+                log.info(f"Config: {config}")
+
+                if raise_exception:
+                    raise e
 
         return results
 
-    def _validate_configs(self, configs: list[BacktestRunConfig]) -> None:
+    def _validate_configs(self, configs: list[BacktestRunConfig]) -> None:  # noqa: C901
         venue_ids: list[Venue] = []
         for config in configs:
             venue_ids += [Venue(c.name) for c in config.venues]
@@ -174,6 +207,24 @@ class BacktestNode:
                         f"does not have a `BacktestVenueConfig`",
                     )
 
+            for venue_config in config.venues:
+                venue = Venue(venue_config.name)
+                book_type = book_type_from_str(venue_config.book_type)
+
+                # Check order book data configuration
+                if book_type in (BookType.L2_MBP, BookType.L3_MBO):
+                    has_book_data = any(
+                        data_config.instrument_id
+                        and data_config.instrument_id.venue == venue
+                        and data_config.data_type in BOOK_DATA_TYPES
+                        for data_config in config.data
+                    )
+
+                    if not has_book_data:
+                        raise InvalidConfiguration(
+                            f"No order book data available for {venue} with book type {venue_config.book_type}",
+                        )
+
     def _create_engine(
         self,
         run_config_id: str,
@@ -185,6 +236,12 @@ class BacktestNode:
         engine = BacktestEngine(config=config)
         self._engines[run_config_id] = engine
 
+        # Assign the global logging system guard to keep it alive for
+        # the duration of the nodes runs.
+        log_guard = engine.kernel.get_log_guard()
+        if log_guard:
+            self._log_guard = log_guard
+
         # Add venues (must be added prior to instruments)
         for config in venue_configs:
             base_currency: str | None = config.base_currency
@@ -193,6 +250,7 @@ class BacktestNode:
                 if config.leverages
                 else {}
             )
+
             engine.add_venue(
                 venue=Venue(config.name),
                 oms_type=OmsType[config.oms_type],
@@ -211,6 +269,9 @@ class BacktestNode:
                 use_position_ids=config.use_position_ids,
                 use_random_ids=config.use_random_ids,
                 use_reduce_only=config.use_reduce_only,
+                bar_execution=config.bar_execution,
+                bar_adaptive_high_low_ordering=config.bar_adaptive_high_low_ordering,
+                trade_execution=config.trade_execution,
             )
 
         # Add instruments
@@ -226,13 +287,20 @@ class BacktestNode:
 
     def _load_engine_data(self, engine: BacktestEngine, result: CatalogDataResult) -> None:
         if is_nautilus_class(result.data_cls):
-            engine.add_data(data=result.data)
+            engine.add_data(
+                data=result.data,
+                sort=True,  # Already sorted from backend
+            )
         else:
             if not result.client_id:
                 raise ValueError(
                     f"Data type {result.data_cls} not setup for loading into `BacktestEngine`",
                 )
-            engine.add_data(data=result.data, client_id=result.client_id)
+            engine.add_data(
+                data=result.data,
+                client_id=result.client_id,
+                sort=True,  # Already sorted from backend
+            )
 
     def _run(
         self,
@@ -240,7 +308,10 @@ class BacktestNode:
         engine_config: BacktestEngineConfig,
         venue_configs: list[BacktestVenueConfig],
         data_configs: list[BacktestDataConfig],
-        batch_size_bytes: int | None = None,
+        chunk_size: int | None,
+        dispose_on_completion: bool,
+        start: str | int | None = None,
+        end: str | int | None = None,
     ) -> BacktestResult:
         engine: BacktestEngine = self._create_engine(
             run_config_id=run_config_id,
@@ -250,22 +321,30 @@ class BacktestNode:
         )
 
         # Run backtest
-        if batch_size_bytes is not None:
+        if chunk_size is not None:
             self._run_streaming(
                 run_config_id=run_config_id,
                 engine=engine,
                 data_configs=data_configs,
-                batch_size_bytes=batch_size_bytes,
+                chunk_size=chunk_size,
+                start=start,
+                end=end,
             )
         else:
             self._run_oneshot(
                 run_config_id=run_config_id,
                 engine=engine,
                 data_configs=data_configs,
+                start=start,
+                end=end,
             )
 
-        # Release data objects
-        engine.dispose()
+        if dispose_on_completion:
+            # Drop data and all state
+            engine.dispose()
+        else:
+            # Drop data
+            engine.clear_data()
 
         return engine.get_result()
 
@@ -274,10 +353,12 @@ class BacktestNode:
         run_config_id: str,
         engine: BacktestEngine,
         data_configs: list[BacktestDataConfig],
-        batch_size_bytes: int,
+        chunk_size: int,
+        start: str | int | None = None,
+        end: str | int | None = None,
     ) -> None:
         # Create session for entire stream
-        session = DataBackendSession(chunk_size=batch_size_bytes)
+        session = DataBackendSession(chunk_size=chunk_size)
 
         # Add query for all data configs
         for config in data_configs:
@@ -286,17 +367,28 @@ class BacktestNode:
                 # TODO: Temporary hack - improve bars config and decide implementation with `filter_expr`
                 assert config.instrument_id, "No `instrument_id` for Bar data config"
                 assert config.bar_spec, "No `bar_spec` for Bar data config"
-                bar_type = config.instrument_id + "-" + config.bar_spec + "-EXTERNAL"
+                bar_type = f"{config.instrument_id}-{config.bar_spec}-EXTERNAL"
             else:
                 bar_type = None
+
+            used_start = config.start_time
+            if used_start is not None or start is not None:
+                result = max_date(used_start, start)
+                used_start = result.isoformat() if result else None
+
+            used_end = config.end_time
+            if used_end is not None or end is not None:
+                result = min_date(used_end, end)
+                used_end = result.isoformat() if result else None
+
             session = catalog.backend_session(
                 data_cls=config.data_type,
                 instrument_ids=(
                     [config.instrument_id] if config.instrument_id and not bar_type else []
                 ),
                 bar_types=[bar_type] if bar_type else [],
-                start=config.start_time,
-                end=config.end_time,
+                start=used_start,
+                end=used_end,
                 session=session,
             )
 
@@ -305,21 +397,25 @@ class BacktestNode:
             engine.add_data(
                 data=capsule_to_list(chunk),
                 validate=False,  # Cannot validate mixed type stream
-                sort=True,  # Temporarily sorting  # Already sorted from kmerge
+                sort=True,  # Already sorted from backend
             )
             engine.run(
+                start=start,
+                end=end,
                 run_config_id=run_config_id,
                 streaming=True,
             )
+            engine.clear_data()
 
         engine.end()
-        engine.dispose()
 
     def _run_oneshot(
         self,
         run_config_id: str,
         engine: BacktestEngine,
         data_configs: list[BacktestDataConfig],
+        start: str | int | None = None,
+        end: str | int | None = None,
     ) -> None:
         # Load data
         for config in data_configs:
@@ -327,7 +423,7 @@ class BacktestNode:
             engine.logger.info(
                 f"Reading {config.data_type} data for instrument={config.instrument_id}.",
             )
-            result: CatalogDataResult = self.load_data_config(config)
+            result: CatalogDataResult = self.load_data_config(config, start, end)
             if config.instrument_id and result.instrument is None:
                 engine.logger.warning(
                     f"Requested instrument_id={result.instrument} from data_config not found in catalog",
@@ -339,14 +435,13 @@ class BacktestNode:
 
             t1 = pd.Timestamp.now()
             engine.logger.info(
-                f"Read {len(result.data):,} events from parquet in {pd.Timedelta(t1 - t0)}s.",
+                f"Read {len(result.data):,} events from parquet in {pd.Timedelta(t1 - t0)}s",
             )
             self._load_engine_data(engine=engine, result=result)
             t2 = pd.Timestamp.now()
             engine.logger.info(f"Engine load took {pd.Timedelta(t2 - t1)}s")
 
-        engine.run(run_config_id=run_config_id)
-        engine.dispose()
+        engine.run(start=start, end=end, run_config_id=run_config_id)
 
     @classmethod
     def load_catalog(cls, config: BacktestDataConfig) -> ParquetDataCatalog:
@@ -357,7 +452,12 @@ class BacktestNode:
         )
 
     @classmethod
-    def load_data_config(cls, config: BacktestDataConfig) -> CatalogDataResult:
+    def load_data_config(
+        cls,
+        config: BacktestDataConfig,
+        start: str | int | None = None,
+        end: str | int | None = None,
+    ) -> CatalogDataResult:
         catalog: ParquetDataCatalog = cls.load_catalog(config)
 
         instruments = (
@@ -368,9 +468,19 @@ class BacktestNode:
         if config.instrument_id and not instruments:
             return CatalogDataResult(data_cls=config.data_type, data=[])
 
+        config_query = config.query
+
+        if config_query["start"] is not None or start is not None:
+            result = max_date(config_query["start"], start)
+            config_query["start"] = result.isoformat() if result else None
+
+        if config_query["end"] is not None or end is not None:
+            result = min_date(config_query["end"], end)
+            config_query["end"] = result.isoformat() if result else None
+
         return CatalogDataResult(
             data_cls=config.data_type,
-            data=catalog.query(**config.query),
+            data=catalog.query(**config_query),
             instrument=instruments[0] if instruments else None,
             client_id=ClientId(config.client_id) if config.client_id else None,
         )

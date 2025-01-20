@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,7 +30,9 @@ from ibapi.order_state import OrderState as IBOrderState
 from nautilus_trader.adapters.interactive_brokers.client import InteractiveBrokersClient
 from nautilus_trader.adapters.interactive_brokers.client.common import IBPosition
 from nautilus_trader.adapters.interactive_brokers.common import IB_VENUE
+from nautilus_trader.adapters.interactive_brokers.common import IBOrderTags
 from nautilus_trader.adapters.interactive_brokers.config import InteractiveBrokersExecClientConfig
+from nautilus_trader.adapters.interactive_brokers.config import SymbologyMethod
 from nautilus_trader.adapters.interactive_brokers.parsing.execution import MAP_ORDER_ACTION
 from nautilus_trader.adapters.interactive_brokers.parsing.execution import MAP_ORDER_FIELDS
 from nautilus_trader.adapters.interactive_brokers.parsing.execution import MAP_ORDER_STATUS
@@ -66,6 +68,7 @@ from nautilus_trader.model.enums import PositionSide
 from nautilus_trader.model.enums import TimeInForce
 from nautilus_trader.model.enums import TrailingOffsetType
 from nautilus_trader.model.enums import TriggerType
+from nautilus_trader.model.enums import trailing_offset_type_to_str
 from nautilus_trader.model.identifiers import AccountId
 from nautilus_trader.model.identifiers import ClientId
 from nautilus_trader.model.identifiers import ClientOrderId
@@ -89,10 +92,16 @@ from nautilus_trader.model.orders.trailing_stop_market import TrailingStopMarket
 
 # fmt: on
 
-ib_to_nautilus_trigger_method = dict(zip(MAP_TRIGGER_METHOD.values(), MAP_TRIGGER_METHOD.keys()))
-ib_to_nautilus_time_in_force = dict(zip(MAP_TIME_IN_FORCE.values(), MAP_TIME_IN_FORCE.keys()))
-ib_to_nautilus_order_side = dict(zip(MAP_ORDER_ACTION.values(), MAP_ORDER_ACTION.keys()))
-ib_to_nautilus_order_type = dict(zip(MAP_ORDER_TYPE.values(), MAP_ORDER_TYPE.keys()))
+ib_to_nautilus_trigger_method = dict(
+    zip(MAP_TRIGGER_METHOD.values(), MAP_TRIGGER_METHOD.keys(), strict=False),
+)
+ib_to_nautilus_time_in_force = dict(
+    zip(MAP_TIME_IN_FORCE.values(), MAP_TIME_IN_FORCE.keys(), strict=False),
+)
+ib_to_nautilus_order_side = dict(
+    zip(MAP_ORDER_ACTION.values(), MAP_ORDER_ACTION.keys(), strict=False),
+)
+ib_to_nautilus_order_type = dict(zip(MAP_ORDER_TYPE.values(), MAP_ORDER_TYPE.keys(), strict=False))
 
 
 class InteractiveBrokersExecutionClient(LiveExecutionClient):
@@ -116,10 +125,10 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
         The clock for the client.
     instrument_provider : InteractiveBrokersInstrumentProvider
         The instrument provider.
-    ibg_client_id : int
-        Client ID used to connect TWS/Gateway.
     config : InteractiveBrokersExecClientConfig, optional
         The configuration for the instance.
+    name : str, optional
+        The custom client ID.
 
     """
 
@@ -132,13 +141,13 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
         cache: Cache,
         clock: LiveClock,
         instrument_provider: InteractiveBrokersInstrumentProvider,
-        ibg_client_id: int,
         config: InteractiveBrokersExecClientConfig,
+        name: str | None = None,
+        connection_timeout: int = 300,
     ) -> None:
         super().__init__(
             loop=loop,
-            # client_id=ClientId(f"{IB_VENUE.value}-{ibg_client_id:03d}"), # TODO: Fix account_id.get_id()
-            client_id=ClientId(f"{IB_VENUE.value}"),
+            client_id=ClientId(name or f"{IB_VENUE.value}"),
             venue=IB_VENUE,
             oms_type=OmsType.NETTING,
             instrument_provider=instrument_provider,
@@ -149,6 +158,7 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             clock=clock,
             config=config,
         )
+        self._connection_timeout = connection_timeout
         self._client: InteractiveBrokersClient = client
         self._set_account_id(account_id)
         self._account_summary_tags = {
@@ -169,20 +179,20 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
 
     async def _connect(self):
         # Connect client
-        await self._client.wait_until_ready()
+        await self._client.wait_until_ready(self._connection_timeout)
         await self.instrument_provider.initialize()
 
         # Validate if connected to expected TWS/Gateway using Account
         if self.account_id.get_id() in self._client.accounts():
             self._log.info(
-                f"Account `{self.account_id.get_id()}` found in the connected TWS/Gateway.",
+                f"Account `{self.account_id.get_id()}` found in the connected TWS/Gateway",
                 LogColor.GREEN,
             )
         else:
             self.fault()
             raise ValueError(
-                f"Account `{self.account_id.get_id()}` not found in the connected TWS/Gateway. "
-                f"Available accounts are {self._client.accounts()}",
+                f"Account `{self.account_id.get_id()}` not found in the connected TWS/Gateway: "
+                f"available accounts are {self._client.accounts()}",
             )
 
         # Event hooks
@@ -237,7 +247,7 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
         PyCondition.type_or_none(client_order_id, ClientOrderId, "client_order_id")
         PyCondition.type_or_none(venue_order_id, VenueOrderId, "venue_order_id")
         if not (client_order_id or venue_order_id):
-            self._log.debug("Both `client_order_id` and `venue_order_id` cannot be None.")
+            self._log.debug("Both `client_order_id` and `venue_order_id` cannot be None")
             return None
 
         report = None
@@ -254,7 +264,7 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
                 break
         if report is None:
             self._log.warning(
-                f"Order {client_order_id=}, {venue_order_id} not found, Cancelling...",
+                f"Order {client_order_id=}, {venue_order_id} not found, canceling",
             )
             self._on_order_status(
                 order_ref=client_order_id.value,
@@ -291,14 +301,20 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             timestring_to_timestamp(ib_order.goodTillDate) if ib_order.tif == "GTD" else None
         )
 
-        # TODO: Testing for advanced Open orders
+        mapped_order_type_info = ib_to_nautilus_order_type[ib_order.orderType]
+        if isinstance(mapped_order_type_info, tuple):
+            order_type, time_in_force = mapped_order_type_info
+        else:
+            order_type = mapped_order_type_info
+            time_in_force = ib_to_nautilus_time_in_force[ib_order.tif]
+
         order_status = OrderStatusReport(
             account_id=self.account_id,
             instrument_id=instrument.id,
             venue_order_id=VenueOrderId(str(ib_order.orderId)),
             order_side=ib_to_nautilus_order_side[ib_order.action],
-            order_type=ib_to_nautilus_order_type[ib_order.orderType],
-            time_in_force=ib_to_nautilus_time_in_force[ib_order.tif],
+            order_type=order_type,
+            time_in_force=time_in_force,
             order_status=order_status,
             quantity=total_qty,
             filled_qty=Quantity.from_int(0),
@@ -369,6 +385,12 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             instrument = await self.instrument_provider.find_with_contract_id(
                 position.contract.conId,
             )
+            if instrument is None:
+                self._log.error(
+                    f"Cannot generate report: instrument not found for contract ID {position.contract.conId}",
+                )
+                continue
+
             avg_px = instrument.make_price(
                 position.avg_cost / instrument.multiplier,
             ).as_decimal()
@@ -429,7 +451,7 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
         list[FillReport]
 
         """
-        self._log.warning("Cannot generate `list[FillReport]`: not yet implemented.")
+        self._log.warning("Cannot generate `list[FillReport]`: not yet implemented")
 
         return []  # TODO: Implement
 
@@ -475,8 +497,17 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             instrument = await self.instrument_provider.find_with_contract_id(
                 position.contract.conId,
             )
-            if not self._cache.instrument(instrument.id):
-                self._msgbus.send(endpoint="DataEngine.process", msg=instrument)
+            if instrument is None:
+                self._log.error(
+                    f"Cannot generate report: instrument not found for contract ID {position.contract.conId}",
+                )
+                continue
+
+            if (
+                self.instrument_provider.config.symbology_method != SymbologyMethod.DATABENTO
+                and not self._cache.instrument(instrument.id)
+            ):
+                self._handle_data(instrument)
 
             position_status = PositionStatusReport(
                 account_id=self.account_id,
@@ -492,17 +523,29 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
 
         return report
 
-    def _transform_order_to_ib_order(self, order: Order) -> IBOrder:
+    def _transform_order_to_ib_order(self, order: Order) -> IBOrder:  # noqa: C901 11 > 10
+        if order.is_post_only:
+            raise ValueError("`post_only` not supported by Interactive Brokers")
+
         ib_order = IBOrder()
+        time_in_force = order.time_in_force
         for key, field, fn in MAP_ORDER_FIELDS:
             if value := getattr(order, key, None):
-                setattr(ib_order, field, fn(value))
+                if key == "order_type" and time_in_force == TimeInForce.AT_THE_CLOSE:
+                    setattr(ib_order, field, fn((value, time_in_force)))
+                else:
+                    setattr(ib_order, field, fn(value))
 
-        if self._cache.instrument(order.instrument_id).is_inverse:
+        if self.instrument_provider.find(order.instrument_id).is_inverse:
             ib_order.cashQty = int(ib_order.totalQuantity)
             ib_order.totalQuantity = 0
 
         if isinstance(order, TrailingStopLimitOrder | TrailingStopMarketOrder):
+            if order.trailing_offset_type != TrailingOffsetType.PRICE:
+                raise ValueError(
+                    f"`TrailingOffsetType` {trailing_offset_type_to_str(order.trailing_offset_type)} is not supported",
+                )
+
             ib_order.auxPrice = float(order.trailing_offset)
             if order.trigger_price:
                 ib_order.trailStopPrice = order.trigger_price.as_double()
@@ -526,47 +569,34 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             return ib_order
 
     def _attach_order_tags(self, ib_order: IBOrder, order: Order) -> IBOrder:
-        try:
-            tags: dict = json.loads(order.tags)
-            for tag in tags:
-                if tag == "conditions":
-                    for condition in tags[tag]:
-                        pass  # TODO:
-                else:
-                    setattr(ib_order, tag, tags[tag])
-            return ib_order
-        except (json.JSONDecodeError, TypeError):
-            self._log.warning(
-                f"{order.client_order_id} {order.tags=} ignored, must be valid IBOrderTags.value",
-            )
-            return ib_order
+        tags: dict = {}
+        for ot in order.tags:
+            if ot.startswith("IBOrderTags:"):
+                tags = IBOrderTags.parse(ot.replace("IBOrderTags:", "")).dict()
+                break
+
+        for tag in tags:
+            if tag == "conditions":
+                for condition in tags[tag]:
+                    pass  # TODO:
+            else:
+                setattr(ib_order, tag, tags[tag])
+
+        return ib_order
 
     async def _submit_order(self, command: SubmitOrder) -> None:
         PyCondition.type(command, SubmitOrder, "command")
-        # Reject the non-compliant orders.
-        # These conditions are based on available info and can be relaxed if there is use case.
-        reject_reason = None
-        if getattr(command.order, "trailing_offset_type", None) not in [
-            TrailingOffsetType.PRICE,
-            None,
-        ]:
-            reject_reason = f"{command.order.trailing_offset_type!r} not implemented"
-        elif getattr(command.order, "is_post_only", None) is True:
-            reject_reason = (
-                "post_only=True, `Marketing making` not supported by InteractiveBrokers."
-            )
-        if reject_reason:
+        try:
+            ib_order: IBOrder = self._transform_order_to_ib_order(command.order)
+            ib_order.orderId = self._client.next_order_id()
+            self._client.place_order(ib_order)
+            self._handle_order_event(status=OrderStatus.SUBMITTED, order=command.order)
+        except ValueError as e:
             self._handle_order_event(
                 status=OrderStatus.REJECTED,
                 order=command.order,
-                reason=reject_reason,
+                reason=str(e),
             )
-            return
-
-        ib_order: IBOrder = self._transform_order_to_ib_order(command.order)
-        ib_order.orderId = self._client.next_order_id()
-        self._client.place_order(ib_order)
-        self._handle_order_event(status=OrderStatus.SUBMITTED, order=command.order)
 
     async def _submit_order_list(self, command: SubmitOrderList) -> None:
         PyCondition.type(command, SubmitOrderList, "command")
@@ -580,10 +610,28 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             order_id_map[order.client_order_id.value] = self._client.next_order_id()
             client_id_to_orders[order.client_order_id.value] = order
 
-            ib_order = self._transform_order_to_ib_order(order)
-            ib_order.transmit = False
-            ib_order.orderId = order_id_map[order.client_order_id.value]
-            ib_orders.append(ib_order)
+            try:
+                ib_order = self._transform_order_to_ib_order(order)
+                ib_order.transmit = False
+                ib_order.orderId = order_id_map[order.client_order_id.value]
+                ib_orders.append(ib_order)
+            except ValueError as e:
+                # All orders in the list are declined to prevent unintended side effects
+                for o in command.order_list.orders:
+                    if o == order:
+                        self._handle_order_event(
+                            status=OrderStatus.REJECTED,
+                            order=command.order,
+                            reason=str(e),
+                        )
+                    else:
+                        self._handle_order_event(
+                            status=OrderStatus.REJECTED,
+                            order=command.order,
+                            reason=f"The order has been rejected due to the rejection of the order with "
+                            f"{order.client_order_id!r} in the list",
+                        )
+                return
 
         # Mark last order to transmit
         ib_orders[-1].transmit = True
@@ -606,8 +654,17 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             return
 
         nautilus_order: Order = self._cache.order(command.client_order_id)
-        self._log.info(f"Nautilus order status is {nautilus_order.status!r}", LogColor.GREEN)
-        ib_order: IBOrder = self._transform_order_to_ib_order(nautilus_order)
+        self._log.info(f"Nautilus order status is {nautilus_order.status_string()}")
+        try:
+            ib_order: IBOrder = self._transform_order_to_ib_order(nautilus_order)
+        except ValueError as e:
+            self._handle_order_event(
+                status=OrderStatus.REJECTED,
+                order=command.order,
+                reason=str(e),
+            )
+            return
+
         ib_order.orderId = int(command.venue_order_id.value)
         if ib_order.parentId:
             parent_nautilus_order = self._cache.order(ClientOrderId(ib_order.parentId))
@@ -726,11 +783,11 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
                     ts_event=self._clock.timestamp_ns(),
                 )
             else:
-                self._log.debug(f"Order {order.client_order_id} already accepted.")
+                self._log.debug(f"Order {order.client_order_id} already accepted")
         elif status == OrderStatus.FILLED:
             if order.status != OrderStatus.FILLED:
                 # TODO: self.generate_order_filled
-                self._log.debug(f"Order {order.client_order_id} is filled.")
+                self._log.debug(f"Order {order.client_order_id} is filled")
         elif status == OrderStatus.PENDING_CANCEL:
             # TODO: self.generate_order_pending_cancel
             self._log.warning(f"Order {order.client_order_id} is {status.name}")
@@ -755,7 +812,7 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
         else:
             self._log.warning(
                 f"Order {order.client_order_id} with status={status.name} is unknown or "
-                "not yet implemented.",
+                "not yet implemented",
             )
 
     async def handle_order_status_report(self, ib_order: IBOrder) -> None:
@@ -842,7 +899,7 @@ class InteractiveBrokersExecutionClient(LiveExecutionClient):
             return
         else:
             self._log.warning(
-                f"Unknown {order_status=} received on " f"`_on_order_status` for {order_ref=}",
+                f"Unknown {order_status=} received on `_on_order_status` for {order_ref=}",
             )
             return
 

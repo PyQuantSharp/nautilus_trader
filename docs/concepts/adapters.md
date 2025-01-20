@@ -1,7 +1,7 @@
 # Adapters
 
-The NautilusTrader design allows for integrating data providers and/or trading venues
-through adapter implementations, these can be found in the top level `adapters` subpackage. 
+The NautilusTrader design integrates data providers and/or trading venues
+through adapter implementations, these can be found in the top level `adapters` subpackage.
 
 An integrations adapter is _typically_ comprised of the following main components:
 
@@ -11,16 +11,16 @@ An integrations adapter is _typically_ comprised of the following main component
 - `DataClient`
 - `ExecutionClient`
 
-## Instrument Providers
+## Instrument providers
 
-Instrument providers do as their name suggests - instantiating Nautilus 
+Instrument providers do as their name suggests - instantiating Nautilus
 `Instrument` objects by parsing the publisher or venues raw API.
 
 The use cases for the instruments available from an `InstrumentProvider` are either:
 - Used standalone to discover the instruments available for an integration, using these for research or backtesting purposes
-- Used in a sandbox or live trading environment context for consumption by actors/strategies
+- Used in a `sandbox` or `live` [environment context](/concepts/architecture.md#environment-contexts) for consumption by actors/strategies
 
-### Research/Backtesting
+### Research and backtesting
 
 Here is an example of discovering the current instruments for the Binance Futures testnet:
 ```python
@@ -51,7 +51,7 @@ provider = BinanceFuturesInstrumentProvider(
 await provider.load_all_async()
 ```
 
-### Live Trading
+### Live trading
 
 Each integration is implementation specific, and there are generally two options for the behavior of an `InstrumentProvider` within a `TradingNode` for live trading,
 as configured:
@@ -70,11 +70,11 @@ InstrumentProviderConfig(load_all=True)
 InstrumentProviderConfig(load_ids=["BTCUSDT-PERP.BINANCE", "ETHUSDT-PERP.BINANCE"])
 ```
 
-## Data Clients
+## Data clients
 
 ### Requests
 
-An `Actor` or `Strategy` can request custom data from a `DataClient` by sending a `DataRequest`. If the client that receives the 
+An `Actor` or `Strategy` can request custom data from a `DataClient` by sending a `DataRequest`. If the client that receives the
 `DataRequest` implements a handler for the request, data will be returned to the `Actor` or `Strategy`.
 
 #### Example
@@ -82,12 +82,12 @@ An `Actor` or `Strategy` can request custom data from a `DataClient` by sending 
 An example of this is a `DataRequest` for an `Instrument`, which the `Actor` class implements (copied below). Any `Actor` or
 `Strategy` can call a `request_instrument` method with an `InstrumentId` to request the instrument from a `DataClient`.
 
-In this particular case, the `Actor` implements a separate method `request_instrument`. A similar type of 
+In this particular case, the `Actor` implements a separate method `request_instrument`. A similar type of
 `DataRequest` could be instantiated and called from anywhere and/or anytime in the actor/strategy code.
 
 On the actor/strategy:
 
-```cython
+```python
 # nautilus_trader/common/actor.pyx
 
 cpdef void request_instrument(self, InstrumentId instrument_id, ClientId client_id=None):
@@ -123,12 +123,12 @@ cpdef void request_instrument(self, InstrumentId instrument_id, ClientId client_
 The handler on the `ExecutionClient`:
 
 ```python
-from nautilus_trader.core.uuid import UUID4
-from nautilus_trader.model.data import DataType
-from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.core import UUID4
+from nautilus_trader.model import DataType
+from nautilus_trader.model import InstrumentId
 
 # nautilus_trader/adapters/binance/spot/data.py
-def request_instrument(self, instrument_id: InstrumentId, correlation_id: UUID4):
+def request_instrument(self, instrument_id: InstrumentId, correlation_id: UUID4, params: dict[str, Any]):
     instrument: Instrument | None = self._instrument_provider.find(instrument_id)
     if instrument is None:
         self._log.error(f"Cannot find instrument for {instrument_id}.")
@@ -143,6 +143,7 @@ def request_instrument(self, instrument_id: InstrumentId, correlation_id: UUID4)
         data_type=data_type,
         data=[instrument],  # Data engine handles lists of instruments
         correlation_id=correlation_id,
+        params=params,
     )
 
 ```

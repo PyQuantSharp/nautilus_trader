@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,6 +17,7 @@ import datetime as dt
 import pathlib
 import random
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import fsspec
@@ -25,17 +26,21 @@ import pandas as pd
 import pytz
 from fsspec.implementations.local import LocalFileSystem
 
-from nautilus_trader.adapters.betfair.constants import BETFAIR_PRICE_PRECISION
-from nautilus_trader.adapters.betfair.constants import BETFAIR_QUANTITY_PRECISION
+from nautilus_trader import PACKAGE_ROOT
+from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.datetime import dt_to_unix_nanos
 from nautilus_trader.core.datetime import secs_to_nanos
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.model.currencies import ADA
+from nautilus_trader.model.currencies import AUD
 from nautilus_trader.model.currencies import BTC
 from nautilus_trader.model.currencies import ETH
+from nautilus_trader.model.currencies import GBP
 from nautilus_trader.model.currencies import USD
+from nautilus_trader.model.currencies import USDC
 from nautilus_trader.model.currencies import USDT
+from nautilus_trader.model.currencies import XRP
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.enums import AggressorSide
@@ -46,6 +51,8 @@ from nautilus_trader.model.identifiers import Symbol
 from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.instruments import BettingInstrument
+from nautilus_trader.model.instruments import BinaryOption
+from nautilus_trader.model.instruments import Cfd
 from nautilus_trader.model.instruments import CryptoFuture
 from nautilus_trader.model.instruments import CryptoPerpetual
 from nautilus_trader.model.instruments import CurrencyPair
@@ -68,6 +75,8 @@ class TestInstrumentProvider:
     """
     Provides instrument template methods for backtesting.
     """
+
+    __test__ = False  # Prevents pytest from collecting this as a test class
 
     @staticmethod
     def adabtc_binance() -> CurrencyPair:
@@ -181,7 +190,7 @@ class TestInstrumentProvider:
         )
 
     @staticmethod
-    def btcusdt_perp_binance() -> CurrencyPair:
+    def btcusdt_perp_binance() -> CryptoPerpetual:
         """
         Return the Binance Futures BTCUSDT instrument for backtesting.
 
@@ -326,6 +335,7 @@ class TestInstrumentProvider:
             underlying=BTC,
             quote_currency=USDT,
             settlement_currency=USDT,
+            is_inverse=False,
             activation_ns=activation.value,
             expiration_ns=expiration.value,
             price_precision=2,
@@ -344,6 +354,44 @@ class TestInstrumentProvider:
             taker_fee=Decimal("0.001"),
             ts_event=0,
             ts_init=0,
+        )
+
+    @staticmethod
+    def xrpusdt_linear_bybit() -> CryptoPerpetual:
+        """
+        Return the ByBit Linear XRPUSDT instrument for backtesting.
+
+        Returns
+        -------
+        CryptoPerpetual
+
+        """
+        return CryptoPerpetual(
+            instrument_id=InstrumentId(
+                symbol=Symbol("XRPUSDT-LINEAR"),
+                venue=Venue("BYBIT"),
+            ),
+            raw_symbol=Symbol("XRPUSDT"),
+            base_currency=XRP,
+            quote_currency=USDT,
+            settlement_currency=USDT,
+            is_inverse=False,
+            price_precision=4,
+            price_increment=Price.from_str("0.0001"),
+            size_precision=0,
+            size_increment=Quantity.from_str("1"),
+            max_quantity=Quantity.from_str("10965300"),
+            min_quantity=Quantity.from_str("1"),
+            max_notional=None,
+            min_notional=Money(1.0, USDT),
+            max_price=Price.from_str("199.9998"),
+            min_price=Price.from_str("0.0001"),
+            margin_init=Decimal("0.1"),
+            margin_maint=Decimal("0.1"),
+            maker_fee=Decimal("0.0002"),
+            taker_fee=Decimal("0.00055"),
+            ts_event=1646199312128000000,
+            ts_init=1646199342953849862,
         )
 
     @staticmethod
@@ -423,6 +471,44 @@ class TestInstrumentProvider:
         )
 
     @staticmethod
+    def onethousandrats_perp_binance() -> CryptoPerpetual:
+        """
+        Return the Binance 1000RATSUSDT perpetual contract for backtesting.
+
+        Returns
+        -------
+        CryptoPerpetual
+
+        """
+        return CryptoPerpetual(
+            instrument_id=InstrumentId(
+                symbol=Symbol("1000RATSUSDT-PERP"),
+                venue=Venue("BINANCE"),
+            ),
+            raw_symbol=Symbol("1000RATSUSDT"),
+            base_currency=Currency.from_str("1000RATS"),
+            quote_currency=USDT,
+            settlement_currency=USDT,
+            is_inverse=False,
+            price_precision=7,
+            size_precision=0,
+            price_increment=Price.from_str("0.0000100"),
+            size_increment=Quantity.from_int(1),
+            max_quantity=Quantity.from_int(1_000_000),
+            min_quantity=Quantity.from_int(1),
+            max_notional=None,
+            min_notional=None,
+            max_price=Price.from_str("1000000.00"),
+            min_price=Price.from_str("0.0"),
+            margin_init=Decimal("0.0500"),
+            margin_maint=Decimal("0.0250"),
+            maker_fee=Decimal("0.000200"),
+            taker_fee=Decimal("0.000500"),
+            ts_event=0,
+            ts_init=0,
+        )
+
+    @staticmethod
     def default_fx_ccy(symbol: str, venue: Venue | None = None) -> CurrencyPair:
         """
         Return a default FX currency pair instrument from the given symbol and venue.
@@ -491,6 +577,27 @@ class TestInstrumentProvider:
         )
 
     @staticmethod
+    def audusd_cfd() -> Cfd:
+        return Cfd(
+            instrument_id=InstrumentId.from_str("AUDUSD.OANDA"),
+            raw_symbol=Symbol("AUD/USD"),
+            asset_class=AssetClass.FX,
+            base_currency=AUD,
+            quote_currency=USD,
+            price_precision=5,
+            price_increment=Price.from_str("0.00001"),
+            size_precision=0,
+            size_increment=Quantity.from_int(1),
+            lot_size=Quantity.from_int(1000),
+            margin_init=Decimal("0.03"),
+            margin_maint=Decimal("0.03"),
+            maker_fee=Decimal("0.00002"),
+            taker_fee=Decimal("0.00002"),
+            ts_event=0,
+            ts_init=0,
+        )
+
+    @staticmethod
     def equity(symbol: str = "AAPL", venue: str = "XNAS") -> Equity:
         return Equity(
             instrument_id=InstrumentId(symbol=Symbol(symbol), venue=Venue(venue)),
@@ -523,6 +630,7 @@ class TestInstrumentProvider:
             instrument_id=InstrumentId(symbol=Symbol(raw_symbol), venue=Venue("GLBX")),
             raw_symbol=Symbol(raw_symbol),
             asset_class=AssetClass.INDEX,
+            exchange="XCME",
             currency=USD,
             price_precision=2,
             price_increment=Price.from_str("0.25"),
@@ -540,11 +648,13 @@ class TestInstrumentProvider:
         symbol: str = "ESZ1",
         underlying: str = "ES",
         venue: str = "GLBX",
+        exchange: str = "XCME",
     ) -> FuturesContract:
         return FuturesContract(
             instrument_id=InstrumentId(symbol=Symbol(symbol), venue=Venue(venue)),
             raw_symbol=Symbol(symbol),
             asset_class=AssetClass.INDEX,
+            exchange=exchange,
             currency=USD,
             price_precision=2,
             price_increment=Price.from_str("0.01"),
@@ -563,6 +673,7 @@ class TestInstrumentProvider:
             instrument_id=InstrumentId(symbol=Symbol("AAPL211217C00150000"), venue=Venue("OPRA")),
             raw_symbol=Symbol("AAPL211217C00150000"),
             asset_class=AssetClass.EQUITY,
+            exchange="GMNI",
             currency=USD,
             price_precision=2,
             price_increment=Price.from_str("0.01"),
@@ -604,7 +715,7 @@ class TestInstrumentProvider:
             event_open_date=pd.Timestamp("2022-02-07 23:30:00+00:00"),
             event_type_id=6423,
             event_type_name="American Football",
-            market_id="1.123456789",
+            market_id="1-123456789",
             market_name="AFC Conference Winner",
             market_start_time=pd.Timestamp("2022-02-07 23:30:00+00:00"),
             market_type="SPECIAL",
@@ -612,8 +723,37 @@ class TestInstrumentProvider:
             selection_id=50214,
             selection_name="Kansas City Chiefs",
             currency="GBP",
-            price_precision=BETFAIR_PRICE_PRECISION,
-            size_precision=BETFAIR_QUANTITY_PRECISION,
+            price_precision=2,  # BETFAIR_PRICE_PRECISION,
+            size_precision=2,  # BETFAIR_QUANTITY_PRECISION,
+            min_notional=Money(1, GBP),
+            ts_event=0,
+            ts_init=0,
+        )
+
+    @staticmethod
+    def binary_option() -> BinaryOption:
+        raw_symbol = Symbol(
+            "0x12a0cb60174abc437bf1178367c72d11f069e1a3add20b148fb0ab4279b772b2-92544998123698303655208967887569360731013655782348975589292031774495159624905",
+        )
+        price_increment = Price.from_str("0.001")
+        size_increment = Quantity.from_str("0.01")
+        return BinaryOption(
+            instrument_id=InstrumentId(symbol=raw_symbol, venue=Venue("POLYMARKET")),
+            raw_symbol=raw_symbol,
+            outcome="Yes",
+            description="Will the outcome of this market be 'Yes'?",
+            asset_class=AssetClass.ALTERNATIVE,
+            currency=USDC,
+            price_precision=price_increment.precision,
+            price_increment=price_increment,
+            size_precision=size_increment.precision,
+            size_increment=size_increment,
+            activation_ns=0,
+            expiration_ns=pd.Timestamp("2024-01-01", tz="UTC").value,
+            max_quantity=None,
+            min_quantity=Quantity.from_int(5),
+            maker_fee=Decimal(0),  # TBD
+            taker_fee=Decimal(0),  # TBD
             ts_event=0,
             ts_init=0,
         )
@@ -647,7 +787,7 @@ def third_friday_of_month(year: int, month: int) -> dt.date:
     return third_friday
 
 
-def get_contract_month_code(expiry_month: int) -> str:
+def get_contract_month_code(expiry_month: int) -> str:  # noqa: C901 (too complex)
     match expiry_month:
         case 1:
             return "F"
@@ -688,6 +828,8 @@ class TestDataProvider:
         The NautilusTrader GitHub branch for the path.
 
     """
+
+    __test__ = False  # Prevents pytest from collecting this as a test class
 
     def __init__(self, branch: str = "develop") -> None:
         self.fs: fsspec.AbstractFileSystem | None = None
@@ -759,6 +901,9 @@ class TestDataProvider:
 
 
 class TestDataGenerator:
+
+    __test__ = False  # Prevents pytest from collecting this as a test class
+
     @staticmethod
     def simulate_value_diffs(
         count: int,
@@ -853,3 +998,53 @@ class TestDataGenerator:
             )
             for idx, row in df.iterrows()
         ]
+
+
+def get_test_data_large_path() -> Path:
+    return (PACKAGE_ROOT / "tests" / "test_data" / "large").resolve()
+
+
+def get_test_data_large_checksums_filepath() -> Path:
+    return (get_test_data_large_path() / "checksums.json").resolve()
+
+
+def ensure_test_data_exists(filename: str, url: str) -> Path:
+    filepath = (get_test_data_large_path() / filename).resolve()
+    checksums_filepath = get_test_data_large_checksums_filepath()
+    nautilus_pyo3.ensure_file_exists_or_download_http(str(filepath), url, str(checksums_filepath))
+    return filepath
+
+
+def ensure_data_exists_tardis_deribit_book_l2() -> Path:
+    filename = "tardis_deribit_incremental_book_L2_2020-04-01_BTC-PERPETUAL.csv.gz"
+    base_url = "https://datasets.tardis.dev"
+    url = f"{base_url}/v1/deribit/incremental_book_L2/2020/04/01/BTC-PERPETUAL.csv.gz"
+    return ensure_test_data_exists(filename, url)
+
+
+def ensure_data_exists_tardis_binance_snapshot5() -> Path:
+    filename = "tardis_binance-futures_book_snapshot_5_2020-09-01_BTCUSDT.csv.gz"
+    base_url = "https://datasets.tardis.dev"
+    url = f"{base_url}/v1/binance-futures/book_snapshot_5/2020/09/01/BTCUSDT.csv.gz"
+    return ensure_test_data_exists(filename, url)
+
+
+def ensure_data_exists_tardis_binance_snapshot25() -> Path:
+    filename = "tardis_binance-futures_book_snapshot_25_2020-09-01_BTCUSDT.csv.gz"
+    base_url = "https://datasets.tardis.dev"
+    url = f"{base_url}/v1/binance-futures/book_snapshot_25/2020/09/01/BTCUSDT.csv.gz"
+    return ensure_test_data_exists(filename, url)
+
+
+def ensure_data_exists_tardis_huobi_quotes() -> Path:
+    filename = "tardis_huobi-dm-swap_quotes_2020-05-01_BTC-USD.csv.gz"
+    base_url = "https://datasets.tardis.dev"
+    url = f"{base_url}/v1/huobi-dm-swap/quotes/2020/05/01/BTC-USD.csv.gz"
+    return ensure_test_data_exists(filename, url)
+
+
+def ensure_data_exists_tardis_bitmex_trades() -> Path:
+    filename = "tardis_bitmex_trades_2020-03-01_XBTUSD.csv.gz"
+    base_url = "https://datasets.tardis.dev"
+    url = f"{base_url}/v1/bitmex/trades/2020/03/01/XBTUSD.csv.gz"
+    return ensure_test_data_exists(filename, url)

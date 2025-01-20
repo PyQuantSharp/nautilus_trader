@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,8 +13,6 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-from libc.stdint cimport int64_t
-
 
 cdef inline Exception make_exception(ex_default, ex_type, str msg):
     if type(ex_type) is type(Exception):
@@ -26,10 +24,10 @@ cdef inline Exception make_exception(ex_default, ex_type, str msg):
 cdef class Condition:
 
     @staticmethod
-    cdef void true(bint predicate, str fail_msg, ex_type=*)
+    cdef void is_true(bint predicate, str fail_msg, ex_type=*)
 
     @staticmethod
-    cdef void false(bint predicate, str fail_msg, ex_type=*)
+    cdef void is_false(bint predicate, str fail_msg, ex_type=*)
 
     @staticmethod
     cdef void none(object argument, str param, ex_type=*)
@@ -122,13 +120,13 @@ cdef class Condition:
     cdef void positive(double value, str param, ex_type=*)
 
     @staticmethod
-    cdef void positive_int(int64_t value, str param, ex_type=*)
+    cdef void positive_int(value: int, str param, ex_type=*)
 
     @staticmethod
     cdef void not_negative(double value, str param, ex_type=*)
 
     @staticmethod
-    cdef void not_negative_int(int64_t value, str param, ex_type=*)
+    cdef void not_negative_int(value: int, str param, ex_type=*)
 
     @staticmethod
     cdef void in_range(
@@ -141,9 +139,9 @@ cdef class Condition:
 
     @staticmethod
     cdef void in_range_int(
-        int64_t value,
-        int64_t start,
-        int64_t end,
+        value,
+        start,
+        end,
         str param,
         ex_type=*,
     )

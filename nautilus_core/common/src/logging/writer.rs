@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -36,14 +36,16 @@ pub trait LogWriter {
 #[derive(Debug)]
 pub struct StdoutWriter {
     pub is_colored: bool,
-    buf: BufWriter<Stdout>,
+    io: Stdout,
     level: LevelFilter,
 }
 
 impl StdoutWriter {
+    /// Creates a new [`StdoutWriter`] instance.
+    #[must_use]
     pub fn new(level: LevelFilter, is_colored: bool) -> Self {
         Self {
-            buf: BufWriter::new(io::stdout()),
+            io: io::stdout(),
             level,
             is_colored,
         }
@@ -52,14 +54,14 @@ impl StdoutWriter {
 
 impl LogWriter for StdoutWriter {
     fn write(&mut self, line: &str) {
-        match self.buf.write_all(line.as_bytes()) {
+        match self.io.write_all(line.as_bytes()) {
             Ok(()) => {}
             Err(e) => eprintln!("Error writing to stdout: {e:?}"),
         }
     }
 
     fn flush(&mut self) {
-        match self.buf.flush() {
+        match self.io.flush() {
             Ok(()) => {}
             Err(e) => eprintln!("Error flushing stdout: {e:?}"),
         }
@@ -74,13 +76,15 @@ impl LogWriter for StdoutWriter {
 #[derive(Debug)]
 pub struct StderrWriter {
     pub is_colored: bool,
-    buf: BufWriter<Stderr>,
+    io: Stderr,
 }
 
 impl StderrWriter {
+    /// Creates a new [`StderrWriter`] instance.
+    #[must_use]
     pub fn new(is_colored: bool) -> Self {
         Self {
-            buf: BufWriter::new(io::stderr()),
+            io: io::stderr(),
             is_colored,
         }
     }
@@ -88,14 +92,14 @@ impl StderrWriter {
 
 impl LogWriter for StderrWriter {
     fn write(&mut self, line: &str) {
-        match self.buf.write_all(line.as_bytes()) {
+        match self.io.write_all(line.as_bytes()) {
             Ok(()) => {}
             Err(e) => eprintln!("Error writing to stderr: {e:?}"),
         }
     }
 
     fn flush(&mut self) {
-        match self.buf.flush() {
+        match self.io.flush() {
             Ok(()) => {}
             Err(e) => eprintln!("Error flushing stderr: {e:?}"),
         }
@@ -118,7 +122,9 @@ pub struct FileWriterConfig {
 }
 
 impl FileWriterConfig {
-    pub fn new(
+    /// Creates a new [`FileWriterConfig`] instance.
+    #[must_use]
+    pub const fn new(
         directory: Option<String>,
         file_name: Option<String>,
         file_format: Option<String>,
@@ -143,18 +149,19 @@ pub struct FileWriter {
 }
 
 impl FileWriter {
+    /// Creates a new [`FileWriter`] instance.
     pub fn new(
         trader_id: String,
         instance_id: String,
         file_config: FileWriterConfig,
         fileout_level: LevelFilter,
     ) -> Option<Self> {
-        // Setup log file
+        // Set up log file
         let json_format = match file_config.file_format.as_ref().map(|s| s.to_lowercase()) {
             Some(ref format) if format == "json" => true,
             None => false,
             Some(ref unrecognized) => {
-                eprintln!(
+                tracing::error!(
                     "Unrecognized log file format: {unrecognized}. Using plain text format as default."
                 );
                 false
@@ -179,7 +186,7 @@ impl FileWriter {
                 level: fileout_level,
             }),
             Err(e) => {
-                eprintln!("Error creating log file: {}", e);
+                tracing::error!("Error creating log file: {e}");
                 None
             }
         }
@@ -212,6 +219,7 @@ impl FileWriter {
         file_path
     }
 
+    #[must_use]
     pub fn should_rotate_file(&self) -> bool {
         let current_date_utc = Utc::now().date_naive();
         let metadata = self
@@ -250,20 +258,20 @@ impl LogWriter for FileWriter {
                     self.buf = BufWriter::new(file);
                     self.path = file_path;
                 }
-                Err(e) => eprintln!("Error creating log file: {}", e),
+                Err(e) => tracing::error!("Error creating log file: {e}"),
             }
         }
 
         match self.buf.write_all(line.as_bytes()) {
             Ok(()) => {}
-            Err(e) => eprintln!("Error writing to file: {e:?}"),
+            Err(e) => tracing::error!("Error writing to file: {e:?}"),
         }
     }
 
     fn flush(&mut self) {
         match self.buf.flush() {
             Ok(()) => {}
-            Err(e) => eprintln!("Error flushing file: {e:?}"),
+            Err(e) => tracing::error!("Error flushing file: {e:?}"),
         }
     }
 

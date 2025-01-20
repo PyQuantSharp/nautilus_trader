@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,6 +15,7 @@
 
 import pandas as pd
 
+from nautilus_trader.execution.messages import BatchCancelOrders
 from nautilus_trader.execution.messages import CancelAllOrders
 from nautilus_trader.execution.messages import CancelOrder
 from nautilus_trader.execution.messages import ModifyOrder
@@ -35,7 +36,7 @@ from nautilus_trader.model.identifiers import VenueOrderId
 # The reason for their use is to reduce redundant/needless tests which simply
 # assert that a `NotImplementedError` is raised when calling abstract methods.
 # These tests are expensive to maintain (as they must be kept in line with any
-# refactorings), and offer little to no benefit in return. However, the intention
+# refactorings), and offer little to no benefit in return. The intention
 # is for all method implementations to be fully covered by tests.
 
 # *** THESE PRAGMA: NO COVER COMMENTS MUST BE REMOVED IN ANY IMPLEMENTATION. ***
@@ -55,9 +56,10 @@ class TemplateLiveExecutionClient(LiveExecutionClient):
     +--------------------------------------------+-------------+
     | _submit_order                              | required    |
     | _submit_order_list                         | required    |
-    | _modify_order                              | required    |
+    | _modify_order                              | optional    |
     | _cancel_order                              | required    |
     | _cancel_all_orders                         | required    |
+    | _batch_cancel_orders                       | optional    |
     | generate_order_status_report               | required    |
     | generate_order_status_reports              | required    |
     | generate_fill_reports                      | required    |
@@ -155,6 +157,11 @@ class TemplateLiveExecutionClient(LiveExecutionClient):
     async def _cancel_all_orders(self, command: CancelAllOrders) -> None:
         raise NotImplementedError(
             "method `_cancel_all_orders` must be implemented in the subclass",
+        )  # pragma: no cover
+
+    async def _batch_cancel_orders(self, command: BatchCancelOrders) -> None:
+        raise NotImplementedError(
+            "method `_batch_cancel_orders` must be implemented in the subclass",
         )  # pragma: no cover
 
     async def _query_order(self, command: QueryOrder) -> None:

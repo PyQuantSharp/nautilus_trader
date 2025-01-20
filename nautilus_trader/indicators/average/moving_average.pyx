@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -47,7 +47,7 @@ cdef class MovingAverage(Indicator):
     params : list
         The initialization parameters for the indicator.
     price_type : PriceType, optional
-        The specified price type for extracting values from quote ticks.
+        The specified price type for extracting values from quotes.
 
     Warnings
     --------

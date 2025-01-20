@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,6 +12,8 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
+
+//! Enumerations for common components.
 
 use std::fmt::Debug;
 
@@ -40,7 +42,7 @@ use strum::{Display, EnumIter, EnumString, FromRepr};
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.common.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.common.enums")
 )]
 pub enum ComponentState {
     /// When a component is instantiated, but not yet ready to fulfill its specification.
@@ -95,7 +97,7 @@ pub enum ComponentState {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.common.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.common.enums")
 )]
 pub enum ComponentTrigger {
     /// A trigger for the component to initialize.
@@ -152,29 +154,33 @@ pub enum ComponentTrigger {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.common.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.common.enums")
 )]
 pub enum LogLevel {
-    /// A level lower than all other log levels (off).
+    /// The **OFF** log level. A level lower than all other log levels (off).
     #[strum(serialize = "OFF")]
     #[serde(rename = "OFF")]
     Off = 0,
-    /// The **DEBUG** debug log level.
+    /// The **TRACE** log level. Only available in Rust for debug/development builds.
+    #[strum(serialize = "TRACE")]
+    #[serde(rename = "TRACE")]
+    Trace = 1,
+    /// The **DEBUG** log level.
     #[strum(serialize = "DEBUG")]
     #[serde(rename = "DEBUG")]
-    Debug = 10,
-    /// The **INFO** info log level.
+    Debug = 2,
+    /// The **INFO** log level.
     #[strum(serialize = "INFO")]
     #[serde(rename = "INFO")]
-    Info = 20,
-    /// The **WARNING** warning log level.
+    Info = 3,
+    /// The **WARNING** log level.
     #[strum(serialize = "WARN", serialize = "WARNING")]
     #[serde(rename = "WARNING")]
-    Warning = 30,
-    /// The **ERROR** error log level.
+    Warning = 4,
+    /// The **ERROR** log level.
     #[strum(serialize = "ERROR")]
     #[serde(rename = "ERROR")]
-    Error = 40,
+    Error = 5,
 }
 
 /// The log color for log messages.
@@ -199,30 +205,45 @@ pub enum LogLevel {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.common.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.common.enums")
 )]
 pub enum LogColor {
     /// The default/normal log color.
-    #[strum(serialize = "")]
+    #[strum(serialize = "NORMAL")]
     Normal = 0,
     /// The green log color, typically used with [`LogLevel::Info`] log levels and associated with success events.
-    #[strum(serialize = "\x1b[92m")]
+    #[strum(serialize = "GREEN")]
     Green = 1,
     /// The blue log color, typically used with [`LogLevel::Info`] log levels and associated with user actions.
-    #[strum(serialize = "\x1b[94m")]
+    #[strum(serialize = "BLUE")]
     Blue = 2,
     /// The magenta log color, typically used with [`LogLevel::Info`] log levels.
-    #[strum(serialize = "\x1b[35m")]
+    #[strum(serialize = "MAGENTA")]
     Magenta = 3,
     /// The cyan log color, typically used with [`LogLevel::Info`] log levels.
-    #[strum(serialize = "\x1b[36m")]
+    #[strum(serialize = "CYAN")]
     Cyan = 4,
     /// The yellow log color, typically used with [`LogLevel::Warning`] log levels.
-    #[strum(serialize = "\x1b[1;33m")]
+    #[strum(serialize = "YELLOW")]
     Yellow = 5,
     /// The red log color, typically used with [`LogLevel::Error`] level.
-    #[strum(serialize = "\x1b[1;31m")]
+    #[strum(serialize = "RED")]
     Red = 6,
+}
+
+impl LogColor {
+    #[must_use]
+    pub const fn as_ansi(&self) -> &str {
+        match *self {
+            Self::Normal => "",
+            Self::Green => "\x1b[92m",
+            Self::Blue => "\x1b[94m",
+            Self::Magenta => "\x1b[35m",
+            Self::Cyan => "\x1b[36m",
+            Self::Yellow => "\x1b[1;33m",
+            Self::Red => "\x1b[1;31m",
+        }
+    }
 }
 
 impl From<u8> for LogColor {
@@ -247,7 +268,7 @@ impl From<u8> for LogColor {
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.common.enums")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.common.enums")
 )]
 pub enum LogFormat {
     /// Header log format. This ANSI escape code is used for magenta text color,
@@ -267,4 +288,37 @@ pub enum LogFormat {
     /// Underline log format. This ANSI escape code is used to underline the text in the log output.
     #[strum(serialize = "\x1b[4m")]
     Underline,
+}
+
+/// The serialization encoding.
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    FromRepr,
+    EnumIter,
+    EnumString,
+    Serialize,
+    Deserialize,
+)]
+#[strum(ascii_case_insensitive)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.common.enums")
+)]
+pub enum SerializationEncoding {
+    /// The MessagePack encoding.
+    #[serde(rename = "msgpack")]
+    MsgPack = 0,
+    /// The JavaScript Object Notation (JSON) encoding.
+    #[serde(rename = "json")]
+    Json = 1,
 }

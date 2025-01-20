@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,14 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid client order ID (assigned by the Nautilus system).
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
 
-use anyhow::Result;
-use nautilus_core::correctness::check_valid_string;
+use nautilus_core::correctness::{check_valid_string, FAILED};
 use ustr::Ustr;
 
 /// Represents a valid client order ID (assigned by the Nautilus system).
@@ -29,38 +30,62 @@ use ustr::Ustr;
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct ClientOrderId {
-    /// The client order ID value.
-    pub value: Ustr,
-}
+pub struct ClientOrderId(Ustr);
 
 impl ClientOrderId {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`ClientOrderId` value")?;
-
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`ClientOrderId`] instance with correctness checking.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `value` is not a valid string.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
     }
-}
 
-impl Default for ClientOrderId {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("O-123456789"),
-        }
+    /// Creates a new [`ClientOrderId`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 
 impl Debug for ClientOrderId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for ClientOrderId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -70,7 +95,7 @@ pub fn optional_ustr_to_vec_client_order_ids(s: Option<Ustr>) -> Option<Vec<Clie
         let s_str = ustr.to_string();
         s_str
             .split(',')
-            .map(|s| ClientOrderId::new(s).unwrap())
+            .map(ClientOrderId::new)
             .collect::<Vec<ClientOrderId>>()
     })
 }
@@ -80,17 +105,11 @@ pub fn optional_vec_client_order_ids_to_ustr(vec: Option<Vec<ClientOrderId>>) ->
     vec.map(|client_order_ids| {
         let s: String = client_order_ids
             .into_iter()
-            .map(|id| id.value.to_string())
+            .map(|id| id.to_string())
             .collect::<Vec<String>>()
             .join(",");
         Ustr::from(&s)
     })
-}
-
-impl From<&str> for ClientOrderId {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,8 +130,8 @@ mod tests {
 
     #[rstest]
     fn test_string_reprs(client_order_id: ClientOrderId) {
-        assert_eq!(client_order_id.to_string(), "O-20200814-102234-001-001-1");
-        assert_eq!(format!("{client_order_id}"), "O-20200814-102234-001-001-1");
+        assert_eq!(client_order_id.as_str(), "O-19700101-000000-001-001-1");
+        assert_eq!(format!("{client_order_id}"), "O-19700101-000000-001-001-1");
     }
 
     #[rstest]
@@ -123,9 +142,9 @@ mod tests {
         // Test with Some
         let ustr = Ustr::from("id1,id2,id3");
         let client_order_ids = optional_ustr_to_vec_client_order_ids(Some(ustr)).unwrap();
-        assert_eq!(client_order_ids[0].value.to_string(), "id1");
-        assert_eq!(client_order_ids[1].value.to_string(), "id2");
-        assert_eq!(client_order_ids[2].value.to_string(), "id3");
+        assert_eq!(client_order_ids[0].as_str(), "id1");
+        assert_eq!(client_order_ids[1].as_str(), "id2");
+        assert_eq!(client_order_ids[2].as_str(), "id3");
     }
 
     #[rstest]

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,8 @@
 
 use std::fmt::{Display, Formatter};
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -67,11 +66,11 @@ impl Indicator for DoubleExponentialMovingAverage {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, quote: &QuoteTick) {
+    fn handle_quote(&mut self, quote: &QuoteTick) {
         self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, trade: &TradeTick) {
+    fn handle_trade(&mut self, trade: &TradeTick) {
         self.update_raw((&trade.price).into());
     }
 
@@ -88,17 +87,19 @@ impl Indicator for DoubleExponentialMovingAverage {
 }
 
 impl DoubleExponentialMovingAverage {
-    pub fn new(period: usize, price_type: Option<PriceType>) -> Result<Self> {
-        Ok(Self {
+    /// Creates a new [`DoubleExponentialMovingAverage`] instance.
+    #[must_use]
+    pub fn new(period: usize, price_type: Option<PriceType>) -> Self {
+        Self {
             period,
             price_type: price_type.unwrap_or(PriceType::Last),
             value: 0.0,
             count: 0,
             has_inputs: false,
             initialized: false,
-            ema1: ExponentialMovingAverage::new(period, price_type)?,
-            ema2: ExponentialMovingAverage::new(period, price_type)?,
-        })
+            ema1: ExponentialMovingAverage::new(period, price_type),
+            ema2: ExponentialMovingAverage::new(period, price_type),
+        }
     }
 }
 
@@ -132,7 +133,7 @@ impl MovingAverage for DoubleExponentialMovingAverage {
 ////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
-    use nautilus_model::data::{bar::Bar, quote::QuoteTick, trade::TradeTick};
+    use nautilus_model::data::{Bar, QuoteTick, TradeTick};
     use rstest::rstest;
 
     use crate::{
@@ -175,20 +176,20 @@ mod tests {
     }
 
     #[rstest]
-    fn test_handle_quote_tick(
+    fn test_handle_quote(
         mut indicator_dema_10: DoubleExponentialMovingAverage,
-        quote_tick: QuoteTick,
+        stub_quote: QuoteTick,
     ) {
-        indicator_dema_10.handle_quote_tick(&quote_tick);
+        indicator_dema_10.handle_quote(&stub_quote);
         assert_eq!(indicator_dema_10.value, 1501.0);
     }
 
     #[rstest]
-    fn test_handle_trade_tick(
+    fn test_handle_trade(
         mut indicator_dema_10: DoubleExponentialMovingAverage,
-        trade_tick: TradeTick,
+        stub_trade: TradeTick,
     ) {
-        indicator_dema_10.handle_trade_tick(&trade_tick);
+        indicator_dema_10.handle_trade(&stub_trade);
         assert_eq!(indicator_dema_10.value, 1500.0);
     }
 

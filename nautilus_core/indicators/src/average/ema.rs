@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,9 +15,8 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -58,11 +57,11 @@ impl Indicator for ExponentialMovingAverage {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, quote: &QuoteTick) {
+    fn handle_quote(&mut self, quote: &QuoteTick) {
         self.update_raw(quote.extract_price(self.price_type).into());
     }
 
-    fn handle_trade_tick(&mut self, trade: &TradeTick) {
+    fn handle_trade(&mut self, trade: &TradeTick) {
         self.update_raw((&trade.price).into());
     }
 
@@ -79,10 +78,10 @@ impl Indicator for ExponentialMovingAverage {
 }
 
 impl ExponentialMovingAverage {
-    pub fn new(period: usize, price_type: Option<PriceType>) -> Result<Self> {
-        // Inputs don't require validation, however we return a `Result`
-        // to standardize with other indicators which do need validation.
-        Ok(Self {
+    /// Creates a new [`ExponentialMovingAverage`] instance.
+    #[must_use]
+    pub fn new(period: usize, price_type: Option<PriceType>) -> Self {
+        Self {
             period,
             price_type: price_type.unwrap_or(PriceType::Last),
             alpha: 2.0 / (period as f64 + 1.0),
@@ -90,7 +89,7 @@ impl ExponentialMovingAverage {
             count: 0,
             has_inputs: false,
             initialized: false,
-        })
+        }
     }
 }
 
@@ -124,7 +123,7 @@ impl MovingAverage for ExponentialMovingAverage {
 #[cfg(test)]
 mod tests {
     use nautilus_model::{
-        data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+        data::{Bar, QuoteTick, TradeTick},
         enums::PriceType,
     };
     use rstest::rstest;
@@ -188,29 +187,29 @@ mod tests {
     #[rstest]
     fn test_handle_quote_tick_single(
         indicator_ema_10: ExponentialMovingAverage,
-        quote_tick: QuoteTick,
+        stub_quote: QuoteTick,
     ) {
         let mut ema = indicator_ema_10;
-        ema.handle_quote_tick(&quote_tick);
+        ema.handle_quote(&stub_quote);
         assert!(ema.has_inputs());
         assert_eq!(ema.value, 1501.0);
     }
 
     #[rstest]
     fn test_handle_quote_tick_multi(mut indicator_ema_10: ExponentialMovingAverage) {
-        let tick1 = quote_tick("1500.0", "1502.0");
-        let tick2 = quote_tick("1502.0", "1504.0");
+        let tick1 = stub_quote("1500.0", "1502.0");
+        let tick2 = stub_quote("1502.0", "1504.0");
 
-        indicator_ema_10.handle_quote_tick(&tick1);
-        indicator_ema_10.handle_quote_tick(&tick2);
+        indicator_ema_10.handle_quote(&tick1);
+        indicator_ema_10.handle_quote(&tick2);
         assert_eq!(indicator_ema_10.count, 2);
         assert_eq!(indicator_ema_10.value, 1_501.363_636_363_636_3);
     }
 
     #[rstest]
-    fn test_handle_trade_tick(indicator_ema_10: ExponentialMovingAverage, trade_tick: TradeTick) {
+    fn test_handle_trade_tick(indicator_ema_10: ExponentialMovingAverage, stub_trade: TradeTick) {
         let mut ema = indicator_ema_10;
-        ema.handle_trade_tick(&trade_tick);
+        ema.handle_trade(&stub_trade);
         assert!(ema.has_inputs());
         assert_eq!(ema.value, 1500.0);
     }

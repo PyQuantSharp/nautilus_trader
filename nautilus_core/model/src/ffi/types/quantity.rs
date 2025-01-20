@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,18 +15,20 @@
 
 use std::ops::{AddAssign, SubAssign};
 
-use crate::types::quantity::Quantity;
+use crate::types::quantity::{Quantity, QuantityRaw};
 
 // TODO: Document panic
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn quantity_new(value: f64, precision: u8) -> Quantity {
     // SAFETY: Assumes `value` and `precision` are properly validated
-    Quantity::new(value, precision).unwrap()
+    Quantity::new(value, precision)
 }
 
 #[no_mangle]
-pub extern "C" fn quantity_from_raw(raw: u64, precision: u8) -> Quantity {
-    Quantity::from_raw(raw, precision).unwrap()
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
+pub extern "C" fn quantity_from_raw(raw: QuantityRaw, precision: u8) -> Quantity {
+    Quantity::from_raw(raw, precision)
 }
 
 #[no_mangle]
@@ -35,21 +37,25 @@ pub extern "C" fn quantity_as_f64(qty: &Quantity) -> f64 {
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn quantity_add_assign(mut a: Quantity, b: Quantity) {
     a.add_assign(b);
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn quantity_add_assign_u64(mut a: Quantity, b: u64) {
     a.add_assign(b);
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn quantity_sub_assign(mut a: Quantity, b: Quantity) {
     a.sub_assign(b);
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn quantity_sub_assign_u64(mut a: Quantity, b: u64) {
     a.sub_assign(b);
 }

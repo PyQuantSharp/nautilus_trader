@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,13 +13,15 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Functions related to order book display.
+
 use tabled::{settings::Style, Table, Tabled};
 
-use super::{ladder::BookPrice, level::Level};
-use crate::orderbook::ladder::Ladder;
+use super::{BookLevel, BookPrice};
+use crate::orderbook::ladder::BookLadder;
 
 #[derive(Tabled)]
-struct OrderLevelDisplay {
+struct BookLevelDisplay {
     bids: String,
     price: String,
     asks: String,
@@ -27,12 +29,13 @@ struct OrderLevelDisplay {
 
 /// Return a [`String`] representation of the order book in a human-readable table format.
 #[must_use]
-pub fn pprint_book(bids: &Ladder, asks: &Ladder, num_levels: usize) -> String {
-    let ask_levels: Vec<(&BookPrice, &Level)> = asks.levels.iter().take(num_levels).rev().collect();
-    let bid_levels: Vec<(&BookPrice, &Level)> = bids.levels.iter().take(num_levels).collect();
-    let levels: Vec<(&BookPrice, &Level)> = ask_levels.into_iter().chain(bid_levels).collect();
+pub(crate) fn pprint_book(bids: &BookLadder, asks: &BookLadder, num_levels: usize) -> String {
+    let ask_levels: Vec<(&BookPrice, &BookLevel)> =
+        asks.levels.iter().take(num_levels).rev().collect();
+    let bid_levels: Vec<(&BookPrice, &BookLevel)> = bids.levels.iter().take(num_levels).collect();
+    let levels: Vec<(&BookPrice, &BookLevel)> = ask_levels.into_iter().chain(bid_levels).collect();
 
-    let data: Vec<OrderLevelDisplay> = levels
+    let data: Vec<BookLevelDisplay> = levels
         .iter()
         .map(|(book_price, level)| {
             let is_bid_level = bids.levels.contains_key(book_price);
@@ -52,7 +55,7 @@ pub fn pprint_book(bids: &Ladder, asks: &Ladder, num_levels: usize) -> String {
                 .map(|order| format!("{}", order.1.size))
                 .collect();
 
-            OrderLevelDisplay {
+            BookLevelDisplay {
                 bids: if bid_sizes.is_empty() {
                     String::new()
                 } else {

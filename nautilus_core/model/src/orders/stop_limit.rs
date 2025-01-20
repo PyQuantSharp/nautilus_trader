@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,29 +14,34 @@
 // -------------------------------------------------------------------------------------------------
 
 use std::{
-    collections::HashMap,
+    fmt::Display,
     ops::{Deref, DerefMut},
 };
 
-use nautilus_core::{time::UnixNanos, uuid::UUID4};
+use indexmap::IndexMap;
+use nautilus_core::{UnixNanos, UUID4};
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use ustr::Ustr;
 
-use super::base::{Order, OrderCore, OrderError};
+use super::{
+    any::OrderAny,
+    base::{Order, OrderCore, OrderError},
+};
 use crate::{
     enums::{
         ContingencyType, LiquiditySide, OrderSide, OrderStatus, OrderType, TimeInForce,
         TrailingOffsetType, TriggerType,
     },
-    events::order::{event::OrderEvent, initialized::OrderInitialized, updated::OrderUpdated},
+    events::{OrderEventAny, OrderInitialized, OrderUpdated},
     identifiers::{
-        account_id::AccountId, client_order_id::ClientOrderId, exec_algorithm_id::ExecAlgorithmId,
-        instrument_id::InstrumentId, order_list_id::OrderListId, position_id::PositionId,
-        strategy_id::StrategyId, symbol::Symbol, trade_id::TradeId, trader_id::TraderId,
-        venue::Venue, venue_order_id::VenueOrderId,
+        AccountId, ClientOrderId, ExecAlgorithmId, InstrumentId, OrderListId, PositionId,
+        StrategyId, Symbol, TradeId, TraderId, Venue, VenueOrderId,
     },
-    types::{price::Price, quantity::Quantity},
+    types::{Price, Quantity},
 };
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
@@ -55,7 +60,7 @@ pub struct StopLimitOrder {
 }
 
 impl StopLimitOrder {
-    #[must_use]
+    /// Creates a new [`StopLimitOrder`] instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         trader_id: TraderId,
@@ -80,36 +85,49 @@ impl StopLimitOrder {
         linked_order_ids: Option<Vec<ClientOrderId>>,
         parent_order_id: Option<ClientOrderId>,
         exec_algorithm_id: Option<ExecAlgorithmId>,
-        exec_algorithm_params: Option<HashMap<Ustr, Ustr>>,
+        exec_algorithm_params: Option<IndexMap<Ustr, Ustr>>,
         exec_spawn_id: Option<ClientOrderId>,
-        tags: Option<Ustr>,
+        tags: Option<Vec<Ustr>>,
         init_id: UUID4,
         ts_init: UnixNanos,
     ) -> Self {
+        let init_order = OrderInitialized::new(
+            trader_id,
+            strategy_id,
+            instrument_id,
+            client_order_id,
+            order_side,
+            OrderType::StopLimit,
+            quantity,
+            time_in_force,
+            post_only,
+            reduce_only,
+            quote_quantity,
+            false,
+            init_id,
+            ts_init,
+            ts_init,
+            Some(price),
+            Some(trigger_price),
+            Some(trigger_type),
+            None,
+            None,
+            None,
+            expire_time,
+            display_qty,
+            emulation_trigger,
+            trigger_instrument_id,
+            contingency_type,
+            order_list_id,
+            linked_order_ids,
+            parent_order_id,
+            exec_algorithm_id,
+            exec_algorithm_params,
+            exec_spawn_id,
+            tags,
+        );
         Self {
-            core: OrderCore::new(
-                trader_id,
-                strategy_id,
-                instrument_id,
-                client_order_id,
-                order_side,
-                OrderType::LimitIfTouched,
-                quantity,
-                time_in_force,
-                reduce_only,
-                quote_quantity,
-                emulation_trigger,
-                contingency_type,
-                order_list_id,
-                linked_order_ids,
-                parent_order_id,
-                exec_algorithm_id,
-                exec_algorithm_params,
-                exec_spawn_id,
-                tags,
-                init_id,
-                ts_init,
-            ),
+            core: OrderCore::new(init_order),
             price,
             trigger_price,
             trigger_type,
@@ -137,7 +155,17 @@ impl DerefMut for StopLimitOrder {
     }
 }
 
+impl PartialEq for StopLimitOrder {
+    fn eq(&self, other: &Self) -> bool {
+        self.client_order_id == other.client_order_id
+    }
+}
+
 impl Order for StopLimitOrder {
+    fn into_any(self) -> OrderAny {
+        OrderAny::StopLimit(self)
+    }
+
     fn status(&self) -> OrderStatus {
         self.status
     }
@@ -234,11 +262,11 @@ impl Order for StopLimitOrder {
         self.display_qty
     }
 
-    fn limit_offset(&self) -> Option<Price> {
+    fn limit_offset(&self) -> Option<Decimal> {
         None
     }
 
-    fn trailing_offset(&self) -> Option<Price> {
+    fn trailing_offset(&self) -> Option<Decimal> {
         None
     }
 
@@ -262,8 +290,8 @@ impl Order for StopLimitOrder {
         self.order_list_id
     }
 
-    fn linked_order_ids(&self) -> Option<Vec<ClientOrderId>> {
-        self.linked_order_ids.clone()
+    fn linked_order_ids(&self) -> Option<&[ClientOrderId]> {
+        self.linked_order_ids.as_deref()
     }
 
     fn parent_order_id(&self) -> Option<ClientOrderId> {
@@ -274,16 +302,16 @@ impl Order for StopLimitOrder {
         self.exec_algorithm_id
     }
 
-    fn exec_algorithm_params(&self) -> Option<HashMap<Ustr, Ustr>> {
-        self.exec_algorithm_params.clone()
+    fn exec_algorithm_params(&self) -> Option<&IndexMap<Ustr, Ustr>> {
+        self.exec_algorithm_params.as_ref()
     }
 
     fn exec_spawn_id(&self) -> Option<ClientOrderId> {
         self.exec_spawn_id
     }
 
-    fn tags(&self) -> Option<Ustr> {
-        self.tags
+    fn tags(&self) -> Option<&[Ustr]> {
+        self.tags.as_deref()
     }
 
     fn filled_qty(&self) -> Quantity {
@@ -314,7 +342,7 @@ impl Order for StopLimitOrder {
         self.ts_last
     }
 
-    fn events(&self) -> Vec<&OrderEvent> {
+    fn events(&self) -> Vec<&OrderEventAny> {
         self.events.iter().collect()
     }
 
@@ -326,11 +354,11 @@ impl Order for StopLimitOrder {
         self.trade_ids.iter().collect()
     }
 
-    fn apply(&mut self, event: OrderEvent) -> Result<(), OrderError> {
-        if let OrderEvent::OrderUpdated(ref event) = event {
+    fn apply(&mut self, event: OrderEventAny) -> Result<(), OrderError> {
+        if let OrderEventAny::Updated(ref event) = event {
             self.update(event);
         };
-        let is_order_filled = matches!(event, OrderEvent::OrderFilled(_));
+        let is_order_filled = matches!(event, OrderEventAny::Filled(_));
 
         self.core.apply(event)?;
 
@@ -354,6 +382,20 @@ impl Order for StopLimitOrder {
 
         self.quantity = event.quantity;
         self.leaves_qty = self.quantity - self.filled_qty;
+    }
+}
+
+impl From<OrderAny> for StopLimitOrder {
+    fn from(order: OrderAny) -> StopLimitOrder {
+        match order {
+            OrderAny::StopLimit(order) => order,
+            _ => {
+                panic!(
+                    "Invalid `OrderAny` not `{}`, was {order:?}",
+                    stringify!(StopLimitOrder),
+                )
+            }
+        }
     }
 }
 
@@ -393,6 +435,28 @@ impl From<OrderInitialized> for StopLimitOrder {
             event.tags,
             event.event_id,
             event.ts_event,
+        )
+    }
+}
+
+impl Display for StopLimitOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "StopLimitOrder({} {} {} {} @ {}-STOP[{}] {}-LIMIT {}, status={}, client_order_id={}, venue_order_id={}, position_id={}, tags={})",
+            self.side,
+            self.quantity.to_formatted_string(),
+            self.instrument_id,
+            self.order_type,
+            self.trigger_price,
+            self.trigger_type,
+            self.price,
+            self.time_in_force,
+            self.status,
+            self.client_order_id,
+            self.venue_order_id.map_or("None".to_string(), |venue_order_id| format!("{venue_order_id}")),
+            self.position_id.map_or("None".to_string(), |position_id| format!("{position_id}")),
+            self.tags.clone().map_or("None".to_string(), |tags| tags.iter().map(|s| s.to_string()).collect::<Vec<String>>().join(", ")),
         )
     }
 }

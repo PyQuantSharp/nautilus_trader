@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -33,14 +33,14 @@ from nautilus_trader.core.rust.model cimport contingency_type_from_cstr
 from nautilus_trader.core.rust.model cimport contingency_type_to_cstr
 from nautilus_trader.core.rust.model cimport currency_type_from_cstr
 from nautilus_trader.core.rust.model cimport currency_type_to_cstr
-from nautilus_trader.core.rust.model cimport halt_reason_from_cstr
-from nautilus_trader.core.rust.model cimport halt_reason_to_cstr
 from nautilus_trader.core.rust.model cimport instrument_class_from_cstr
 from nautilus_trader.core.rust.model cimport instrument_class_to_cstr
 from nautilus_trader.core.rust.model cimport instrument_close_type_from_cstr
 from nautilus_trader.core.rust.model cimport instrument_close_type_to_cstr
 from nautilus_trader.core.rust.model cimport liquidity_side_from_cstr
 from nautilus_trader.core.rust.model cimport liquidity_side_to_cstr
+from nautilus_trader.core.rust.model cimport market_status_action_from_cstr
+from nautilus_trader.core.rust.model cimport market_status_action_to_cstr
 from nautilus_trader.core.rust.model cimport market_status_from_cstr
 from nautilus_trader.core.rust.model cimport market_status_to_cstr
 from nautilus_trader.core.rust.model cimport oms_type_from_cstr
@@ -57,6 +57,8 @@ from nautilus_trader.core.rust.model cimport position_side_from_cstr
 from nautilus_trader.core.rust.model cimport position_side_to_cstr
 from nautilus_trader.core.rust.model cimport price_type_from_cstr
 from nautilus_trader.core.rust.model cimport price_type_to_cstr
+from nautilus_trader.core.rust.model cimport record_flag_from_cstr
+from nautilus_trader.core.rust.model cimport record_flag_to_cstr
 from nautilus_trader.core.rust.model cimport time_in_force_from_cstr
 from nautilus_trader.core.rust.model cimport time_in_force_to_cstr
 from nautilus_trader.core.rust.model cimport trading_state_from_cstr
@@ -173,12 +175,12 @@ cpdef str market_status_to_str(MarketStatus value):
     return cstr_to_pystr(market_status_to_cstr(value))
 
 
-cpdef HaltReason halt_reason_from_str(str value):
-    return halt_reason_from_cstr(pystr_to_cstr(value))
+cpdef MarketStatusAction market_status_action_from_str(str value):
+    return market_status_action_from_cstr(pystr_to_cstr(value))
 
 
-cpdef str halt_reason_to_str(HaltReason value):
-    return cstr_to_pystr(halt_reason_to_cstr(value))
+cpdef str market_status_action_to_str(MarketStatusAction value):
+    return cstr_to_pystr(market_status_action_to_cstr(value))
 
 
 cpdef OmsType oms_type_from_str(str value):
@@ -219,6 +221,14 @@ cpdef OrderType order_type_from_str(str value):
 
 cpdef str order_type_to_str(OrderType value):
     return cstr_to_pystr(order_type_to_cstr(value))
+
+
+cpdef RecordFlag record_flag_from_str(str value):
+    return record_flag_from_cstr(pystr_to_cstr(value))
+
+
+cpdef str record_flag_to_str(RecordFlag value):
+    return cstr_to_pystr(record_flag_to_cstr(value))
 
 
 cpdef PositionSide position_side_from_str(str value):

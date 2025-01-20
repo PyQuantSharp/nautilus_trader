@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,20 +13,44 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use pyo3::prelude::*;
+//! Python bindings from `pyo3`.
 
-use crate::{http, ratelimiter, socket, websocket};
+pub mod http;
+pub mod socket;
+pub mod websocket;
+
+use pyo3::{prelude::*, PyTypeCheck};
+
+use crate::python::{
+    http::{HttpError, HttpTimeoutError},
+    websocket::WebSocketClientError,
+};
 
 /// Loaded as nautilus_pyo3.network
 #[pymodule]
-pub fn network(_: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_class::<http::HttpClient>()?;
-    m.add_class::<http::HttpMethod>()?;
-    m.add_class::<http::HttpResponse>()?;
-    m.add_class::<ratelimiter::quota::Quota>()?;
-    m.add_class::<websocket::WebSocketClient>()?;
-    m.add_class::<websocket::WebSocketConfig>()?;
-    m.add_class::<socket::SocketClient>()?;
-    m.add_class::<socket::SocketConfig>()?;
+pub fn network(_: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<crate::http::HttpClient>()?;
+    m.add_class::<crate::http::HttpMethod>()?;
+    m.add_class::<crate::http::HttpResponse>()?;
+    m.add_class::<crate::ratelimiter::quota::Quota>()?;
+    m.add_class::<crate::websocket::WebSocketClient>()?;
+    m.add_class::<crate::websocket::WebSocketConfig>()?;
+    m.add_class::<crate::socket::SocketClient>()?;
+    m.add_class::<crate::socket::SocketConfig>()?;
+
+    // Add error classes
+    m.add(
+        <WebSocketClientError as PyTypeCheck>::NAME,
+        m.py().get_type_bound::<WebSocketClientError>(),
+    )?;
+    m.add(
+        <HttpError as PyTypeCheck>::NAME,
+        m.py().get_type_bound::<HttpError>(),
+    )?;
+    m.add(
+        <HttpTimeoutError as PyTypeCheck>::NAME,
+        m.py().get_type_bound::<HttpTimeoutError>(),
+    )?;
+
     Ok(())
 }

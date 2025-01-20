@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -29,8 +29,8 @@ from nautilus_trader.core.rust.common cimport ComponentState
 from nautilus_trader.core.rust.common cimport ComponentTrigger
 from nautilus_trader.core.rust.common cimport LiveClock_API
 from nautilus_trader.core.rust.common cimport LogColor
+from nautilus_trader.core.rust.common cimport LogGuard_API
 from nautilus_trader.core.rust.common cimport LogLevel
-from nautilus_trader.core.rust.common cimport MessageBus_API
 from nautilus_trader.core.rust.common cimport TestClock_API
 from nautilus_trader.core.rust.common cimport TimeEvent_t
 from nautilus_trader.core.rust.core cimport CVec
@@ -43,6 +43,7 @@ from nautilus_trader.serialization.base cimport Serializer
 cdef class Clock:
     cpdef double timestamp(self)
     cpdef uint64_t timestamp_ms(self)
+    cpdef uint64_t timestamp_us(self)
     cpdef uint64_t timestamp_ns(self)
     cpdef datetime utc_now(self)
     cpdef datetime local_now(self, tzinfo tz=*)
@@ -53,6 +54,7 @@ cdef class Clock:
         str name,
         datetime alert_time,
         callback: Callable[[TimeEvent], None]=*,
+        bint override=*,
     )
     cpdef void set_time_alert_ns(
         self,
@@ -85,6 +87,12 @@ cdef dict[UUID4, Clock] _COMPONENT_CLOCKS
 cdef list[TestClock] get_component_clocks(UUID4 instance_id)
 cpdef void register_component_clock(UUID4 instance_id, Clock clock)
 cpdef void deregister_component_clock(UUID4 instance_id, Clock clock)
+
+
+cdef bint FORCE_STOP
+
+cpdef void set_backtest_force_stop(bint value)
+cpdef bint is_backtest_force_stop()
 
 
 cdef class TestClock(Clock):
@@ -136,7 +144,12 @@ cpdef str log_color_to_str(LogColor value)
 cpdef LogLevel log_level_from_str(str value)
 cpdef str log_level_to_str(LogLevel value)
 
-cpdef void init_logging(
+
+cdef class LogGuard:
+    cdef LogGuard_API _mem
+
+
+cpdef LogGuard init_logging(
     TraderId trader_id=*,
     str machine_id=*,
     UUID4 instance_id=*,
@@ -229,6 +242,7 @@ cdef class Component:
     cpdef void dispose(self)
     cpdef void degrade(self)
     cpdef void fault(self)
+    cpdef void shutdown_system(self, str reason=*)
 
 # --------------------------------------------------------------------------------------------------
 
@@ -241,15 +255,16 @@ cdef class Component:
 
 
 cdef class MessageBus:
-    cdef MessageBus_API _mem
     cdef Clock _clock
     cdef Logger _log
+    cdef object _database
     cdef dict[Subscription, list[str]] _subscriptions
     cdef dict[str, Subscription[:]] _patterns
     cdef dict[str, object] _endpoints
     cdef dict[UUID4, object] _correlation_index
-    cdef bint _has_backing
     cdef tuple[type] _publishable_types
+    cdef set[type] _streaming_types
+    cdef bint _resolved
 
     cdef readonly TraderId trader_id
     """The trader ID associated with the bus.\n\n:returns: `TraderId`"""
@@ -257,18 +272,14 @@ cdef class MessageBus:
     """The serializer for the bus.\n\n:returns: `Serializer`"""
     cdef readonly bint has_backing
     """If the message bus has a database backing.\n\n:returns: `bool`"""
-    cdef readonly bint snapshot_orders
-    """If order state snapshots should be published externally.\n\n:returns: `bool`"""
-    cdef readonly bint snapshot_positions
-    """If position state snapshots should be published externally.\n\n:returns: `bool`"""
-    cdef readonly int sent_count
-    """The count of messages sent through the bus.\n\n:returns: `int`"""
-    cdef readonly int req_count
-    """The count of requests processed by the bus.\n\n:returns: `int`"""
-    cdef readonly int res_count
-    """The count of responses processed by the bus.\n\n:returns: `int`"""
-    cdef readonly int pub_count
-    """The count of messages published by the bus.\n\n:returns: `int`"""
+    cdef readonly uint64_t sent_count
+    """The count of messages sent through the bus.\n\n:returns: `uint64_t`"""
+    cdef readonly uint64_t req_count
+    """The count of requests processed by the bus.\n\n:returns: `uint64_t`"""
+    cdef readonly uint64_t res_count
+    """The count of responses processed by the bus.\n\n:returns: `uint64_t`"""
+    cdef readonly uint64_t pub_count
+    """The count of messages published by the bus.\n\n:returns: `uint64_t`"""
 
     cpdef list endpoints(self)
     cpdef list topics(self)
@@ -276,16 +287,19 @@ cdef class MessageBus:
     cpdef bint has_subscribers(self, str pattern=*)
     cpdef bint is_subscribed(self, str topic, handler)
     cpdef bint is_pending_request(self, UUID4 request_id)
+    cpdef bint is_streaming_type(self, type cls)
 
+    cpdef void dispose(self)
     cpdef void register(self, str endpoint, handler)
     cpdef void deregister(self, str endpoint, handler)
+    cpdef void add_streaming_type(self, type cls)
     cpdef void send(self, str endpoint, msg)
     cpdef void request(self, str endpoint, Request request)
     cpdef void response(self, Response response)
     cpdef void subscribe(self, str topic, handler, int priority=*)
     cpdef void unsubscribe(self, str topic, handler)
-    cpdef void publish(self, str topic, msg)
-    cdef void publish_c(self, str topic, msg)
+    cpdef void publish(self, str topic, msg, bint external_pub=*)
+    cdef void publish_c(self, str topic, msg, bint external_pub=*)
     cdef Subscription[:] _resolve_subscriptions(self, str topic)
 
 

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,9 +13,20 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Order book components which can handle L1/L2/L3 data.
+
+pub mod aggregation;
+pub mod analysis;
 pub mod book;
-pub mod book_mbo;
-pub mod book_mbp;
 pub mod display;
+pub mod error;
 pub mod ladder;
 pub mod level;
+
+// Re-exports
+pub use crate::orderbook::{
+    book::OrderBook,
+    error::{BookIntegrityError, InvalidBookOperation},
+    ladder::BookPrice,
+    level::BookLevel,
+};

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,23 +24,27 @@ use nautilus_core::python::{get_pytype_name, to_pytype_err, to_pyvalue_err};
 use pyo3::{
     prelude::*,
     pyclass::CompareOp,
-    types::{PyFloat, PyLong, PyTuple},
+    types::{PyFloat, PyTuple},
 };
 use rust_decimal::{Decimal, RoundingStrategy};
 
-use crate::types::{fixed::fixed_i64_to_f64, price::Price};
+#[cfg(feature = "high-precision")]
+use crate::types::fixed::fixed_i128_to_f64;
+#[cfg(not(feature = "high-precision"))]
+use crate::types::fixed::fixed_i64_to_f64;
+use crate::types::price::{Price, PriceRaw};
 
 #[pymethods]
 impl Price {
     #[new]
     fn py_new(value: f64, precision: u8) -> PyResult<Self> {
-        Self::new(value, precision).map_err(to_pyvalue_err)
+        Self::new_checked(value, precision).map_err(to_pyvalue_err)
     }
 
-    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
-        let tuple: (&PyLong, &PyLong) = state.extract(py)?;
-        self.raw = tuple.0.extract()?;
-        self.precision = tuple.1.extract::<u8>()?;
+    fn __setstate__(&mut self, state: &Bound<'_, PyAny>) -> PyResult<()> {
+        let py_tuple: &Bound<'_, PyTuple> = state.downcast::<PyTuple>()?;
+        self.raw = py_tuple.get_item(0)?.extract::<PriceRaw>()?;
+        self.precision = py_tuple.get_item(1)?.extract::<u8>()?;
         Ok(())
     }
 
@@ -49,9 +53,9 @@ impl Price {
     }
 
     fn __reduce__(&self, py: Python) -> PyResult<PyObject> {
-        let safe_constructor = py.get_type::<Self>().getattr("_safe_constructor")?;
+        let safe_constructor = py.get_type_bound::<Self>().getattr("_safe_constructor")?;
         let state = self.__getstate__(py)?;
-        Ok((safe_constructor, PyTuple::empty(py), state).to_object(py))
+        Ok((safe_constructor, PyTuple::empty_bound(py), state).to_object(py))
     }
 
     #[staticmethod]
@@ -59,201 +63,202 @@ impl Price {
         Ok(Self::zero(0)) // Safe default
     }
 
-    fn __add__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __add__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((self.as_f64() + other_float).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((self.as_decimal() + other_price.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((self.as_decimal() + other_dec).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __add__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __radd__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __radd__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((other_float + self.as_f64()).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((other_price.as_decimal() + self.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((other_dec + self.as_decimal()).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __radd__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __sub__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __sub__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((self.as_f64() - other_float).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((self.as_decimal() - other_price.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((self.as_decimal() - other_dec).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __sub__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __rsub__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __rsub__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((other_float - self.as_f64()).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((other_price.as_decimal() - self.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((other_dec - self.as_decimal()).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __rsub__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __mul__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __mul__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((self.as_f64() * other_float).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((self.as_decimal() * other_price.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((self.as_decimal() * other_dec).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __mul__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __rmul__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __rmul__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((other_float * self.as_f64()).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((other_price.as_decimal() * self.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((other_dec * self.as_decimal()).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __rmul__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __truediv__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __truediv__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((self.as_f64() / other_float).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((self.as_decimal() / other_price.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((self.as_decimal() / other_dec).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __truediv__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __rtruediv__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __rtruediv__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((other_float / self.as_f64()).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((other_price.as_decimal() / self.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((other_dec / self.as_decimal()).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __rtruediv__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __floordiv__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __floordiv__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((self.as_f64() / other_float).floor().into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((self.as_decimal() / other_price.as_decimal())
                 .floor()
                 .into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((self.as_decimal() / other_dec).floor().into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __floordiv__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __rfloordiv__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __rfloordiv__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((other_float / self.as_f64()).floor().into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((other_price.as_decimal() / self.as_decimal())
                 .floor()
                 .into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((other_dec / self.as_decimal()).floor().into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __rfloordiv__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __mod__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __mod__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((self.as_f64() % other_float).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((self.as_decimal() % other_price.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((self.as_decimal() % other_dec).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __mod__, was `{pytype_name}`"
             )))
         }
     }
 
-    fn __rmod__(&self, other: PyObject, py: Python) -> PyResult<PyObject> {
-        if other.as_ref(py).is_instance_of::<PyFloat>() {
-            let other_float: f64 = other.extract(py)?;
+    fn __rmod__(&self, other: &Bound<'_, PyAny>, py: Python) -> PyResult<PyObject> {
+        if other.as_ref().is_instance_of::<PyFloat>() {
+            let other_float: f64 = other.extract()?;
             Ok((other_float % self.as_f64()).into_py(py))
-        } else if let Ok(other_price) = other.extract::<Self>(py) {
+        } else if let Ok(other_price) = other.extract::<Self>() {
             Ok((other_price.as_decimal() % self.as_decimal()).into_py(py))
-        } else if let Ok(other_dec) = other.extract::<Decimal>(py) {
+        } else if let Ok(other_dec) = other.extract::<Decimal>() {
             Ok((other_dec % self.as_decimal()).into_py(py))
         } else {
-            let pytype_name = get_pytype_name(&other, py)?;
+            let pytype_name = get_pytype_name(other)?;
             Err(to_pytype_err(format!(
                 "Unsupported type for __rmod__, was `{pytype_name}`"
             )))
         }
     }
+
     fn __neg__(&self) -> Decimal {
         self.as_decimal().neg()
     }
@@ -276,6 +281,7 @@ impl Price {
         self.as_f64()
     }
 
+    #[pyo3(signature = (ndigits=None))]
     fn __round__(&self, ndigits: Option<u32>) -> Decimal {
         self.as_decimal()
             .round_dp_with_strategy(ndigits.unwrap_or(0), RoundingStrategy::MidpointNearestEven)
@@ -311,16 +317,16 @@ impl Price {
         h.finish() as isize
     }
 
+    fn __repr__(&self) -> String {
+        format!("{self:?}")
+    }
+
     fn __str__(&self) -> String {
         self.to_string()
     }
 
-    fn __repr__(&self) -> String {
-        format!("Price('{self:?}')")
-    }
-
     #[getter]
-    fn raw(&self) -> i64 {
+    fn raw(&self) -> PriceRaw {
         self.raw
     }
 
@@ -331,21 +337,21 @@ impl Price {
 
     #[staticmethod]
     #[pyo3(name = "from_raw")]
-    fn py_from_raw(raw: i64, precision: u8) -> PyResult<Self> {
-        Self::from_raw(raw, precision).map_err(to_pyvalue_err)
+    fn py_from_raw(raw: PriceRaw, precision: u8) -> Self {
+        Self::from_raw(raw, precision)
     }
 
     #[staticmethod]
     #[pyo3(name = "zero")]
     #[pyo3(signature = (precision = 0))]
     fn py_zero(precision: u8) -> PyResult<Self> {
-        Self::new(0.0, precision).map_err(to_pyvalue_err)
+        Self::new_checked(0.0, precision).map_err(to_pyvalue_err)
     }
 
     #[staticmethod]
     #[pyo3(name = "from_int")]
     fn py_from_int(value: u64) -> PyResult<Self> {
-        Self::new(value as f64, 0).map_err(to_pyvalue_err)
+        Self::new_checked(value as f64, 0).map_err(to_pyvalue_err)
     }
 
     #[staticmethod]
@@ -364,6 +370,13 @@ impl Price {
         self.is_positive()
     }
 
+    #[cfg(feature = "high-precision")]
+    #[pyo3(name = "as_double")]
+    fn py_as_double(&self) -> f64 {
+        fixed_i128_to_f64(self.raw)
+    }
+
+    #[cfg(not(feature = "high-precision"))]
     #[pyo3(name = "as_double")]
     fn py_as_double(&self) -> f64 {
         fixed_i64_to_f64(self.raw)

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,6 +18,7 @@ import pickle
 import pytest
 
 from nautilus_trader.core import nautilus_pyo3
+from nautilus_trader.model import convert_to_raw_int
 from nautilus_trader.model.data import NULL_ORDER
 from nautilus_trader.model.data import BookOrder
 from nautilus_trader.model.data import OrderBookDelta
@@ -26,6 +27,7 @@ from nautilus_trader.model.data import OrderBookDepth10
 from nautilus_trader.model.data import capsule_to_data
 from nautilus_trader.model.enums import BookAction
 from nautilus_trader.model.enums import OrderSide
+from nautilus_trader.model.enums import RecordFlag
 from nautilus_trader.model.objects import Price
 from nautilus_trader.model.objects import Quantity
 from nautilus_trader.test_kit.rust.data_pyo3 import TestDataProviderPyo3
@@ -109,8 +111,8 @@ def test_hash_str_and_repr():
 
     # Act, Assert
     assert isinstance(hash(order), int)
-    assert str(order) == r"BookOrder { side: Buy, price: 100.0, size: 5, order_id: 1 }"
-    assert repr(order) == r"BookOrder { side: Buy, price: 100.0, size: 5, order_id: 1 }"
+    assert str(order) == "BookOrder(side=BUY, price=100.0, size=5, order_id=1)"
+    assert repr(order) == "BookOrder(side=BUY, price=100.0, size=5, order_id=1)"
 
 
 def test_to_dict_returns_expected_dict():
@@ -152,18 +154,24 @@ def test_from_dict_returns_expected_order():
 
 
 def test_book_order_from_raw() -> None:
-    # Arrange, Act
+    # Arrange
+    price = 10.0
+    price_precision = 1
+    size = 5
+    size_precision = 0
+
+    # Act
     order = BookOrder.from_raw(
         side=OrderSide.BUY,
-        price_raw=10000000000,
+        price_raw=convert_to_raw_int(price, price_precision),
         price_prec=1,
-        size_raw=5000000000,
+        size_raw=convert_to_raw_int(size, size_precision),
         size_prec=0,
         order_id=1,
     )
 
     # Assert
-    assert str(order) == "BookOrder { side: Buy, price: 10.0, size: 5, order_id: 1 }"
+    assert str(order) == "BookOrder(side=BUY, price=10.0, size=5, order_id=1)"
 
 
 def test_delta_fully_qualified_name() -> None:
@@ -172,14 +180,20 @@ def test_delta_fully_qualified_name() -> None:
 
 
 def test_delta_from_raw() -> None:
-    # Arrange, Act
+    # Arrange
+    price = 10.0
+    price_precision = 1
+    size = 5
+    size_precision = 0
+
+    # Act
     delta = OrderBookDelta.from_raw(
         instrument_id=AUDUSD,
         action=BookAction.ADD,
         side=OrderSide.BUY,
-        price_raw=10000000000,
+        price_raw=convert_to_raw_int(price, price_precision),
         price_prec=1,
-        size_raw=5000000000,
+        size_raw=convert_to_raw_int(size, size_precision),
         size_prec=0,
         order_id=1,
         flags=0,
@@ -191,7 +205,7 @@ def test_delta_from_raw() -> None:
     # Assert
     assert (
         str(delta)
-        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 5, order_id: 1 }, flags=0, sequence=123456789, ts_event=5000000, ts_init=1000000000)"  # noqa
+        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=5, order_id=1), flags=0, sequence=123456789, ts_event=5000000, ts_init=1000000000)"  # noqa
     )
 
 
@@ -216,7 +230,7 @@ def test_delta_pickle_round_trip() -> None:
 
     # Act
     pickled = pickle.dumps(delta)
-    unpickled = pickle.loads(pickled)  # noqa
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle safe here)
 
     # Assert
     assert delta == unpickled
@@ -245,11 +259,11 @@ def test_delta_hash_str_and_repr() -> None:
     assert isinstance(hash(delta), int)
     assert (
         str(delta)
-        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 5, order_id: 1 }, flags=0, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
+        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=5, order_id=1), flags=0, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
     )
     assert (
         repr(delta)
-        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 5, order_id: 1 }, flags=0, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
+        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=5, order_id=1), flags=0, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
     )
 
 
@@ -269,11 +283,11 @@ def test_delta_with_null_book_order() -> None:
     assert isinstance(hash(delta), int)
     assert (
         str(delta)
-        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=CLEAR, order=BookOrder { side: NoOrderSide, price: 0, size: 0, order_id: 0 }, flags=32, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
+        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=CLEAR, order=BookOrder(side=NO_ORDER_SIDE, price=0, size=0, order_id=0), flags=32, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
     )
     assert (
         repr(delta)
-        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=CLEAR, order=BookOrder { side: NoOrderSide, price: 0, size: 0, order_id: 0 }, flags=32, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
+        == "OrderBookDelta(instrument_id=AUD/USD.SIM, action=CLEAR, order=BookOrder(side=NO_ORDER_SIDE, price=0, size=0, order_id=0), flags=32, sequence=123456789, ts_event=0, ts_init=1000000000)"  # noqa
     )
 
 
@@ -281,9 +295,9 @@ def test_delta_clear() -> None:
     # Arrange, Act
     delta = OrderBookDelta.clear(
         instrument_id=AUDUSD,
+        sequence=42,
         ts_event=0,
         ts_init=1_000_000_000,
-        sequence=42,
     )
 
     # Assert
@@ -389,7 +403,7 @@ def test_deltas_pickle_round_trip() -> None:
 
     # Act
     pickled = pickle.dumps(deltas)
-    unpickled = pickle.loads(pickled)  # noqa
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle safe here)
 
     # Assert
     assert deltas == unpickled
@@ -467,12 +481,67 @@ def test_deltas_hash_str_and_repr() -> None:
     assert isinstance(hash(deltas), int)
     assert (
         str(deltas)
-        == "OrderBookDeltas(instrument_id=AUD/USD.SIM, [OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 5, order_id: 1 }, flags=0, sequence=0, ts_event=0, ts_init=0), OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 15, order_id: 2 }, flags=0, sequence=1, ts_event=0, ts_init=0)], is_snapshot=False, sequence=1, ts_event=0, ts_init=0)"  # noqa
+        == "OrderBookDeltas(instrument_id=AUD/USD.SIM, [OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=5, order_id=1), flags=0, sequence=0, ts_event=0, ts_init=0), OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=15, order_id=2), flags=0, sequence=1, ts_event=0, ts_init=0)], is_snapshot=False, sequence=1, ts_event=0, ts_init=0)"  # noqa
     )
     assert (
         repr(deltas)
-        == "OrderBookDeltas(instrument_id=AUD/USD.SIM, [OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 5, order_id: 1 }, flags=0, sequence=0, ts_event=0, ts_init=0), OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder { side: Buy, price: 10.0, size: 15, order_id: 2 }, flags=0, sequence=1, ts_event=0, ts_init=0)], is_snapshot=False, sequence=1, ts_event=0, ts_init=0)"  # noqa
+        == "OrderBookDeltas(instrument_id=AUD/USD.SIM, [OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=5, order_id=1), flags=0, sequence=0, ts_event=0, ts_init=0), OrderBookDelta(instrument_id=AUD/USD.SIM, action=ADD, order=BookOrder(side=BUY, price=10.0, size=15, order_id=2), flags=0, sequence=1, ts_event=0, ts_init=0)], is_snapshot=False, sequence=1, ts_event=0, ts_init=0)"  # noqa
     )
+
+
+def test_deltas_batching() -> None:
+    # Arrange
+    delta1 = TestDataStubs.order_book_delta(flags=0)
+    delta2 = TestDataStubs.order_book_delta(flags=RecordFlag.F_LAST)
+    delta3 = TestDataStubs.order_book_delta(flags=0)
+    delta4 = TestDataStubs.order_book_delta(flags=0)
+    delta5 = TestDataStubs.order_book_delta(flags=RecordFlag.F_LAST)
+
+    # Act
+    batches = OrderBookDeltas.batch(
+        [
+            delta1,
+            delta2,
+            delta3,
+            delta4,
+            delta5,
+        ],
+    )
+
+    # Assert
+    assert len(batches) == 2
+    assert isinstance(batches[0], OrderBookDeltas)
+    assert isinstance(batches[1], OrderBookDeltas)
+
+
+def test_deltas_batching_with_remainder() -> None:
+    # Arrange
+    delta1 = TestDataStubs.order_book_delta(flags=0)
+    delta2 = TestDataStubs.order_book_delta(flags=RecordFlag.F_LAST)
+    delta3 = TestDataStubs.order_book_delta(flags=0)
+    delta4 = TestDataStubs.order_book_delta(flags=0)
+    delta5 = TestDataStubs.order_book_delta(flags=RecordFlag.F_LAST)
+    delta6 = TestDataStubs.order_book_delta(flags=0)
+    delta7 = TestDataStubs.order_book_delta(flags=0)
+
+    # Act
+    batches = OrderBookDeltas.batch(
+        [
+            delta1,
+            delta2,
+            delta3,
+            delta4,
+            delta5,
+            delta6,
+            delta7,
+        ],
+    )
+
+    # Assert
+    assert len(batches) == 3
+    assert isinstance(batches[0], OrderBookDeltas)
+    assert isinstance(batches[1], OrderBookDeltas)
+    assert isinstance(batches[2], OrderBookDeltas)
 
 
 def test_deltas_to_dict_from_dict_round_trip() -> None:
@@ -646,13 +715,35 @@ def test_depth10_new() -> None:
     assert depth.ts_init == 3
 
 
+def test_depth10_partial_levels() -> None:
+    # Arrange, Act
+    instrument_id = TestIdStubs.aapl_xnas_id()
+    depth = TestDataStubs.order_book_depth10(
+        instrument_id=instrument_id,
+        flags=0,
+        sequence=1,
+        ts_event=2,
+        ts_init=3,
+        levels=3,
+    )
+
+    # Assert
+    assert depth.instrument_id == instrument_id
+    assert len(depth.bids) == 10
+    assert len(depth.asks) == 10
+    assert depth.flags == 0
+    assert depth.sequence == 1
+    assert depth.ts_event == 2
+    assert depth.ts_init == 3
+
+
 def test_depth10_pickle_round_trip() -> None:
     # Arrange
     depth = TestDataStubs.order_book_depth10()
 
     # Act
     pickled = pickle.dumps(depth)
-    unpickled = pickle.loads(pickled)  # noqa
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle safe here)
 
     # Assert
     assert depth == unpickled
@@ -671,11 +762,11 @@ def test_depth10_hash_str_repr() -> None:
     assert isinstance(hash(depth), int)
     assert (
         str(depth)
-        == "OrderBookDepth10(instrument_id=AAPL.XNAS, bids=[BookOrder { side: Buy, price: 99.00, size: 100, order_id: 1 }, BookOrder { side: Buy, price: 98.00, size: 200, order_id: 2 }, BookOrder { side: Buy, price: 97.00, size: 300, order_id: 3 }, BookOrder { side: Buy, price: 96.00, size: 400, order_id: 4 }, BookOrder { side: Buy, price: 95.00, size: 500, order_id: 5 }, BookOrder { side: Buy, price: 94.00, size: 600, order_id: 6 }, BookOrder { side: Buy, price: 93.00, size: 700, order_id: 7 }, BookOrder { side: Buy, price: 92.00, size: 800, order_id: 8 }, BookOrder { side: Buy, price: 91.00, size: 900, order_id: 9 }, BookOrder { side: Buy, price: 90.00, size: 1000, order_id: 10 }], asks=[BookOrder { side: Sell, price: 100.00, size: 100, order_id: 11 }, BookOrder { side: Sell, price: 101.00, size: 200, order_id: 12 }, BookOrder { side: Sell, price: 102.00, size: 300, order_id: 13 }, BookOrder { side: Sell, price: 103.00, size: 400, order_id: 14 }, BookOrder { side: Sell, price: 104.00, size: 500, order_id: 15 }, BookOrder { side: Sell, price: 105.00, size: 600, order_id: 16 }, BookOrder { side: Sell, price: 106.00, size: 700, order_id: 17 }, BookOrder { side: Sell, price: 107.00, size: 800, order_id: 18 }, BookOrder { side: Sell, price: 108.00, size: 900, order_id: 19 }, BookOrder { side: Sell, price: 109.00, size: 1000, order_id: 20 }], bid_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], ask_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], flags=0, sequence=1, ts_event=2, ts_init=3)"  # noqa
+        == "OrderBookDepth10(instrument_id=AAPL.XNAS, bids=[BookOrder(side=BUY, price=99.00, size=100, order_id=1), BookOrder(side=BUY, price=98.00, size=200, order_id=2), BookOrder(side=BUY, price=97.00, size=300, order_id=3), BookOrder(side=BUY, price=96.00, size=400, order_id=4), BookOrder(side=BUY, price=95.00, size=500, order_id=5), BookOrder(side=BUY, price=94.00, size=600, order_id=6), BookOrder(side=BUY, price=93.00, size=700, order_id=7), BookOrder(side=BUY, price=92.00, size=800, order_id=8), BookOrder(side=BUY, price=91.00, size=900, order_id=9), BookOrder(side=BUY, price=90.00, size=1000, order_id=10)], asks=[BookOrder(side=SELL, price=100.00, size=100, order_id=11), BookOrder(side=SELL, price=101.00, size=200, order_id=12), BookOrder(side=SELL, price=102.00, size=300, order_id=13), BookOrder(side=SELL, price=103.00, size=400, order_id=14), BookOrder(side=SELL, price=104.00, size=500, order_id=15), BookOrder(side=SELL, price=105.00, size=600, order_id=16), BookOrder(side=SELL, price=106.00, size=700, order_id=17), BookOrder(side=SELL, price=107.00, size=800, order_id=18), BookOrder(side=SELL, price=108.00, size=900, order_id=19), BookOrder(side=SELL, price=109.00, size=1000, order_id=20)], bid_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], ask_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], flags=0, sequence=1, ts_event=2, ts_init=3)"  # noqa
     )
     assert (
         repr(depth)
-        == "OrderBookDepth10(instrument_id=AAPL.XNAS, bids=[BookOrder { side: Buy, price: 99.00, size: 100, order_id: 1 }, BookOrder { side: Buy, price: 98.00, size: 200, order_id: 2 }, BookOrder { side: Buy, price: 97.00, size: 300, order_id: 3 }, BookOrder { side: Buy, price: 96.00, size: 400, order_id: 4 }, BookOrder { side: Buy, price: 95.00, size: 500, order_id: 5 }, BookOrder { side: Buy, price: 94.00, size: 600, order_id: 6 }, BookOrder { side: Buy, price: 93.00, size: 700, order_id: 7 }, BookOrder { side: Buy, price: 92.00, size: 800, order_id: 8 }, BookOrder { side: Buy, price: 91.00, size: 900, order_id: 9 }, BookOrder { side: Buy, price: 90.00, size: 1000, order_id: 10 }], asks=[BookOrder { side: Sell, price: 100.00, size: 100, order_id: 11 }, BookOrder { side: Sell, price: 101.00, size: 200, order_id: 12 }, BookOrder { side: Sell, price: 102.00, size: 300, order_id: 13 }, BookOrder { side: Sell, price: 103.00, size: 400, order_id: 14 }, BookOrder { side: Sell, price: 104.00, size: 500, order_id: 15 }, BookOrder { side: Sell, price: 105.00, size: 600, order_id: 16 }, BookOrder { side: Sell, price: 106.00, size: 700, order_id: 17 }, BookOrder { side: Sell, price: 107.00, size: 800, order_id: 18 }, BookOrder { side: Sell, price: 108.00, size: 900, order_id: 19 }, BookOrder { side: Sell, price: 109.00, size: 1000, order_id: 20 }], bid_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], ask_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], flags=0, sequence=1, ts_event=2, ts_init=3)"  # noqa
+        == "OrderBookDepth10(instrument_id=AAPL.XNAS, bids=[BookOrder(side=BUY, price=99.00, size=100, order_id=1), BookOrder(side=BUY, price=98.00, size=200, order_id=2), BookOrder(side=BUY, price=97.00, size=300, order_id=3), BookOrder(side=BUY, price=96.00, size=400, order_id=4), BookOrder(side=BUY, price=95.00, size=500, order_id=5), BookOrder(side=BUY, price=94.00, size=600, order_id=6), BookOrder(side=BUY, price=93.00, size=700, order_id=7), BookOrder(side=BUY, price=92.00, size=800, order_id=8), BookOrder(side=BUY, price=91.00, size=900, order_id=9), BookOrder(side=BUY, price=90.00, size=1000, order_id=10)], asks=[BookOrder(side=SELL, price=100.00, size=100, order_id=11), BookOrder(side=SELL, price=101.00, size=200, order_id=12), BookOrder(side=SELL, price=102.00, size=300, order_id=13), BookOrder(side=SELL, price=103.00, size=400, order_id=14), BookOrder(side=SELL, price=104.00, size=500, order_id=15), BookOrder(side=SELL, price=105.00, size=600, order_id=16), BookOrder(side=SELL, price=106.00, size=700, order_id=17), BookOrder(side=SELL, price=107.00, size=800, order_id=18), BookOrder(side=SELL, price=108.00, size=900, order_id=19), BookOrder(side=SELL, price=109.00, size=1000, order_id=20)], bid_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], ask_counts=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], flags=0, sequence=1, ts_event=2, ts_init=3)"  # noqa
     )
 
 

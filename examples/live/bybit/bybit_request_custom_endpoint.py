@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,14 +17,14 @@
 import os
 from datetime import timedelta
 
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
 from nautilus_trader.adapters.bybit.config import BybitDataClientConfig
 from nautilus_trader.adapters.bybit.config import BybitExecClientConfig
 from nautilus_trader.adapters.bybit.factories import BybitLiveDataClientFactory
 from nautilus_trader.adapters.bybit.factories import BybitLiveExecClientFactory
 from nautilus_trader.adapters.bybit.schemas.market.ticker import BybitTickerData
 from nautilus_trader.common import Environment
-from nautilus_trader.common.component import TimeEvent
+from nautilus_trader.common.events import TimeEvent
 from nautilus_trader.config import InstrumentProviderConfig
 from nautilus_trader.config import LiveExecEngineConfig
 from nautilus_trader.config import LoggingConfig
@@ -63,25 +63,23 @@ class RequestDemoStrategy(Strategy):
 
     def __init__(self, config: RequestDemoStrategyConfig):
         super().__init__()
-        self.interval = config.interval
-        self.instrument_id = config.instrument_id
 
     def on_start(self):
-        seconds_delta = timedelta(seconds=self.interval)
+        seconds_delta = timedelta(seconds=self.config.interval)
         self.clock.set_timer(
             name="fetch_ticker",
             interval=seconds_delta,
             callback=self.send_tickers_request,
         )
 
-    def send_tickers_request(self, time_event: TimeEvent):
+    def send_tickers_request(self, time_event: TimeEvent) -> None:
         data_type = DataType(
             BybitTickerData,
-            metadata={"symbol": self.instrument_id.symbol},
+            metadata={"symbol": self.config.instrument_id.symbol},
         )
         self.request_data(data_type, ClientId("BYBIT"))
 
-    def on_historical_data(self, data: Data):
+    def on_historical_data(self, data: Data) -> None:
         if isinstance(data, BybitTickerData):
             self.log.info(f"{data}")
 
@@ -101,7 +99,7 @@ config_node = TradingNodeConfig(
         "BYBIT": BybitDataClientConfig(
             api_key=api_key,
             api_secret=api_secret,
-            instrument_types=[BybitInstrumentType.LINEAR],
+            product_types=[BybitProductType.LINEAR],
             instrument_provider=InstrumentProviderConfig(load_all=True),
             testnet=True,
         ),
@@ -110,9 +108,11 @@ config_node = TradingNodeConfig(
         "BYBIT": BybitExecClientConfig(
             api_key=api_key,
             api_secret=api_secret,
-            instrument_types=[BybitInstrumentType.LINEAR],
+            product_types=[BybitProductType.LINEAR],
             instrument_provider=InstrumentProviderConfig(load_all=True),
             testnet=True,
+            max_retries=3,
+            retry_delay=1.0,
         ),
     },
     timeout_connection=20.0,

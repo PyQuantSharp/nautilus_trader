@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,6 +24,8 @@ class DatabentoSchema(Enum):
     MBO = "mbo"
     MBP_1 = "mbp-1"
     MBP_10 = "mbp-10"
+    BBO_1S = "bbo-1s"
+    BBO_1M = "bbo-1m"
     TBBO = "tbbo"
     TRADES = "trades"
     OHLCV_1S = "ohlcv-1s"
@@ -32,6 +34,6 @@ class DatabentoSchema(Enum):
     OHLCV_1D = "ohlcv-1d"
     OHLCV_EOD = "ohlcv-eod"
     DEFINITION = "definition"
+    IMBALANCE = "imbalance"
     STATISTICS = "statistics"
     STATUS = "status"
-    IMBALANCE = "imbalance"

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -55,6 +55,7 @@ cdef class IdentifierGenerator:
             f"{now.day:02d}-"
             f"{now.hour:02d}"
             f"{now.minute:02d}"
+            f"{now.second:02d}"
         )
 
 
@@ -270,7 +271,7 @@ cdef class PositionIdGenerator(IdentifierGenerator):
         strategy_id : StrategyId
             The strategy ID associated with the position.
         flipped : bool
-            If the position is being flipped. If True then the generated id
+            If the position is being flipped. If True, then the generated id
             will be appended with 'F'.
 
         Returns

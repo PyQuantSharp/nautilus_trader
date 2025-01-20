@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -25,17 +25,16 @@ from libc.stdint cimport uint64_t
 from nautilus_trader.cache.base cimport CacheFacade
 from nautilus_trader.common.actor cimport Actor
 from nautilus_trader.common.component cimport CMD
-from nautilus_trader.common.component cimport EVT
 from nautilus_trader.common.component cimport RECV
 from nautilus_trader.common.component cimport SENT
 from nautilus_trader.common.component cimport Clock
 from nautilus_trader.common.component cimport LogColor
 from nautilus_trader.common.component cimport MessageBus
+from nautilus_trader.common.component cimport is_logging_initialized
 from nautilus_trader.core.correctness cimport Condition
 from nautilus_trader.core.datetime cimport dt_to_unix_nanos
 from nautilus_trader.core.fsm cimport InvalidStateTrigger
 from nautilus_trader.core.rust.common cimport ComponentState
-from nautilus_trader.core.rust.common cimport logging_is_initialized
 from nautilus_trader.core.rust.model cimport ContingencyType
 from nautilus_trader.core.rust.model cimport OrderStatus
 from nautilus_trader.core.rust.model cimport TimeInForce
@@ -74,8 +73,8 @@ from nautilus_trader.model.identifiers cimport StrategyId
 from nautilus_trader.model.identifiers cimport TraderId
 from nautilus_trader.model.objects cimport Price
 from nautilus_trader.model.objects cimport Quantity
-from nautilus_trader.model.orders.base cimport VALID_LIMIT_ORDER_TYPES
-from nautilus_trader.model.orders.base cimport VALID_STOP_ORDER_TYPES
+from nautilus_trader.model.orders.base cimport LIMIT_ORDER_TYPES
+from nautilus_trader.model.orders.base cimport STOP_ORDER_TYPES
 from nautilus_trader.model.orders.base cimport Order
 from nautilus_trader.model.orders.limit cimport LimitOrder
 from nautilus_trader.model.orders.list cimport OrderList
@@ -118,6 +117,8 @@ cdef class ExecAlgorithm(Actor):
             self.id = config.exec_algorithm_id or ExecAlgorithmId(type(self).__name__)
 
         # Configuration
+        self._log_events = config.log_events
+        self._log_commands = config.log_commands
         self.config = config
 
         self._exec_spawn_ids: dict[ClientOrderId, int] = {}
@@ -206,7 +207,7 @@ cdef class ExecAlgorithm(Actor):
         return ClientOrderId(f"{primary.client_order_id.to_str()}-E{spawn_sequence}")
 
     cdef void _reduce_primary_order(self, Order primary, Quantity spawn_qty):
-        Condition.true(primary.quantity >= spawn_qty, "Spawn order quantity was greater than or equal to primary order")
+        Condition.is_true(primary.quantity >= spawn_qty, "Spawn order quantity was greater than or equal to primary order")
 
         cdef Quantity new_qty = Quantity.from_raw_c(
             primary.quantity._mem.raw - spawn_qty._mem.raw,
@@ -253,7 +254,8 @@ cdef class ExecAlgorithm(Actor):
         """
         Condition.not_none(command, "command")
 
-        self._log.debug(f"{RECV}{CMD} {command}.", LogColor.MAGENTA)
+        if self._log_commands:
+            self._log.debug(f"{RECV}{CMD} {command}", LogColor.MAGENTA)
 
         if self._fsm.state != ComponentState.RUNNING:
             return
@@ -265,12 +267,12 @@ cdef class ExecAlgorithm(Actor):
         elif isinstance(command, CancelOrder):
             self._handle_cancel_order(command)
         else:
-            self._log.error(f"Cannot handle command: unrecognized {command}.")
+            self._log.error(f"Cannot handle command: unrecognized {command}")
 
         if command.strategy_id in self._subscribed_strategies:
             return  # Already subscribed
 
-        self._log.info(f"Subscribing to {command.strategy_id} order events.", LogColor.BLUE)
+        self._log.info(f"Subscribing to {command.strategy_id} order events", LogColor.BLUE)
         self._msgbus.subscribe(topic=f"events.order.{command.strategy_id.to_str()}", handler=self._handle_event)
         self._msgbus.subscribe(topic=f"events.position.{command.strategy_id.to_str()}", handler=self._handle_event)
         self._subscribed_strategies.add(command.strategy_id)
@@ -299,7 +301,7 @@ cdef class ExecAlgorithm(Actor):
         cdef Order order = self.cache.order(command.client_order_id)
         if order is None:  # pragma: no cover (design-time error)
             self._log.error(
-                f"Cannot cancel order: {repr(command.client_order_id)} not found.",
+                f"Cannot cancel order: {repr(command.client_order_id)} not found",
             )
             return
 
@@ -307,7 +309,7 @@ cdef class ExecAlgorithm(Actor):
             return  # Already pending cancel locally
 
         if order.is_closed_c():
-            self._log.warning(f"Order already canceled for {command}.")
+            self._log.warning(f"Order already canceled for {command}")
             return
 
         # Generate event
@@ -785,7 +787,7 @@ cdef class ExecAlgorithm(Actor):
         Quantity quantity,
         TimeInForce time_in_force = TimeInForce.GTC,
         bint reduce_only = False,
-        str tags = None,
+        list[str] tags = None,
         bint reduce_primary = True,
     ):
         """
@@ -801,9 +803,8 @@ cdef class ExecAlgorithm(Actor):
             The spawned orders time in force. Often not applicable for market orders.
         reduce_only : bool, default False
             If the spawned order carries the 'reduce-only' execution instruction.
-        tags : str, optional
-            The custom user tags for the order. These are optional and can
-            contain any arbitrary delimiter if required.
+        tags : list[str], optional
+            The custom user tags for the order.
         reduce_primary : bool, default True
             If the primary order quantity should be reduced by the given `quantity`.
 
@@ -859,7 +860,7 @@ cdef class ExecAlgorithm(Actor):
         bint reduce_only = False,
         Quantity display_qty = None,
         TriggerType emulation_trigger = TriggerType.NO_TRIGGER,
-        str tags = None,
+        list[str] tags = None,
         bint reduce_primary = True,
     ):
         """
@@ -885,9 +886,8 @@ cdef class ExecAlgorithm(Actor):
             The quantity of the spawned order to display on the public book (iceberg).
         emulation_trigger : TriggerType, default ``NO_TRIGGER``
             The spawned orders emulation trigger.
-        tags : str, optional
-            The custom user tags for the order. These are optional and can
-            contain any arbitrary delimiter if required.
+        tags : list[str], optional
+            The custom user tags for the order.
         reduce_primary : bool, default True
             If the primary order quantity should be reduced by the given `quantity`.
 
@@ -948,7 +948,7 @@ cdef class ExecAlgorithm(Actor):
         bint reduce_only = False,
         Quantity display_qty = None,
         TriggerType emulation_trigger = TriggerType.NO_TRIGGER,
-        str tags = None,
+        list[str] tags = None,
         bint reduce_primary = True,
     ):
         """
@@ -970,9 +970,8 @@ cdef class ExecAlgorithm(Actor):
             The quantity of the spawned order to display on the public book (iceberg).
         emulation_trigger : TriggerType, default ``NO_TRIGGER``
             The spawned orders emulation trigger.
-        tags : str, optional
-            The custom user tags for the order. These are optional and can
-            contain any arbitrary delimiter if required.
+        tags : list[str], optional
+            The custom user tags for the order.
         reduce_primary : bool, default True
             If the primary order quantity should be reduced by the given `quantity`.
 
@@ -1053,10 +1052,10 @@ cdef class ExecAlgorithm(Actor):
         Emulated orders cannot be sent from execution algorithms (intentionally constraining complexity).
 
         """
-        Condition.true(self.trader_id is not None, "The execution algorithm has not been registered")
+        Condition.is_true(self.trader_id is not None, "The execution algorithm has not been registered")
         Condition.not_none(order, "order")
         Condition.equal(order.emulation_trigger, TriggerType.NO_TRIGGER, "order.emulation_trigger", "NO_TRIGGER")
-        Condition.true(
+        Condition.is_true(
             order.status_c() in (OrderStatus.INITIALIZED, OrderStatus.RELEASED),
             "order",
             "order status was not either ``INITIALIZED`` or ``RELEASED``",
@@ -1073,7 +1072,7 @@ cdef class ExecAlgorithm(Actor):
             Condition.equal(order.strategy_id, primary.strategy_id, "order.strategy_id", "primary.strategy_id")
             if primary is None:
                 self._log.error(
-                    f"Cannot submit order: cannot find primary order for {order.exec_spawn_id!r}."
+                    f"Cannot submit order: cannot find primary order for {order.exec_spawn_id!r}"
                 )
                 return
 
@@ -1082,7 +1081,7 @@ cdef class ExecAlgorithm(Actor):
 
             if self.cache.order_exists(order.client_order_id):
                 self._log.error(
-                    f"Cannot submit order: order already exists for {order.client_order_id!r}.",
+                    f"Cannot submit order: order already exists for {order.client_order_id!r}",
                 )
                 return
 
@@ -1112,7 +1111,7 @@ cdef class ExecAlgorithm(Actor):
         client_id = self.cache.client_id(order.client_order_id)
         cdef Order cached_order = self.cache.order(order.client_order_id)
         if cached_order.order_type != order.order_type:
-            self.cache.add_order(order, position_id, client_id, override=True)
+            self.cache.add_order(order, position_id, client_id, overwrite=True)
 
         command = SubmitOrder(
             trader_id=self.trader_id,
@@ -1177,7 +1176,7 @@ cdef class ExecAlgorithm(Actor):
         https://www.onixs.biz/fix-dictionary/5.0.SP2/msgType_G_71.html
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
 
         cdef bint updating = False  # Set validation flag (must become true)
@@ -1186,16 +1185,16 @@ cdef class ExecAlgorithm(Actor):
             updating = True
 
         if price is not None:
-            Condition.true(
-                order.order_type in VALID_LIMIT_ORDER_TYPES,
+            Condition.is_true(
+                order.order_type in LIMIT_ORDER_TYPES,
                 fail_msg=f"{order.type_string_c()} orders do not have a LIMIT price",
             )
             if price != order.price:
                 updating = True
 
         if trigger_price is not None:
-            Condition.true(
-                order.order_type in VALID_STOP_ORDER_TYPES,
+            Condition.is_true(
+                order.order_type in STOP_ORDER_TYPES,
                 fail_msg=f"{order.type_string_c()} orders do not have a STOP trigger price",
             )
             if trigger_price != order.trigger_price:
@@ -1291,9 +1290,9 @@ cdef class ExecAlgorithm(Actor):
         https://www.onixs.biz/fix-dictionary/5.0.SP2/msgType_G_71.html
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
-        Condition.true(
+        Condition.is_true(
             order.status_c() in (OrderStatus.INITIALIZED, OrderStatus.RELEASED),
             "order",
             "order status was not either ``INITIALIZED`` or ``RELEASED``",
@@ -1305,16 +1304,16 @@ cdef class ExecAlgorithm(Actor):
             updating = True
 
         if price is not None:
-            Condition.true(
-                order.order_type in VALID_LIMIT_ORDER_TYPES,
+            Condition.is_true(
+                order.order_type in LIMIT_ORDER_TYPES,
                 fail_msg=f"{order.type_string_c()} orders do not have a LIMIT price",
             )
             if price != order.price:
                 updating = True
 
         if trigger_price is not None:
-            Condition.true(
-                order.order_type in VALID_STOP_ORDER_TYPES,
+            Condition.is_true(
+                order.order_type in STOP_ORDER_TYPES,
                 fail_msg=f"{order.type_string_c()} orders do not have a STOP trigger price",
             )
             if trigger_price != order.trigger_price:
@@ -1374,7 +1373,7 @@ cdef class ExecAlgorithm(Actor):
             If ``None`` then will be inferred from the venue in the instrument ID.
 
         """
-        Condition.true(self.trader_id is not None, "The strategy has not been registered")
+        Condition.is_true(self.trader_id is not None, "The strategy has not been registered")
         Condition.not_none(order, "order")
 
         if order.is_closed_c() or order.is_pending_cancel_c():
@@ -1463,16 +1462,16 @@ cdef class ExecAlgorithm(Actor):
 # -- EGRESS ---------------------------------------------------------------------------------------
 
     cdef void _send_emulator_command(self, TradingCommand command):
-        if logging_is_initialized():
+        if self._log_commands and is_logging_initialized():
             self.log.info(f"{CMD}{SENT} {command}.")
         self._msgbus.send(endpoint="OrderEmulator.execute", msg=command)
 
     cdef void _send_risk_command(self, TradingCommand command):
-        if logging_is_initialized():
+        if self._log_commands and is_logging_initialized():
             self.log.info(f"{CMD}{SENT} {command}.")
         self._msgbus.send(endpoint="RiskEngine.execute", msg=command)
 
     cdef void _send_exec_command(self, TradingCommand command):
-        if logging_is_initialized():
+        if self._log_commands and is_logging_initialized():
             self.log.info(f"{CMD}{SENT} {command}.")
         self._msgbus.send(endpoint="ExecEngine.execute", msg=command)

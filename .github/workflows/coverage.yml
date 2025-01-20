@@ -6,51 +6,63 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64]
-        os: [ubuntu-latest]
-        python-version: ["3.10"]  # Fails on 3.11 due Cython
-    name: build - Python ${{ matrix.python-version }} (${{ matrix.arch }} ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    env:
+      # > --------------------------------------------------
+      # > sccache
+      # https://github.com/Mozilla-Actions/sccache-action
+      SCCACHE_IDLE_TIMEOUT: 0
+      SCCACHE_DIRECT: "true"
+      SCCACHE_CACHE_MULTIARCH: 1
+      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+      RUSTC_WRAPPER: "sccache"
+      CC: "sccache clang"
+      CXX: "sccache clang++"
+      # Incrementally compiled crates cannot be cached by sccache
+      # https://github.com/mozilla/sccache#rust
+      CARGO_INCREMENTAL: 0
+      # > --------------------------------------------------
+
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: nautilus
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
-      - name: Free disk space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: false
-          dotnet: false
-          haskell: false
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-
       - name: Install runner dependencies
         run: sudo apt-get install -y curl clang git libssl-dev make pkg-config
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get Rust version from rust-toolchain.toml
-        id: rust-version
+      - name: Set up Rust toolchain
         run: |
-          version=$(awk -F\" '/version/ {print $2}' nautilus_core/rust-toolchain.toml)
-          echo "Rust toolchain version $version"
-          echo "RUST_VERSION=$version" >> $GITHUB_ENV
-        working-directory: ${{ github.workspace }}
-
-      - name: Set up Rust tool-chain (Linux, Windows) stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1.5
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          components: rustfmt, clippy
+          rustup toolchain add --profile minimal stable --component clippy,rustfmt
 
       - name: Set up Python environment
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
+
+      - name: Get Python version
+        run: |
+          version=$(bash scripts/python-version.sh)
+          echo "PYTHON_VERSION=$version" >> $GITHUB_ENV
 
       - name: Get Poetry version from poetry-version
         run: |
@@ -65,42 +77,56 @@ jobs:
       - name: Install build dependencies
         run: python -m pip install --upgrade pip setuptools wheel pre-commit msgspec
 
-      - name: Install TA-Lib (Linux)
-        run: |
-          make install-talib
-          poetry run pip install ta-lib
-
-      - name: Setup cached pre-commit
-        id: cached-pre-commit
-        uses: actions/cache@v4
+      - name: Cached sccache
+        id: cached-sccache
+        uses: actions/cache@v4.2.0
         with:
-          path: ~/.cache/pre-commit
-          key: ${{ runner.os }}-${{ matrix.python-version }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ hashFiles('**/Cargo.lock', '**/poetry.lock') }}
+          restore-keys: |
+            sccache-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-
+            sccache-${{ runner.os }}-${{ github.workflow }}-
+            sccache-${{ runner.os }}-
 
-      - name: Run pre-commit
-        run: pre-commit run --all-files
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Set poetry cache-dir
         run: echo "POETRY_CACHE_DIR=$(poetry config cache-dir)" >> $GITHUB_ENV
 
-      - name: Poetry cache
+      - name: Cached poetry
         id: cached-poetry
-        uses: actions/cache@v4
+        uses: actions/cache@v4.2.0
         with:
           path: ${{ env.POETRY_CACHE_DIR }}
-          key: ${{ runner.os }}-${{ matrix.python-version }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          key: ${{ runner.os }}-${{ env.PYTHON_VERSION }}-poetry-${{ hashFiles('**/poetry.lock') }}
 
-      - name: Install Redis
+      - name: Cached test data
+        id: cached-testdata-large
+        uses: actions/cache@v4.2.0
+        with:
+          path: tests/test_data/large
+          key: ${{ runner.os }}-large-files-${{ hashFiles('tests/test_data/large/checksums.json') }}
+          restore-keys: ${{ runner.os }}-large-files-
+
+      - name: Install Nautilus CLI and run init postgres
         run: |
-          sudo apt-get install redis-server
-          redis-server --daemonize yes
+          make install-cli
+          nautilus database init --schema ${{ github.workspace }}/schema/sql
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USERNAME: postgres
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DATABASE: nautilus
 
       - name: Run tests with coverage
         run: make pytest-coverage
 
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          verbose: true
+      # TODO: Temporarily pause coverage report due pending test data repair
+      # - name: Upload coverage report
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     # fail_ci_if_error: true  # leave commented until flakiness improves
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     verbose: true

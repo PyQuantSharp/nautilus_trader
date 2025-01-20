@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,7 +19,10 @@ use std::{
 };
 
 use nautilus_core::{
-    python::{serialization::from_dict_pyo3, to_pyvalue_err},
+    python::{
+        serialization::{from_dict_pyo3, to_dict_pyo3},
+        to_pyvalue_err,
+    },
     serialization::Serializable,
 };
 use pyo3::{prelude::*, pyclass::CompareOp, types::PyDict};
@@ -28,7 +31,7 @@ use crate::{
     data::order::{BookOrder, OrderId},
     enums::OrderSide,
     python::common::PY_MODULE_MODEL,
-    types::{price::Price, quantity::Quantity},
+    types::{Price, Quantity},
 };
 
 #[pymethods]
@@ -52,12 +55,12 @@ impl BookOrder {
         h.finish() as isize
     }
 
-    fn __str__(&self) -> String {
-        self.to_string()
-    }
-
     fn __repr__(&self) -> String {
         format!("{self:?}")
+    }
+
+    fn __str__(&self) -> String {
+        self.to_string()
     }
 
     #[getter]
@@ -100,19 +103,7 @@ impl BookOrder {
         self.signed_size()
     }
 
-    /// Return a dictionary representation of the object.
-    #[pyo3(name = "as_dict")]
-    pub fn py_as_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        // Serialize object to JSON bytes
-        let json_str = serde_json::to_string(self).map_err(to_pyvalue_err)?;
-        // Parse JSON into a Python dictionary
-        let py_dict: Py<PyDict> = PyModule::import(py, "json")?
-            .call_method("loads", (json_str,), None)?
-            .extract()?;
-        Ok(py_dict)
-    }
-
-    /// Return a new object from the given dictionary representation.
+    /// Returns a new object from the given dictionary representation.
     #[staticmethod]
     #[pyo3(name = "from_dict")]
     pub fn py_from_dict(py: Python<'_>, values: Py<PyDict>) -> PyResult<Self> {
@@ -122,13 +113,19 @@ impl BookOrder {
     #[staticmethod]
     #[pyo3(name = "from_json")]
     fn py_from_json(data: Vec<u8>) -> PyResult<Self> {
-        Self::from_json_bytes(data).map_err(to_pyvalue_err)
+        Self::from_json_bytes(&data).map_err(to_pyvalue_err)
     }
 
     #[staticmethod]
     #[pyo3(name = "from_msgpack")]
     fn py_from_msgpack(data: Vec<u8>) -> PyResult<Self> {
-        Self::from_msgpack_bytes(data).map_err(to_pyvalue_err)
+        Self::from_msgpack_bytes(&data).map_err(to_pyvalue_err)
+    }
+
+    /// Return a dictionary representation of the object.
+    #[pyo3(name = "as_dict")]
+    pub fn py_as_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        to_dict_pyo3(py, self)
     }
 
     /// Return JSON encoded bytes representation of the object.
@@ -154,7 +151,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::data::order::stubs::stub_book_order;
+    use crate::data::stubs::stub_book_order;
 
     #[rstest]
     fn test_as_dict(stub_book_order: BookOrder) {

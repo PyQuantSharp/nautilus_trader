@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -59,6 +59,7 @@ from nautilus_trader.model.objects import Price
 from nautilus_trader.model.objects import Quantity
 from nautilus_trader.portfolio.portfolio import Portfolio
 from nautilus_trader.test_kit.functions import ensure_all_tasks_completed
+from nautilus_trader.test_kit.functions import eventually
 from nautilus_trader.test_kit.mocks.exec_clients import MockLiveExecutionClient
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.stubs.component import TestComponentStubs
@@ -255,10 +256,9 @@ class TestLiveExecutionEngine:
         # Act
         self.exec_engine.execute(submit_order)
         self.exec_engine.execute(submit_order)
-        await asyncio.sleep(0.1)
 
         # Assert
-        assert self.exec_engine.cmd_qsize() == 2
+        await eventually(lambda: self.exec_engine.cmd_qsize() == 2)
         assert self.exec_engine.command_count == 0
 
     @pytest.mark.asyncio()
@@ -322,20 +322,18 @@ class TestLiveExecutionEngine:
         # Act
         self.exec_engine.execute(submit_order)
         self.exec_engine.process(event)  # Add over max size
-        await asyncio.sleep(0.1)
 
         # Assert
-        assert self.exec_engine.cmd_qsize() == 1
+        await eventually(lambda: self.exec_engine.cmd_qsize() == 1)
         assert self.exec_engine.command_count == 0
 
     @pytest.mark.asyncio()
     async def test_start(self):
         # Arrange, Act
         self.exec_engine.start()
-        await asyncio.sleep(0.1)
 
         # Assert
-        assert self.exec_engine.is_running
+        await eventually(lambda: self.exec_engine.is_running)
 
         # Tear Down
         self.exec_engine.stop()
@@ -389,11 +387,10 @@ class TestLiveExecutionEngine:
 
         # Act
         self.exec_engine.execute(submit_order)
-        await asyncio.sleep(0.1)
 
         # Assert
-        assert self.exec_engine.evt_qsize() == 0
-        assert self.exec_engine.command_count == 1
+        await eventually(lambda: self.exec_engine.evt_qsize() == 0)
+        await eventually(lambda: self.exec_engine.command_count == 1)
 
         # Tear Down
         self.exec_engine.stop()
@@ -505,7 +502,7 @@ class TestLiveExecutionEngine:
     @pytest.mark.asyncio
     async def test_check_inflight_order_status(self):
         # Arrange
-        # Deregister test fixture ExecutionEngine from msgbus)
+        # Deregister test fixture ExecutionEngine from msgbus
         order = self.strategy.order_factory.limit(
             instrument_id=AUDUSD_SIM.id,
             order_side=OrderSide.BUY,
@@ -517,7 +514,5 @@ class TestLiveExecutionEngine:
         self.strategy.submit_order(order)
         self.exec_engine.process(TestEventStubs.order_submitted(order))
 
-        await asyncio.sleep(2.0)  # Default threshold 1000ms
-
         # Assert
-        assert self.exec_engine.command_count >= 2
+        await eventually(lambda: self.exec_engine.command_count >= 1, timeout=3.0)

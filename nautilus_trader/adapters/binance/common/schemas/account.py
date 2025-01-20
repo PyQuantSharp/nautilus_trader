@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -52,9 +52,9 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceUserTrade(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Spot/Margin` `GET /api/v3/myTrades` HTTP response from
-    `Binance USD-M Futures` `GET /fapi/v1/userTrades` HTTP response from `Binance COIN-M
-    Futures` `GET /dapi/v1/userTrades`
+    HTTP response from Binance Spot/Margin `GET /api/v3/myTrades` HTTP response from
+    Binance USD-M Futures `GET /fapi/v1/userTrades` HTTP response from Binance COIN-M
+    Futures `GET /dapi/v1/userTrades`.
     """
 
     commission: str
@@ -109,9 +109,9 @@ class BinanceUserTrade(msgspec.Struct, frozen=True):
             order_side=order_side,
             last_qty=Quantity.from_str(self.qty),
             last_px=Price.from_str(self.price),
+            commission=Money(self.commission, Currency.from_str(self.commissionAsset)),
             liquidity_side=liquidity_side,
             ts_event=millis_to_nanos(self.time),
-            commission=Money(self.commission, Currency.from_str(self.commissionAsset)),
             report_id=report_id,
             ts_init=ts_init,
         )
@@ -119,9 +119,9 @@ class BinanceUserTrade(msgspec.Struct, frozen=True):
 
 class BinanceOrder(msgspec.Struct, frozen=True):
     """
-    HTTP response from `Binance Spot/Margin` `GET /api/v3/order` HTTP response from
-    `Binance USD-M Futures` `GET /fapi/v1/order` HTTP response from `Binance COIN-M
-    Futures` `GET /dapi/v1/order`
+    HTTP response from Binance Spot/Margin `GET /api/v3/order` HTTP response from
+    Binance USD-M Futures `GET /fapi/v1/order` HTTP response from Binance COIN-M Futures
+    `GET /dapi/v1/order`.
     """
 
     symbol: str
@@ -193,7 +193,7 @@ class BinanceOrder(msgspec.Struct, frozen=True):
         if self.workingType is not None:
             trigger_type = enum_parser.parse_binance_trigger_type(self.workingType)
         elif trigger_price > 0:
-            trigger_type = TriggerType.LAST_TRADE
+            trigger_type = TriggerType.LAST_PRICE
 
         trailing_offset = None
         trailing_offset_type = TrailingOffsetType.NO_TRAILING_OFFSET

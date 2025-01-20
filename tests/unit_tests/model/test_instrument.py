@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,6 +24,8 @@ from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.currencies import USDT
 from nautilus_trader.model.enums import option_kind_from_str
 from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.instruments import BettingInstrument
+from nautilus_trader.model.instruments import BinaryOption
 from nautilus_trader.model.instruments import CryptoFuture
 from nautilus_trader.model.instruments import CryptoPerpetual
 from nautilus_trader.model.instruments import Equity
@@ -49,6 +51,7 @@ ETHUSD_BITMEX = TestInstrumentProvider.ethusd_bitmex()
 AAPL_EQUITY = TestInstrumentProvider.equity(symbol="AAPL", venue="XNAS")
 ES_FUTURE = TestInstrumentProvider.es_future(expiry_year=2023, expiry_month=12)
 AAPL_OPTION = TestInstrumentProvider.aapl_option()
+BETTING_INSTRUMENT = TestInstrumentProvider.betting_instrument()
 
 
 class TestInstrument:
@@ -154,6 +157,53 @@ class TestInstrument:
         # Assert
         assert result == BTCUSDT_BINANCE
 
+    def test_betting_instrument_to_dict(self):
+        # Arrange, Act
+        result = BettingInstrument.to_dict(BETTING_INSTRUMENT)
+
+        # Assert
+        assert BettingInstrument.from_dict(result) == BETTING_INSTRUMENT
+        assert result == {
+            "type": "BettingInstrument",
+            "id": "1-123456789-50214-None.BETFAIR",
+            "raw_symbol": "1-123456789-50214-None",
+            "venue_name": "BETFAIR",
+            "event_type_id": 6423,
+            "event_type_name": "American Football",
+            "competition_id": 12282733,
+            "competition_name": "NFL",
+            "event_id": 29678534,
+            "event_name": "NFL",
+            "event_country_code": "GB",
+            "event_open_date": 1644276600000000000,
+            "betting_type": "ODDS",
+            "market_id": "1-123456789",
+            "market_name": "AFC Conference Winner",
+            "market_type": "SPECIAL",
+            "market_start_time": 1644276600000000000,
+            "selection_id": 50214,
+            "selection_name": "Kansas City Chiefs",
+            "selection_handicap": -9999999.0,
+            "price_precision": 2,
+            "size_precision": 2,
+            "price_increment": "0.01",
+            "size_increment": "0.01",
+            "currency": "GBP",
+            "maker_fee": "0",
+            "taker_fee": "0",
+            "margin_init": "1",
+            "margin_maint": "1",
+            "max_quantity": None,
+            "min_quantity": None,
+            "max_notional": None,
+            "min_notional": "1.00 GBP",
+            "max_price": None,
+            "min_price": None,
+            "ts_event": 0,
+            "ts_init": 0,
+            "info": {},
+        }
+
     def test_crypto_perpetual_instrument_to_dict(self):
         # Arrange, Act
         result = CryptoPerpetual.to_dict(XBTUSD_BITMEX)
@@ -172,9 +222,11 @@ class TestInstrument:
             "price_increment": "0.5",
             "size_precision": 0,
             "size_increment": "1",
+            "multiplier": "1",
+            "lot_size": "1",
             "max_quantity": None,
             "min_quantity": None,
-            "max_notional": "10_000_000.00 USD",
+            "max_notional": "10000000.00 USD",
             "min_notional": "1.00 USD",
             "max_price": "1000000.0",
             "min_price": "0.5",
@@ -200,12 +252,15 @@ class TestInstrument:
             "underlying": "BTC",
             "quote_currency": "USDT",
             "settlement_currency": "USDT",
+            "is_inverse": False,
             "activation_ns": 1640390400000000000,
             "expiration_ns": 1648166400000000000,
             "price_precision": 2,
             "price_increment": "0.01",
             "size_precision": 6,
             "size_increment": "0.000001",
+            "multiplier": "1",
+            "lot_size": "1",
             "max_quantity": "9000.000000",
             "min_quantity": "0.000001",
             "max_notional": None,
@@ -235,6 +290,10 @@ class TestInstrument:
             "price_precision": 2,
             "price_increment": "0.01",
             "lot_size": "100",
+            "max_price": None,
+            "max_quantity": None,
+            "min_price": None,
+            "min_quantity": None,
             "isin": "US0378331005",
             "margin_init": "0",
             "margin_maint": "0",
@@ -242,6 +301,7 @@ class TestInstrument:
             "taker_fee": "0",
             "ts_event": 0,
             "ts_init": 0,
+            "info": None,
         }
 
     def test_future_instrument_to_dict(self):
@@ -255,10 +315,15 @@ class TestInstrument:
             "id": "ESZ3.GLBX",
             "raw_symbol": "ESZ3",
             "asset_class": "INDEX",
+            "exchange": "XCME",
             "underlying": "ES",
             "currency": "USD",
             "activation_ns": 1622842200000000000,
             "expiration_ns": 1702650600000000000,
+            "max_price": None,
+            "max_quantity": None,
+            "min_price": None,
+            "min_quantity": "1",
             "lot_size": "1",
             "margin_init": "0",
             "margin_maint": "0",
@@ -267,8 +332,11 @@ class TestInstrument:
             "price_precision": 2,
             "size_increment": "1",
             "size_precision": 0,
+            "maker_fee": "0",
+            "taker_fee": "0",
             "ts_event": 1622842200000000000,
             "ts_init": 1622842200000000000,
+            "info": None,
         }
 
     def test_option_instrument_to_dict(self):
@@ -282,11 +350,17 @@ class TestInstrument:
             "id": "AAPL211217C00150000.OPRA",
             "raw_symbol": "AAPL211217C00150000",
             "asset_class": "EQUITY",
+            "exchange": "GMNI",
+            "underlying": "AAPL",
             "currency": "USD",
             "activation_ns": 1631836800000000000,
             "expiration_ns": 1639699200000000000,
             "option_kind": "CALL",
             "lot_size": "1",
+            "max_price": None,
+            "max_quantity": None,
+            "min_price": None,
+            "min_quantity": "1",
             "margin_init": "0",
             "margin_maint": "0",
             "multiplier": "100",
@@ -295,9 +369,11 @@ class TestInstrument:
             "size_increment": "1",
             "size_precision": 0,
             "strike_price": "149.00",
+            "maker_fee": "0",
+            "taker_fee": "0",
             "ts_event": 0,
             "ts_init": 0,
-            "underlying": "AAPL",
+            "info": None,
         }
 
     @pytest.mark.parametrize(
@@ -325,6 +401,14 @@ class TestInstrument:
         # Assert
         assert str(price) == expected_str
 
+    def test_make_qty_when_non_zero_value_rounded_to_zero_raises_exception(self):
+        # Arrange
+        onethousandrats = TestInstrumentProvider.onethousandrats_perp_binance()
+
+        # Act, Assert
+        with pytest.raises(ValueError):
+            onethousandrats.make_qty(0.004)
+
     @pytest.mark.parametrize(
         ("value", "expected_str"),
         [
@@ -349,6 +433,28 @@ class TestInstrument:
 
         # Assert
         assert str(qty) == expected_str
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            [0.0000501, Decimal("0.0000500")],
+            [0.0000540, Decimal("0.0000500")],
+            [0.0000550, Decimal("0.0000600")],
+        ],
+    )
+    def test_make_price_with_lower_precision_minimum_increment(
+        self,
+        value: float,
+        expected: Decimal,
+    ) -> None:
+        # Arrange
+        onethousandrats = TestInstrumentProvider.onethousandrats_perp_binance()
+
+        # Act
+        price = onethousandrats.make_price(value)
+
+        # Assert
+        assert price == expected
 
     @pytest.mark.parametrize(
         ("instrument", "expected"),
@@ -423,6 +529,28 @@ class TestInstrument:
         # Assert
         assert result == Quantity.from_str("1250")
 
+    def test_next_bid_price_when_no_tick_scheme(self):
+        # Arrange, Act
+        with pytest.raises(ValueError) as exc_info:
+            BTCUSDT_BINANCE.next_bid_price(100_000.0)
+
+        # Assert
+        assert (
+            str(exc_info.value)
+            == "No tick scheme for instrument BTCUSDT.BINANCE. You can specify a tick scheme by passing a `tick_scheme_name` at initialization."
+        )
+
+    def test_next_ask_price_when_no_tick_scheme(self):
+        # Arrange, Act
+        with pytest.raises(ValueError) as exc_info:
+            BTCUSDT_BINANCE.next_ask_price(100_000.0)
+
+        # Assert
+        assert (
+            str(exc_info.value)
+            == "No tick scheme for instrument BTCUSDT.BINANCE. You can specify a tick scheme by passing a `tick_scheme_name` at initialization."
+        )
+
     @pytest.mark.parametrize(
         ("instrument", "value", "n", "expected"),
         [
@@ -473,7 +601,7 @@ def test_pyo3_future_to_legacy_future() -> None:
 
     # Assert
     assert isinstance(instrument, FuturesContract)
-    assert instrument.id == InstrumentId.from_str("ESZ1.XCME")
+    assert instrument.id == InstrumentId.from_str("ESZ21.GLBX")
 
 
 def test_pyo3_option_to_legacy_option() -> None:
@@ -486,3 +614,25 @@ def test_pyo3_option_to_legacy_option() -> None:
     # Assert
     assert isinstance(instrument, OptionsContract)
     assert instrument.id == InstrumentId.from_str("AAPL211217C00150000.OPRA")
+
+
+def test_binary_option_dict_round_trip() -> None:
+    # Arrange
+    instrument = TestInstrumentProvider.binary_option()
+
+    # Act
+    from_dict = BinaryOption.from_dict(BinaryOption.to_dict(instrument))
+
+    # Assert
+    assert instrument == from_dict
+
+
+def test_betting_instrument_dict_round_trip() -> None:
+    # Arrange
+    instrument = TestInstrumentProvider.betting_instrument()
+
+    # Act
+    from_dict = BettingInstrument.from_dict(BettingInstrument.to_dict(instrument))
+
+    # Assert
+    assert instrument == from_dict

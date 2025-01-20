@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,16 +13,23 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
 from nautilus_trader.adapters.bybit.endpoints.endpoint import BybitHttpEndpoint
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 from nautilus_trader.adapters.bybit.schemas.account.balance import BybitWalletBalanceResponse
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 
-class BybitWalletBalanceGetParameters(msgspec.Struct, omit_defaults=True, frozen=False):
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+
+
+class BybitWalletBalanceGetParams(msgspec.Struct, omit_defaults=True, frozen=True):
     accountType: str | None = None
     coin: str | None = None
 
@@ -42,12 +49,11 @@ class BybitWalletBalanceEndpoint(BybitHttpEndpoint):
         )
         self._get_resp_decoder = msgspec.json.Decoder(BybitWalletBalanceResponse)
 
-    async def get(self, parameters: BybitWalletBalanceGetParameters) -> BybitWalletBalanceResponse:
-        raw = await self._method(self.http_method, parameters)
+    async def get(self, params: BybitWalletBalanceGetParams) -> BybitWalletBalanceResponse:
+        raw = await self._method(self.http_method, params)
         try:
             return self._get_resp_decoder.decode(raw)
         except Exception as e:
-            decoded_raw = raw.decode("utf-8")
             raise RuntimeError(
-                f"Failed to decode response wallet balance response: {decoded_raw}",
+                f"Failed to decode response from {self.url_path}: {raw.decode()}",
             ) from e

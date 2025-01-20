@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,40 +13,125 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
 
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from typing import TYPE_CHECKING
+
 from nautilus_trader.config import LiveDataClientConfig
 from nautilus_trader.config import LiveExecClientConfig
 from nautilus_trader.config import PositiveFloat
 from nautilus_trader.config import PositiveInt
 
 
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.common.enums import BybitProductType
+
+
 class BybitDataClientConfig(LiveDataClientConfig, frozen=True):
     """
     Configuration for ``BybitDataClient`` instances.
+
+    Parameters
+    ----------
+    api_key : str, optional
+        The Bybit API public key.
+        If ``None`` then will source the `BYBIT_API_KEY` or
+        `BYBIT_TESTNET_API_KEY` environment variables.
+    api_secret : str, optional
+        The Bybit API public key.
+        If ``None`` then will source the `BYBIT_API_SECRET` or
+        `BYBIT_TESTNET_API_SECRET` environment variables.
+    product_types : list[BybitProductType], optional
+        The Bybit product type for the client.
+        If not specified then will use all products.
+    demo : bool, default False
+        If the client is connecting to the Bybit demo API.
+    testnet : bool, default False
+        If the client is connecting to the Bybit testnet API.
+    update_instruments_interval_mins: PositiveInt or None, default 60
+        The interval (minutes) between reloading instruments from the venue.
+    max_ws_reconnection_tries: int, default 3
+        The number of retries to reconnect the websocket connection if the
+        connection is broken.
+
     """
 
     api_key: str | None = None
     api_secret: str | None = None
-    instrument_types: list[BybitInstrumentType] = []
+    product_types: list[BybitProductType] | None = None
     base_url_http: str | None = None
+    demo: bool = False
     testnet: bool = False
+    update_instruments_interval_mins: PositiveInt | None = 60
+    max_ws_reconnection_tries: int | None = 3
 
 
 class BybitExecClientConfig(LiveExecClientConfig, frozen=True):
     """
     Configuration for ``BybitExecutionClient`` instances.
+
+    Parameters
+    ----------
+    api_key : str, optional
+        The Bybit API public key.
+        If ``None`` then will source the `BYBIT_API_KEY` or
+        `BYBIT_TESTNET_API_KEY` environment variables.
+    api_secret : str, optional
+        The Bybit API public key.
+        If ``None`` then will source the `BYBIT_API_KEY` or
+        `BYBIT_TESTNET_API_KEY` environment variables.
+    product_type : list[BybitProductType], optional
+        The Bybit product type for the client.
+        If None then will default to 'SPOT', you also cannot mix 'SPOT' with
+        any other product type for execution, and it will use a `CASH` account
+        type, vs `MARGIN` for the other derivative products.
+    base_url_ws_private : str, optional
+        The base URL for the `private` WebSocket client.
+    base_url_ws_trade : str, optional
+        The base URL for the `trade` WebSocket client.
+    demo : bool, default False
+        If the client is connecting to the Bybit demo API.
+    testnet : bool, default False
+        If the client is connecting to the Bybit testnet API.
+    use_gtd : bool, default False
+        If False, then GTD time in force will be remapped to GTC
+        (this is useful if managing GTD orders locally).
+    use_ws_execution_fast : bool, default False
+        If use fast execution stream.
+    use_ws_trade_api : bool, default False
+        If the client is using websocket to send order requests.
+    use_http_batch_api : bool, default False
+        If the client is using http api to send batch order requests.
+        Effective only when `use_ws_trade_api` is set to `True`.
+    max_retries : PositiveInt, optional
+        The maximum number of times a submit, cancel or modify order request will be retried.
+    retry_delay : PositiveFloat, optional
+        The delay (seconds) between retries. Short delays with frequent retries may result in account bans.
+    max_ws_reconnection_tries: int, default 3
+        The number of retries to reconnect the websocket connection if the
+        connection is broken.
+    ws_trade_timeout_secs : float, default 5.0
+        The timeout for trade websocket messages.
+
+    Warnings
+    --------
+    A short `retry_delay` with frequent retries may result in account bans.
+
     """
 
     api_key: str | None = None
     api_secret: str | None = None
-    instrument_types: list[BybitInstrumentType] = []
+    product_types: list[BybitProductType] | None = None
     base_url_http: str | None = None
-    base_url_ws: str | None = None
+    base_url_ws_private: str | None = None
+    base_url_ws_trade: str | None = None
+    demo: bool = False
     testnet: bool = False
-    clock_sync_interval_secs: int = 0
-    use_reduce_only: bool = True
-    use_position_ids: bool = True
-    treat_expired_as_canceled: bool = False
+    use_gtd: bool = False  # Not supported on Bybit
+    use_ws_execution_fast: bool = False
+    use_ws_trade_api: bool = False
+    use_http_batch_api: bool = False
     max_retries: PositiveInt | None = None
     retry_delay: PositiveFloat | None = None
+    max_ws_reconnection_tries: int | None = 3
+    ws_trade_timeout_secs: float | None = 5.0

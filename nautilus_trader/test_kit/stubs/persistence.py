@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -15,12 +15,12 @@
 
 import pandas as pd
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.core.datetime import maybe_dt_to_unix_nanos
 from nautilus_trader.model.objects import Currency
 from nautilus_trader.serialization.arrow.serializer import register_arrow
 from nautilus_trader.test_kit.mocks.data import NewsEventData
 from nautilus_trader.trading.filters import NewsImpact
-from tests import TEST_DATA_DIR
 
 
 class TestPersistenceStubs:
@@ -83,8 +83,8 @@ class TestPersistenceStubs:
                 name=str(row["Name"]),
                 impact=getattr(NewsImpact, row["Impact"]),
                 currency=Currency.from_str(row["Currency"]),
-                ts_event=maybe_dt_to_unix_nanos(pd.Timestamp(row["Start"])),
-                ts_init=maybe_dt_to_unix_nanos(pd.Timestamp(row["Start"])),
+                ts_event=maybe_dt_to_unix_nanos(pd.Timestamp(row["Start"])) or 0,
+                ts_init=maybe_dt_to_unix_nanos(pd.Timestamp(row["Start"])) or 0,
             )
             events.append(data)
         return events

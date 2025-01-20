@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,11 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::{
-    ffi::c_void,
-    fmt::{Display, Formatter},
-    ptr::null,
-};
+use std::{ffi::c_void, fmt::Display, ptr::null};
 
 /// `CVec` is a C compatible struct that stores an opaque pointer to a block of
 /// memory, it's length and the capacity of the vector it was allocated from.
@@ -43,7 +39,7 @@ unsafe impl Send for CVec {}
 
 impl CVec {
     #[must_use]
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             // Explicitly type cast the pointer to some type to satisfy the
             // compiler. Since the pointer is null it works for any type.
@@ -78,7 +74,7 @@ impl<T> From<Vec<T>> for CVec {
 }
 
 impl Display for CVec {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "CVec {{ ptr: {:?}, len: {}, cap: {} }}",
@@ -100,14 +96,12 @@ pub extern "C" fn cvec_drop(cvec: CVec) {
 
 #[cfg(feature = "ffi")]
 #[no_mangle]
-pub extern "C" fn cvec_new() -> CVec {
+pub const extern "C" fn cvec_new() -> CVec {
     CVec::empty()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::ptr::null;
-
     use rstest::*;
 
     use super::CVec;
@@ -147,7 +141,7 @@ mod tests {
     /// contain the same values.
     /// NOTE: This test maybe flaky depending on the platform
     #[rstest]
-    #[ignore] // TODO(cs): Flaky one some platforms
+    #[ignore] // TODO: Flaky one some platforms
     fn drop_test() {
         let test_data = vec![1, 2, 3];
         let cvec: CVec = {
@@ -175,6 +169,6 @@ mod tests {
     fn empty_vec_should_give_null_ptr() {
         let data: Vec<u64> = vec![];
         let cvec: CVec = data.into();
-        assert_eq!(cvec.ptr.cast::<u64>(), null::<u64>().cast_mut());
+        assert_eq!(cvec.ptr.cast::<u64>(), std::ptr::null_mut::<u64>());
     }
 }

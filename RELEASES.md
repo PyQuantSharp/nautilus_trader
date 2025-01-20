@@ -1,14 +1,910 @@
-# NautilusTrader 1.189.0 Beta
+# NautilusTrader 1.211.0 Beta
 
 Released on TBD (UTC).
+
+This release will be the final version that uses Poetry for package and dependency management.
+
+### Enhancements
+- Added `high-precision` mode for 128-bit integer backed value types, see [RFC](https://github.com/nautechsystems/nautilus_trader/issues/2084) and [precision mode](https://nautilustrader.io/docs/nightly/getting_started/installation#precision-mode) docs (#2072), thanks @twitu
+- Added `log_commands` config option for `ActorConfig`, `StrategyConfig`, `ExecAlgorithmConfig` for more efficient log filtering
+- Added additional limit parameters for `BettingInstrument` constructor
+- Added `venue_position_id` parameter for `OrderStatusReport`
+
+### Breaking Changes
+- Renamed `event_logging` config option to `log_events`
+- Moved SQL schema directory to `schemas/sql` (reinstall the Nautilus CLI with `make install-cli`)
+- Changed `BettingInstrument` default `min_notional` to `None`
+
+### Internal Improvements
+- Ported market order filling for `OrderMatchingEngine` in Rust (#2202), thanks @filipmacek
+- Ported limit order filling for `OrderMatchingEngine` in Rust (#2212), thanks @filipmacek
+- Continued porting `RiskEngine` to Rust (#2210), thanks @Pushkarm029
+- Continued porting `ExecutionEngine` to Rust (#2214), thanks @Pushkarm029
+
+### Fixes
+- Fixed backtest start and end time validation assertion (#2203), thanks @davidsblom
+- Fixed `CustomData` import in `DataEngine` (#2207), thanks @graceyangfan and @faysou
+- Fixed databento helper function (#2208), thanks @faysou
+- Fixed live reconciliation of generated order fills to use the `venue_position_id` (when provided), thanks for reporting @sdk451
+- Fixed `InstrumentProvider` initialization behavior when `reload` flag `True`, thanks @ryantam626
+
+### Documentation Updates
+None
+
+### Deprecations
+- The [talib](https://github.com/nautechsystems/nautilus_trader/tree/develop/nautilus_trader/indicators/ta_lib) subpackage for indicators is deprecated and will be removed in a future version, see [RFC](https://github.com/nautechsystems/nautilus_trader/issues/2206)
+
+---
+
+# NautilusTrader 1.210.0 Beta
+
+Released on 10th January 2025 (UTC).
+
+### Enhancements
+- Added `PerContractFeeModel`, thanks @stefansimik
+- Added `DYDXInternalError` and `DYDXOraclaPrice` data types for dYdX (#2155), thanks @davidsblom
+- Added proper `OrderBookDeltas` flags parsing for Betfair
+- Added Binance TradeLite message support (#2156), thanks @DeevsDeevs
+- Added `DataEngineConfig.time_bars_skip_first_non_full_bar` config option (#2160), thanks @faysou
+- Added `execution.fast` support for Bybit (#2165), thanks @sunlei
+- Added catalog helper functions to export data (#2135), thanks @twitu
+- Added additional timestamp properties for `NautilusKernel`
+- Added `event_logging` config option for `StrategyConfig` (#2183), thanks @sunlei
+- Added `bar_adaptive_high_low_ordering` to `BacktestVenueConfig` (#2188), thanks @faysou and @stefansimik
+
+### Breaking Changes
+- Removed optional `value` param from `UUID4` (use `UUID4.from_str(...)` instead), aligns with Nautilus PyO3 API
+- Changed `unix_nanos_to_iso8601` to output an ISO 8601 (RFC 3339) format string with nanosecond precision
+- Changed `format_iso8601` to output ISO 8601 (RFC 3339) format string with nanosecond precision
+- Changed `format_iso8601` `dt` parameter to enforce `pd.Timestamp` (which has nanosecond precision)
+- Changed `TradingNode.is_built` from a property to a method `.is_built()`
+- Changed `TradingNode.is_running` from a property to a method `.is_running()`
+- Changed `OrderInitialized` Arrow schema (`linked_order_ids` and `tags` data types changed from `string` to `binary`)
+- Changed order dictionary representation field types for `avg_px` and `slippage`  from `str` to `float` (as out of alignment with position events)
+- Changed `aggregation_source` filter parameter for `Cache.bar_types(...)` to optional with default of `None`
+
+### Internal Improvements
+- Improved market order handling when no size available in book (now explicitly rejects)
+- Improved validation for `TradeTick` by ensuring `size` is always positive
+- Improved validation for `OrderBookDelta` by ensuring `order.size` is positive when `action` is either `ADD` or `UPDATE`
+- Improved validation for `BarSpecification` by ensuring `step` is always positive
+- Standardized ISO 8601 timestamps to RFC 3339 spec with nanosecond precision
+- Standardized flags for `OrderBookDeltas` parsing across adapters
+- Refined parsing candles for dYdX (#2148), thanks @davidsblom
+- Refined imports for type hints in Bybit (#2149), thanks @sunlei
+- Refined private WebSocket message processing for Bybit (#2170), thanks @sunlei
+- Refined WebSocket client re-subscribe log for Bybit (#2179), thanks @sunlei
+- Refined margin balance report for dYdX (#2154), thanks @davidsblom
+- Enhanced `lotSizeFilter` field for Bybit (#2166), thanks @sunlei
+- Renamed WebSocket private client for Bybit (#2180), thanks @sunlei
+- Added unit tests for custom dYdX types (#2163), thanks @davidsblom
+- Allow bar aggregators to persist after `request_aggregated_bars` (#2144), thanks @faysou
+- Handle directory and live streams to catalog (#2153), thanks @limx0
+- Use timeout when initializing account for dYdX (#2169), thanks @davidsblom
+- Use retry manager when sending websocket messages for dYdX (#2196), thanks @davidsblom
+- Refined error logs when sending pong for dYdX (#2184), thanks @davidsblom
+- Optimized message bus topic `is_matching` (#2151), thanks @ryantam626
+- Added tests for `bar_adaptive_high_low_ordering` (#2197), thanks @faysou
+- Ported `OrderManager` to Rust (#2161), thanks @Pushkarm029
+- Ported trailing stop logic to Rust (#2174), thanks @DeevsDeevs
+- Ported `FeeModel` to Rust (#2191), thanks @filipmacek
+- Implemented IDs generator for `OrderMatchingEngine` in Rust (#2193), thanks @filipmacek
+- Upgraded Cython to v3.1.0a1
+- Upgraded `tokio` crate to v1.43.0
+- Upgraded `datafusion` crate to v44.0.0
+
+### Fixes
+- Fixed type check for `DataClient` on requests to support clients other than `MarketDataClient`
+- Fixed processing trade ticks from bars in `OrderMatchingEngine` - that could result in zero-size trades, thanks for reporting @stefansimik
+- Fixed `instrument is None` check flows for `DataEngine` and `PolymarketExecutionClient`
+- Fixed instrument updates in `BetfairDataClient` (#2152), thanks @limx0
+- Fixed processing of time events on backtest completion when they occur after the final data timestamp
+- Fixed missing enum member `CANCELED_MARKET_RESOLVED` for `PolymarketOrderStatus`
+- Fixed missing `init_id` field from some order `.to_dict()` representations
+- Fixed writing `DYDXOraclePrice` to catalog (#2158), thanks @davidsblom
+- Fixed account balance for dYdX (#2167), thanks @davidsblom
+- Fixed markets schema for dYdX (#2190), thanks @davidsblom
+- Fixed missing `OrderEmulated` and `OrderReleased` Arrow schemas
+- Fixed websocket public channel reconnect for Bybit (#2176), thanks @sunlei
+- Fixed execution report parsing for Binance Spot (client order ID empty string now becomes a UUID4 string)
+- Fixed docs typo for `fill_order` function in `OrderMatchingEngine` (#2189), thanks @filipmacek
+
+### Documentation Updates
+- Added docs for `Cache`, slippage and spread handling in backtesting (#2162), thanks @stefansimik
+- Added docs for `FillModel` and bar based execution (#2187), thanks @stefansimik
+- Added docs for choosing data (cost vs. accuracy) and bars OHLC processing (#2195), thanks @stefansimik
+- Added docs for bar processing in backtests (#2198), thanks @stefansimik
+- Added docs for timestamp and UUID specs
+
+---
+
+# NautilusTrader 1.209.0 Beta
+
+Released on 25th December 2024 (UTC).
+
+### Enhancements
+- Added WebSocket API trading support for Bybit (#2129), thanks @sunlei
+- Added `BybitOrderBookDeltaDataLoader` with tutorial for Bybit backtesting (#2131), thanks @DeevsDeevs
+- Added margin and commission docs (#2128), thanks @stefansimik
+- Added optional `depth` parameter for some `OrderBook` methods
+- Added trade execution support where trades are processed by the matching engine (can be useful backtesting with throttled book and trades data)
+- Refactored to use `exchange` MIC code as `venue` for instrument IDs with Databento GLBX dataset (#2108, #2121, #2124, #2126), thanks @faysou
+- Refactored to use `self.config` attributes consistently (#2120), thanks @stefansimik
+
+### Internal Improvements
+- Optimized `UUID4::new()` avoiding unnecessary string allocation, achieving a ~2.8x performance improvement (added benches)
+- Upgraded v4-proto for dYdX (#2136), thanks @davidsblom
+- Upgraded `databento` crate to v0.17.0
+
+### Breaking Changes
+- Moved `BinanceOrderBookDeltaDataLoader` from `nautilus_trader.persistence.loaders` to `nautilus_trader.adapters.binance.loaders`
+
+### Fixes
+- Fixed multi-threaded monotonicity for `AtomicTime` in real-time mode
+- Fixed timeout error code for Bybit (#2130), thanks @sunlei
+- Fixed instruments info retrieval for Bybit (#2134), thanks @sunlei
+- Fixed `request_aggregated_bars` metadata handling (#2137), thanks @faysou
+- Fixed demo notebook `backtest_high_level.ipynb` (#2142), thanks @stefansimik
+
+---
+
+# NautilusTrader 1.208.0 Beta
+
+Released on 15th December 2024 (UTC).
+
+### Enhancements
+- Added specific `params` for data subscriptions and requests which supports Databento `bbo-1s` and `bbo-1m` quotes (#2083, #2094), thanks @faysou
+- Added support for `STOP_LIMIT` entry order type for `OrderFactory.bracket(...)`
+- Added `.group_bids(...)` and `.group_asks(...)` for `OrderBook`
+- Added `.bids_to_dict()` and `.asks_to_dict()` for `OrderBook`
+- Added `ShutdownSystem` command and `shutdown_system(...)` method for components (system-wide shutdown for backtest, sandbox, or live environments)
+- Added `max_ws_reconnection_tries` to `BybitDataClientConfig` (#2100), thanks @sunlei
+- Added additional API functionality for Bybit (#2102), thanks @sunlei
+- Added position and execution.fast subscriptions for Bybit (#2104), thanks @sunlei
+- Added `max_ws_reconnection_tries` to `BybitExecClientConfig` (#2109), thanks @sunlei
+- Added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee` params and attributes for `FuturesContract`
+- Added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee` params and attributes for `FuturesSpread`
+- Added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee` params and attributes for `OptionsContract`
+- Added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee` params and attributes for `OptionsSpread`
+- Improved Databento symbology support for Interactive Brokers (#2113), thanks @rsmb7z
+- Improved support of `STOP_MARKET` and `STOP_LIMIT` orders for dYdX (#2069), thanks @Saransh-Bhandari
+- Improved timer validation for `interval_ns` (avoids panicking from Rust)
+
+### Internal Improvements
+- Added `.bids_as_map()` and `.asks_as_map()` for `OrderBook` in Rust
+- Added type stubs for `core` subpackage
+- Added type stubs for `common` and `model` enums
+- Added type stubs for `common.messages`
+- Added re-exports and module declarations to enhance code ergonomics and improve import discoverability
+- Added subscriptions for block height websocket messages for dYdX (#2085), thanks @davidsblom
+- Added sccache in CI (#2093), thanks @sunlei
+- Refined `BybitWebSocketClient` private channel authentication (#2101), thanks @sunlei
+- Refined `BybitWebSocketClient` subscribe and unsubscribe (#2105), thanks @sunlei
+- Refined place order class definitions for Bybit (#2106), thanks @sunlei
+- Refined `BybitEnumParser` (#2107), thanks @sunlei
+- Refined batch cancel orders for Bybit (#2111), thanks @sunlei
+- Upgraded `tokio` crate to v1.42.0
+
+### Breaking Changes
+- Renamed `Level` to `BookLevel` (standardizes order book type naming conventions)
+- Renamed `Ladder` to `BookLadder` (standardizes order book type naming conventions)
+- Changed `FuturesContract` Arrow schema (added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee`)
+- Changed `FuturesSpread` Arrow schema (added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee`)
+- Changed `OptionsContract` Arrow schema (added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee`)
+- Changed `OptionsSpread` Arrow schema (added `margin_init`, `margin_maint`, `maker_fee`, `taker_fee`)
+
+### Fixes
+- Fixed data requests when specifying `end` with no catalog registered (comparison between `pd.Timestamp` and `NoneType`)
+- Fixed `BEST_EFFORT_CANCELED` order status report for dYdX (#2082), thanks @davidsblom
+- Fixed order handling for `BEST_EFFORT_CANCELED` messages of dYdX (#2095), thanks @davidsblom
+- Fixed specifying price for market orders on dYdX (#2088), thanks @davidsblom
+- Fixed interest rate curve custom data and interpolation (#2090), thanks @gcheshkov
+- Fixed `BybitHttpClient` error handling when not a JSON string (#2096), thanks @sunlei
+- Fixed `BybitWebSocketClient` private channel reconnect (#2097), thanks @sunlei
+- Fixed incorrect order side use in `BybitExecutionClient` (#2098), thanks @sunlei
+- Fixed default `http_base_url` for Bybit (#2110), thanks @sunlei
+
+---
+
+# NautilusTrader 1.207.0 Beta
+
+Released on 29th November 2024 (UTC).
+
+### Enhancements
+- Implemented mixed catalog data requests with catalog update (#2043), thanks @faysou
+- Added Databento symbology support for Interactive Brokers (#2073), thanks @rsmb7z
+- Added `metadata` parameter for data requests (#2043), thanks @faysou
+- Added `STOP_MARKET` and `STOP_LIMIT` order support for dYdX (#2066), thanks @davidsblom
+- Added `max_reconnection_tries` to data client config for dYdX (#2066), thanks @davidsblom
+- Added wallet subscription for Bybit (#2076), thanks @sunlei
+- Added docs clarity on loading historical bars (#2078), thanks @dodofarm
+- Added `price_precision` optional parameter for `DatabentoDataLoader` methods
+- Improved `Cache` behavior when adding more recent quotes, trades, or bars (now adds to cache)
+
+### Internal Improvements
+- Ported `Portfolio` and `AccountManager` to Rust (#2058), thanks @Pushkarm029
+- Implemented `AsRef<str>` for `Price`, `Money`, and `Currency`
+- Improved expired timer cleanup in clocks (#2064), thanks @twitu
+- Improved live engines error logging (will now log all exceptions rather than just `RuntimeError`)
+- Improved symbol normalization for Tardis
+- Improved historical bar request performance for Tardis
+- Improved `TradeId` Debug implementation to display value as proper UTF-8 string
+- Refined `HttpClient` for use directly from Rust
+- Refined Databento decoder (removed currency hard coding and use of `unsafe`)
+- Upgraded `datafusion` crate to v43.0.0 (#2056), thanks @twitu
+
+### Breaking Changes
+- Renamed `TriggerType.LAST_TRADE` to `LAST_PRICE` (more conventional terminology)
+
+### Fixes
+- Fixed missing venue -> exchange mappings for Tardis integration
+- Fixed account balance and order status parsing for dYdX (#2067), thanks @davidsblom
+- Fixed parsing best effort opened order status for dYdX (#2068), thanks @davidsblom
+- Fixed occasionally incorrect `price_precision`, `multiplier` and `lot_size` decoding for Databento instruments
+- Fixed missing Arrow schemas for instrument deserialization
+- Reconcile order book for dYdX when inconsistent (#2077), thanks @davidsblom
+
+---
+
+# NautilusTrader 1.206.0 Beta
+
+Released on 17th November 2024 (UTC).
+
+### Enhancements
+- Added `TardisDataClient` providing live data streams from a Tardis Machine WebSocket server
+- Added `TardisInstrumentProvider` providing instrument definitions from Tardis through the HTTP instrument metadata API
+- Added `Portfolio.realized_pnl(...)` method for per instrument realized PnL (based on positions)
+- Added `Portfolio.realized_pnls(...)` method for per venue realized PnL (based on positions)
+- Added configuration warning for `InstrumentProvider` (to warn when node starts with no instrument loading)
+- Implemented Tardis optional [symbol normalization](https://nautilustrader.io/docs/nightly/integrations/tardis/#symbology-and-normalization)
+- Implemented `WebSocketClient` reconnection retries (#2044), thanks @davidsblom
+- Implemented `OrderCancelRejected` event generation for Binance and Bybit
+- Implemented `OrderModifyRejected` event generation for Binance and Bybit
+- Improved `OrderRejected` handling of `reason` string (`None` is now allowed which will become the string `'None'`)
+- Improved `OrderCancelRejected` handling of `reason` string (`None` is now allowed which will become the string `'None'`)
+- Improved `OrderModifyRejected` handling of `reason` string (`None` is now allowed which will become the string `'None'`)
+
+### Internal Improvements
+- Ported `RiskEngine` to Rust (#2035), thanks @Pushkarm029 and @twitu
+- Ported `ExecutionEngine` to Rust (#2048), thanks @twitu
+- Added globally shared data channels to send events from engines to Runner in Rust (#2042), thanks @twitu
+- Added LRU caching for dYdX HTTP client (#2049), thanks @davidsblom
+- Improved identifier constructors to take `AsRef<str>` for a cleaner more flexible API
+- Refined identifiers `From` trait impls
+- Refined `InstrumentProvider` initialization behavior and logging
+- Refined `LiveTimer` cancel and performance testing
+- Simplified `LiveTimer` cancellation model (#2046), thanks @twitu
+- Refined Bybit HMAC authentication signatures (now using Rust implemented function)
+- Refined Tardis instrument ID parsing
+- Removed Bybit `msgspec` redundant import alias (#2050), thanks @sunlei
+- Upgraded `databento` crate to v0.16.0
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed loading specific instrument IDs for `InstrumentProviderConfig`
+- Fixed PyO3 instrument conversions for `raw_symbol` (was incorrectly using the normalized symbol)
+- Fixed reconcile open orders and account websocket message for dYdX (#2039), thanks @davidsblom
+- Fixed market order `avg_px` for Polymarket trade reports
+- Fixed Betfair clients keepalive (#2040), thanks @limx0
+- Fixed Betfair reconciliation (#2041), thanks @limx0
+- Fixed Betfair customer order ref limit to 32 chars
+- Fixed Bybit handling of `PARTIALLY_FILLED_CANCELED` status orders
+- Fixed Polymarket size precision for `BinaryOption` instruments (precision 6 to match USDC.e)
+- Fixed adapter instrument reloading (providers were not reloading instruments at the configured interval due to internal state flags)
+- Fixed static time logging for `BacktestEngine` when running with `use_pyo3` logging config
+- Fixed in-flight orders check and improve error handling (#2053), thanks @davidsblom
+- Fixed dYdX handling for liquidated fills (#2052), thanks @davidsblom
+- Fixed `BybitResponse.time` field as optional `int` (#2051), thanks @sunlei
+- Fixed single instrument requests for `DatabentoDataClient` (was incorrectly calling `_handle_instruments` instead of `_handle_instrument`), thanks for reporting @Emsu
+- Fixed `fsspec` recursive globbing behavior to ensure only file paths are included, and bumped dependency to version 2024.10.0
+- Fixed jupyterlab url typo (#2057), thanks @Alsheh
+
+---
+
+# NautilusTrader 1.205.0 Beta
+
+Released on 3rd November 2024 (UTC).
+
+### Enhancements
+- Added Tardis Machine and HTTP API integration in Python and Rust
+- Added `LiveExecEngineConfig.open_check_interval_secs` config option to actively reconcile open orders with the venue
+- Added aggregation of bars from historical data (#2002), thanks @faysou
+- Added monthly and weekly bar aggregations (#2025), thanks @faysou
+- Added `raise_exception` optional parameter to `TradingNode.run` (#2021), thanks @faysou
+- Added `OrderBook.get_avg_px_qty_for_exposure` in Rust (#1893), thanks @elementace
+- Added timeouts to Interactive Brokers adapter configurations (#2026), thanks @rsmb7z
+- Added optional time origins for time bar aggregation (#2028), thanks @faysou
+- Added Polymarket position status reports and order status report generation based on fill reports
+- Added USDC.e (PoS) currency (used by Polymarket) to internal currency map
+- Upgraded Polymarket WebSocket API to new version
+
+### Internal Improvements
+- Ported analysis subpackage to Rust (#2016), thanks @Pushkarm029
+- Improved Postgres testing (#2018), thanks @filipmacek
+- Improved Redis version parsing to support truncated versions (improves compatibility with Redis-compliant databases)
+- Refined Arrow serialization (record batch functions now also available in Rust)
+- Refined core `Bar` API to remove unnecessary unwraps
+- Standardized network client logging
+- Fixed all PyO3 deprecations for API breaking changes
+- Fixed all clippy warning lints for PyO3 changes (#2030), thanks @Pushkarm029
+- PyO3 upgrade refactor and repair catalog tests (#2032), thanks @twitu
+- Upgraded `pyo3` crate to v0.22.5
+- Upgraded `pyo3-async-runtimes` crate to v0.22.0
+- Upgraded `tokio` crate to v1.41.0
+
+### Breaking Changes
+- Removed PyO3 `DataTransformer` (was being used for namespacing, so refactored to separate functions)
+- Moved `TEST_DATA_DIR` constant from `tests` to `nautilus_trader` package (#2020), thanks @faysou
+
+### Fixes
+- Fixed use of Redis `KEYS` command which, is unsupported in cluster environments (replaced with `SCAN` for compatibility)
+- Fixed decoding fill HTTP messages for dYdX (#2022), thanks @davidsblom
+- Fixed account balance report for dYdX (#2024), thanks @davidsblom
+- Fixed Interactive Brokers market data client subscription log message (#2012), thanks @marcodambros
+- Fixed Polymarket execution reconciliation (was not able to reconcile from closed orders)
+- Fixed catalog query mem leak test (#2031), thanks @Pushkarm029
+- Fixed `OrderInitialized.to_dict()` `tags` value type to `list[str]` (was a concatenated `str`)
+- Fixed `OrderInitialized.to_dict()` `linked_order_ids` value type to `list[str]` (was a concatenated `str`)
+- Fixed Betfair clients shutdown (#2037), thanks @limx0
+
+---
+
+# NautilusTrader 1.204.0 Beta
+
+Released on 22nd October 2024 (UTC).
+
+### Enhancements
+- Added `TardisCSVDataLoader` for loading data from Tardis format CSV files as either legacy Cython or PyO3 objects
+- Added `Clock.timestamp_us()` method for UNIX timestamps in microseconds (μs)
+- Added support for `bbo-1s` and `bbo-1m` quote schemas for Databento adapter (#1990), thanks @faysou
+- Added validation for venue `book_type` configuration vs data (prevents an issue where top-of-book data is used when order book data is expected)
+- Added `compute_effective_deltas` config option for `PolymarketDataClientConfig`, reducing snapshot size (default `False` to retain current behavior)
+- Added rate limiter for `WebSocketClient` (#1994), thanks @Pushkarm029
+- Added in the money probability field to GreeksData (#1995), thanks @faysou
+- Added `on_signal(signal)` handler for custom signal data
+- Added `nautilus_trader.common.events` module with re-exports for `TimeEvent` and other system events
+- Improved usability of `OrderBookDepth10` by filling partial levels with null orders and zero counts
+- Improved Postgres config (#2010), thanks @filipmacek
+- Refined `DatabentoInstrumentProvider` handling of large bulks of instrument definitions (improved parent symbol support)
+- Standardized Betfair symbology to use hyphens instead of periods (prevents Betfair symbols being treated as composite)
+- Integration guide docs fixes (#1991), thanks @FarukhS52
+
+### Internal Improvements
+- Ported `Throttler` to Rust (#1988), thanks @Pushkarm029 and @twitu
+- Ported `BettingInstrument` to Rust
+- Refined `RateLimiter` for `WebSocketClient` and add tests (#2000), thanks @Pushkarm029
+- Refined `WebSocketClient` to close existing tasks on reconnect (#1986), thanks @davidsblom
+- Removed mutable references in `CacheDatabaseAdapter` trait in Rust (#2015), thanks @filipmacek
+- Use Rust rate limiter for dYdX websockets (#1996, #1999), thanks @davidsblom
+- Improved error logs for dYdX websocket subscriptions (#1993), thanks @davidsblom
+- Standardized log and error message syntax in Rust
+- Continue porting `SimulatedExchange` and `OrderMatchingEngine` to Rust (#1997, #1998, #2001, #2003, #2004, #2006, #2007, #2009, #2014), thanks @filipmacek
+
+### Breaking Changes
+- Removed legacy `TardisQuoteDataLoader` (now redundant with new Rust implemented loader)
+- Removed legacy `TardisTradeDataLoader` (now redundant with new Rust implemented loader)
+- Custom signals are now passed to `on_signal(signal)` instead of `on_data(data)`
+- Changed `Position.to_dict()` `commissions` value type to `list[str]` (was an optional `str` of a list of strings)
+- Changed `Position.to_dict()` `avg_px_open` value type to `float`
+- Changed `Position.to_dict()` `avg_px_close` value type to `float | None`
+- Changed `Position.to_dict()` `realized_return` value type to `float | None`
+- Changed `BettingInstrument` Arrow schema fields `event_open_date` and `market_start_time` from `string` to `uint64`
+
+### Fixes
+- Fixed `SocketClient` TLS implementation
+- Fixed `WebSocketClient` error handling on writer close, thanks for reporting @davidsblom
+- Fixed resubscribing to orderbook in batched mode for dYdX (#1985), thanks @davidsblom
+- Fixed Betfair tests related to symbology (#1988), thanks @limx0
+- Fixed check for `OmsType` in `OrderMatchingEngine` position ID processing (#2003), thanks @filipmacek
+- Fixed `TardisCSVDataLoader` snapshot5 and snapshot25 parsing (#2005), thanks @Pushkarm029
+- Fixed Binance clients venue assignment, we should use the `client_id` params (which match the custom client `name`) to communicate with the clients, and use the same `'BINANCE'` venue identifiers
+- Fixed `OrderMatchingEngine` incorrectly attempting to process monthly bars for execution (which will fail, as no reasonable `timedelta` is available), thanks for reporting @frostRed
+- Fixed handling `MONTH` aggregation for `cache.bar_types()` (sorting required an internal call for the bar intervals `timedelta`), thanks for reporting @frostRed
+
+---
+
+# NautilusTrader 1.203.0 Beta
+
+Released on 5th October 2024 (UTC).
+
+### Enhancements
+- Added `mode` parameter to `ParquetDataCatalog.write_data` to control data writing behavior (#1976), thanks @faysou
+- Added batch cancel for short terms orders of dYdX (#1978), thanks @davidsblom
+- Improved OKX configuration (#1966), thanks @miller-moore
+- Improved option greeks (#1964), thanks @faysou
+
+### Internal Improvements
+- Implemented order book delta processing for `SimulatedExchange` in Rust (#1975), thanks @filipmacek
+- Implemented bar processing for `SimulatedExchange` in Rust (#1969), thanks @filipmacek
+- Implemented remaining getter functions for `SimulatedExchange` in Rust (#1970), thanks @filipmacek
+- Implemented rate limiting for dYdX websocket subscriptions (#1977), thanks @davidsblom
+- Refactored reconnection handling for dYdX (#1983), thanks @davidsblom
+- Refined `DatabentoDataLoader` internals to accommodate usage from Rust
+- Added initial large test data files download and caching capability
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed out of order row groups in DataFusion filter query (#1974), thanks @twitu
+- Fixed `BacktestNode` data sorting regression causing clock non-decreasing time assertion error
+- Fixed circular imports for `Actor`, thanks @limx0
+- Fixed OKX HTTP client signatures (#1966), thanks @miller-moore
+- Fixed resubscribing to orderbooks for dYdX (#1973), thanks @davidsblom
+- Fixed generating cancel rejections for dYdX (#1982), thanks @davidsblom
+- Fixed `WebSocketClient` task cleanup on disconnect (#1981), thanks @twitu
+- Fixed `Condition` method name collisions with C `true` and `false` macros, which occurred during compilation in profiling mode
+
+---
+
+# NautilusTrader 1.202.0 Beta
+
+Released on 27th September 2024 (UTC).
+
+This will be the final release with support for Python 3.10.
+
+The `numpy` version requirement has been relaxed to >= 1.26.4.
+
+### Enhancements
+- Added Polymarket decentralized prediction market integration
+- Added OKX crypto exchange integration (#1951), thanks @miller-moore
+- Added `BinaryOption` instrument (supports Polymarket integration)
+- Added `LiveExecutionEngine.inflight_check_retries` config option to limit in-flight order query attempts
+- Added `Symbol.root()` method for obtaining the root of parent or composite symbols
+- Added `Symbol.topic()` method for obtaining the subscription topic of parent or composite symbols
+- Added `Symbol.is_composite()` method to determine if symbol is made up of parts with period (`.`) delimiters
+- Added `underlying` filter parameter for `Cache.instruments(...)` method
+- Added `reduce_only` parameter for `Strategy.close_position(...)` method (default `True` to retain current behavior)
+- Added `reduce_only` parameter for `Strategy.close_all_positions(...)` method (default `True` to retain current behavior)
+- Implemented flush with truncate Postgres function for `PostgresCacheDatabase` (#1928), thanks @filipmacek
+- Implemented file rotation for `StreamingFeatherWriter` with internal improvements using `Clock` and `Cache` (#1954, #1961), thanks @graceyangfan
+- Improved dYdX execution client to use `RetryManager` for HTTP requests (#1941), thanks @davidsblom
+- Improved Interactive Brokers adapter to use a dynamic IB gateway `container_image` from config (#1940), thanks @rsmb7z
+- Improved `OrderBookDeltas` streaming and batching based on the `F_LAST` flag
+- Standardized underscore thousands separators for backtest logging
+- Updated Databento `publishers.json`
+
+### Internal Improvements
+- Implemented `OrderTestBuilder` to assist testing in Rust (#1952), thanks @filipmacek
+- Implemented quote tick processing for SimulatedExchange in Rust (#1956), thanks @filipmacek
+- Implemented trade tick processing for SimulatedExchange in Rust (#1956), thanks @filipmacek
+- Refined `Logger` to use unbuffered stdout/stderr writers (#1960), thanks @twitu
+
+### Breaking Changes
+- Renamed `batch_size_bytes` to `chunk_size` (more accurate naming for number of data points to process per chunk in backtest streaming mode)
+- Standardized Stop-Loss (SL) and Take-Profit (TP) parameter ordering for `OrderFactory.bracket(...)` including: `tp_time_in_force`, `tp_exec_algorithm_params`, `tp_tags`, `tp_client_order_id`
+
+### Fixes
+- Fixed `LoggingConfig` issue for `level_file` when used with `use_pyo3=True` (was not passing through the `level_file` setting), thanks for reporting @xt2014
+- Fixed composite bar requests (#1923), thanks @faysou
+- Fixed average price calculation for `ValueBarAggregator` (#1927), thanks @faysou
+- Fixed breaking protobuf issue by pinning `protobuf` and `grpcio` for dYdX (#1929), thanks @davidsblom
+- Fixed edge case where exceptions raised in `BacktestNode` prior to engine initialization would not produce logs, thanks for reporting @faysou
+- Fixed handling of internal server error for dYdX (#1938), thanks @davidsblom
+- Fixed `BybitWebSocketClient` private channel authentication on reconnect, thanks for reporting @miller-moore
+- Fixed `OrderFactory.bracket(...)` parameter ordering for `sl_time_in_force` and `tp_time_in_force`, thanks for reporting @marcodambros
+- Fixed `Cfd` instrument Arrow schema and serialization
+- Fixed bar subscriptions on TWS/GW restart for Interactive Brokers (#1950), thanks @rsmb7z
+- Fixed Databento parent and continuous contract subscriptions (using new symbol root)
+- Fixed Databento `FuturesSpread` and `OptionsSpread` instrument decoding (was not correctly handling price increments and empty underlyings)
+- Fixed `FuturesSpread` serialization
+- Fixed `OptionsSpread` serialization
+
+---
+
+# NautilusTrader 1.201.0 Beta
+
+Released on 9th September 2024 (UTC).
+
+### Enhancements
+- Added order book deltas triggering support for `OrderEmulator`
+- Added `OrderCancelRejected` event generation for dYdX adapter (#1916), thanks @davidsblom
+- Refined handling of Binance private key types (RSA, Ed25519) and integrated into configs
+- Implemented cryptographic signing in Rust (replacing `pycryptodome` for Binance)
+- Removed the vendored `tokio-tungstenite` crate (#1902), thanks @VioletSakura-7
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed `BinanceFuturesEventType` by adding new `TRADE_LITE` member, reflecting the Binance update on 2024-09-03 (UTC)
+
+---
+
+# NautilusTrader 1.200.0 Beta
+
+Released on 7th September 2024 (UTC).
+
+### Enhancements
+- Added dYdX integration (#1861, #1868, #1873, #1874, #1875, #1877, #1879, #1880, #1882, #1886, #1887, #1890, #1891, #1896, #1901, #1903, #1907, #1910, #1911, #1913, #1915), thanks @davidsblom
+- Added composite bar types, bars aggregated from other bar types (#1859, #1885, #1888, #1894, #1905), thanks @faysou
+- Added `OrderBookDeltas.batch` for batching groups of deltas based on record flags (batch until `F_LAST`)
+- Added `OrderBookDeltas` batching support for `ParquetDataCatalog` (use `data_cls` of `OrderBookDeltas` to batch with the same flags method as live adapters)
+- Added `RetryManagerPool` to abstract common retry functionality for all adapters
+- Added `InstrumentClose` functionality for `OrderMatchingEngine`, thanks @limx0
+- Added `BacktestRunConfig.dispose_on_completion` config option to control post-run disposal behavior for each internal backtest engine (default `True` to retain current behavior)
+- Added `recv_window_ms` config option for `BinanceExecClientConfig`
+- Added `sl_time_in_force` and `tp_time_in_force` parameters to `OrderFactory.bracket(...)` method
+- Added custom `client_order_id` parameters to `OrderFactory` methods
+- Added support for Binance RSA and Ed25519 API key types (#1908), thanks @NextThread
+- Added `multiplier` parameter for `CryptoPerpetual` (default 1)
+- Implemented `BybitExecutionClient` retry logic for `submit_order`, `modify_order`, `cancel_order` and `cancel_all_orders`
+- Improved error modeling and handling in Rust (#1866), thanks @twitu
+- Improved `HttpClient` error handling and added `HttpClientError` exception for Python (#1872), thanks @twitu
+- Improved `WebSocketClient` error handling and added `WebSocketClientError` exception for Python (#1876), thanks @twitu
+- Improved `WebSocketClient.send_text` efficiency (now accepts UTF-8 encoded bytes, rather than a Python string)
+- Improved `@customdataclass` decorator with `date` field and refined `__repr__` (#1900, #1906, #1909), thanks @faysou
+- Improved standardization of `OrderBookDeltas` parsing and records flags for crypto venues
+- Refactored `RedisMessageBusDatabase` to tokio tasks
+- Refactored `RedisCacheDatabase` to tokio tasks
+- Upgraded `tokio` crate to v1.40.0
+
+### Breaking Changes
+- Renamed `heartbeat_interval` to `heartbeat_interval_secs` (more explicitly indicates time units)
+- Moved `heartbeat_interval_secs` config option to `MessageBusConfig` (the message bus handles external stream processing)
+- Changed `WebSocketClient.send_text(...)` to take `data` as `bytes` rather than `str`
+- Changed `CryptoPerpetual` Arrow schema to include `multiplier` field
+- Changed `CryptoFuture` Arrow schema to include `multiplier` field
+
+### Fixes
+- Fixed `OrderBook` memory deallocation in Python finalizer (memory was not being freed on object destruction), thanks for reporting @zeyuhuan
+- Fixed `Order` tags serialization (was not concatenating to a single string), thanks for reporting @DevRoss
+- Fixed `types_filter` serialization in `MessageBusConfig` during kernel setup
+- Fixed `InstrumentProvider` handling of `load_ids_on_start` when elements are already `InstrumentId`s
+- Fixed `InstrumentProviderConfig` hashing for `filters` field
+
+---
+
+# NautilusTrader 1.199.0 Beta
+
+Released on 19th August 2024 (UTC).
+
+### Enhancements
+- Added `LiveExecEngineConfig.generate_missing_orders` reconciliation config option to align internal and external position states
+- Added `LogLevel::TRACE` (only available in Rust for debug/development builds)
+- Added `Actor.subscribe_signal(...)` method and `Data.is_signal(...)` class method (#1853), thanks @faysou
+- Added Binance Futures support for `HEDGE` mode (#1846), thanks @DevRoss
+- Overhauled and refined error modeling and handling in Rust (#1849, #1858), thanks @twitu
+- Improved `BinanceExecutionClient` position report requests (can now filter by instrument and includes reporting for flat positions)
+- Improved `BybitExecutionClient` position report requests (can now filter by instrument and includes reporting for flat positions)
+- Improved `LiveExecutionEngine` reconciliation robustness and recovery when internal positions do not match external positions
+- Improved `@customdataclass` decorator constructor to allow more positional arguments (#1850), thanks @faysou
+- Improved `@customdataclass` documentation (#1854), thanks @faysou
+- Upgraded `datafusion` crate to v41.0.0
+- Upgraded `tokio` crate to v1.39.3
+- Upgraded `uvloop` to v0.20.0 (upgrades libuv to v1.48.0)
+
+### Breaking Changes
+- Changed `VolumeWeightedAveragePrice` calculation formula to use each bars "typical" price (#1842), thanks @evgenii-prusov
+- Changed `OptionsContract` constructor parameter ordering and Arrow schema (consistently group option kind and strike price)
+- Renamed `snapshot_positions_interval` to `snapshot_positions_interval_secs` (more explicitly indicates time units)
+- Moved `snapshot_orders` config option to `ExecEngineConfig` (can now be used for all environment contexts)
+- Moved `snapshot_positions` config option to `ExecEngineConfig` (can now be used for all environment contexts)
+- Moved `snapshot_positions_interval_secs` config option to `ExecEngineConfig` (can now be used for all environment contexts)
+
+### Fixes
+- Fixed `Position` exception type on duplicate fill (should be `KeyError` to align with the same error for `Order`)
+- Fixed Bybit position report parsing when position is flat (`BybitPositionSide` now correctly handles the empty string)
+
+---
+
+# NautilusTrader 1.198.0 Beta
+
+Released on 9th August 2024 (UTC).
+
+### Enhancements
+- Added `@customdataclass` decorator to reduce need for boiler plate implementing custom data types (#1828), thanks @faysou
+- Added timeout for HTTP client in Rust (#1835), thanks @davidsblom
+- Added catalog conversion function of streamed data to backtest data (#1834), thanks @faysou
+- Upgraded Cython to v3.0.11
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed creation of `instrumend_id` folder when writing PyO3 bars in catalog (#1832), thanks @faysou
+- Fixed `StreamingFeatherWriter` handling of `include_types` option (#1833), thanks @faysou
+- Fixed `BybitExecutionClient` position reports error handling and logging
+- Fixed `BybitExecutionClient` order report handling to correctly process external orders
+
+---
+
+# NautilusTrader 1.197.0 Beta
+
+Released on 2nd August 2024 (UTC).
+
+### Enhancements
+- Added Databento Status schema support for loading and live trading
+- Added options on futures support for Interactive Brokers (#1795), thanks @rsmb7z
+- Added documentation for option greeks custom data example (#1788), thanks @faysou
+- Added `MarketStatusAction` enum (support Databento `status` schema)
+- Added `ignore_quote_tick_size_updates` config option for Interactive Brokers (#1799), thanks @sunlei
+- Implemented `MessageBus` v2 in Rust (#1786), thanks @twitu
+- Implemented `DataEngine` v2 in Rust (#1785), thanks @twitu
+- Implemented `FillModel` in Rust (#1801), thanks @filipmacek
+- Implemented `FixedFeeModel` in Rust (#1802), thanks @filipmacek
+- Implemented `MakerTakerFeeModel` in Rust (#1803), thanks @filipmacek
+- Implemented Postgres native enum mappings in Rust (#1797, #1806), thanks @filipmacek
+- Refactored order submission error handling for Interactive Brokers (#1783), thanks @rsmb7z
+- Improved live reconciliation robustness (will now generate inferred orders necessary to align external position state)
+- Improved tests for Interactive Brokers (#1776), thanks @mylesgamez
+- Upgraded `tokio` crate to v1.39.2
+- Upgraded `datafusion` crate to v40.0.0
+
+### Breaking Changes
+- Removed `VenueStatus` and all associated methods and schemas (redundant with `InstrumentStatus`)
+- Renamed `QuoteTick.extract_volume(...)` to `.extract_size(...)` (more accurate terminology)
+- Changed `InstrumentStatus` params (support Databento `status` schema)
+- Changed `InstrumentStatus` Arrow schema
+- Changed `OrderBook` FFI API to take data by reference instead of by value
+
+### Fixes
+- Fixed rounding errors in accounting calculations for large values (using `decimal.Decimal` internally)
+- Fixed multi-currency account commission handling with multiple PnL currencies (#1805), thanks for reporting @dpmabo
+- Fixed `DataEngine` unsubscribing from order book deltas (#1814), thanks @davidsblom
+- Fixed `LiveExecutionEngine` handling of adapter client execution report causing `None` mass status (#1789), thanks for reporting @faysou
+- Fixed `InteractiveBrokersExecutionClient` handling of instruments not found when generating execution reports (#1789), thanks for reporting @faysou
+- Fixed Bybit parsing of trade and quotes for websocket messages (#1794), thanks @davidsblom
+
+---
+
+# NautilusTrader 1.196.0 Beta
+
+Released on 5th July 2024 (UTC).
+
+### Enhancements
+- Added `request_order_book_snapshot` method (#1745), thanks @graceyangfan
+- Added order book data validation for `BacktestNode` when a venue `book_type` is `L2_MBP` or `L3_MBO`
+- Added Bybit demo account support (set `is_demo` to `True` in configs)
+- Added Bybit stop order types (`STOP_MARKET`, `STOP_LIMIT`, `MARKET_IF_TOUCHED`, `LIMIT_IF_TOUCHED`, `TRAILING_STOP_MARKET`)
+- Added Binance venue option for adapter configurations (#1738), thanks @DevRoss
+- Added Betfair amend order quantity support (#1687 and #1751), thanks @imemo88 and @limx0
+- Added Postgres tests serial test group for nextest runner (#1753), thanks @filipmacek
+- Added Postgres account persistence capability (#1768), thanks @filipmacek
+- Refactored `AccountAny` pattern in Rust (#1755), thanks @filipmacek
+- Changed `DatabentoLiveClient` to use new [snapshot on subscribe](https://databento.com/blog/live-MBO-snapshot) feature
+- Changed identifier generator time tag component to include seconds (affects new `ClientOrderId`, `OrderId` and `PositionId` generation)
+- Changed `<Arc<Mutex<bool>>` to `AtomicBool` in Rust `network` crate, thanks @NextThread and @twitu
+- Ported `KlingerVolumeOscillator` indicator to Rust (#1724), thanks @Pushkarm029
+- Ported `DirectionalMovement` indicator to Rust (#1725), thanks @Pushkarm029
+- Ported `ArcherMovingAveragesTrends` indicator to Rust (#1726), thanks @Pushkarm029
+- Ported `Swings` indicator to Rust (#1731), thanks @Pushkarm029
+- Ported `BollingerBands` indicator to Rust (#1734), thanks @Pushkarm029
+- Ported `VolatilityRatio` indicator to Rust (#1735), thanks @Pushkarm029
+- Ported `Stochastics` indicator to Rust (#1736), thanks @Pushkarm029
+- Ported `Pressure` indicator to Rust (#1739), thanks @Pushkarm029
+- Ported `PsychologicalLine` indicator to Rust (#1740), thanks @Pushkarm029
+- Ported `CommodityChannelIndex` indicator to Rust (#1742), thanks @Pushkarm029
+- Ported `LinearRegression` indicator to Rust (#1743), thanks @Pushkarm029
+- Ported `DonchianChannel` indicator to Rust (#1744), thanks @Pushkarm029
+- Ported `KeltnerChannel` indicator to Rust (#1746), thanks @Pushkarm029
+- Ported `RelativeVolatilityIndex` indicator to Rust (#1748), thanks @Pushkarm029
+- Ported `RateOfChange` indicator to Rust (#1750), thanks @Pushkarm029
+- Ported `MovingAverageConvergenceDivergence` indicator to Rust (#1752), thanks @Pushkarm029
+- Ported `OnBalanceVolume` indicator to Rust (#1756), thanks @Pushkarm029
+- Ported `SpreadAnalyzer` indicator to Rust (#1762), thanks @Pushkarm029
+- Ported `KeltnerPosition` indicator to Rust (#1763), thanks @Pushkarm029
+- Ported `FuzzyCandlesticks` indicator to Rust (#1766), thanks @Pushkarm029
+
+### Breaking Changes
+- Renamed `Actor.subscribe_order_book_snapshots` and `unsubscribe_order_book_snapshots` to `subscribe_order_book_at_interval` and `unsubscribe_order_book_at_interval` respectively (this clarifies the method behavior where the handler then receives `OrderBook` at a regular interval, distinct from a collection of deltas representing a snapshot)
+
+### Fixes
+- Fixed `LIMIT` order fill behavior for `L2_MBP` and `L3_MBO` book types (was not honoring limit price as maker), thanks for reporting @dpmabo
+- Fixed `CashAccount` PnL calculations when opening a position with multiple fills, thanks @Otlk
+- Fixed msgspec encoding and decoding of `Environment` enum for `NautilusKernelConfig`
+- Fixed `OrderMatchingEngine` processing by book type for quotes and deltas (#1754), thanks @davidsblom
+- Fixed `DatabentoDataLoader.from_dbn_file` for `OrderBookDelta`s when `as_legacy_cython=False`
+- Fixed `DatabentoDataLoader` OHLCV bar schema loading (incorrectly accounting for display factor), thanks for reporting @faysou
+- Fixed `DatabentoDataLoader` multiplier and round lot size decoding, thanks for reporting @faysou
+- Fixed Binance order report generation `active_symbols` type miss matching (#1729), thanks @DevRoss
+- Fixed Binance trade data websocket schemas (Binance no longer publish `b` buyer and `a` seller order IDs)
+- Fixed `BinanceFuturesInstrumentProvider` parsing of min notional, thanks for reporting @AnthonyVince
+- Fixed `BinanceSpotInstrumentProvider` parsing of min and max notional
+- Fixed Bybit order book deltas subscriptions for `INVERSE` product type
+- Fixed `Cache` documentation for `get` (was the same as `add`), thanks for reporting @faysou
+
+---
+
+# NautilusTrader 1.195.0 Beta
+
+Released on 17th June 2024 (UTC).
+
+### Enhancements
+- Added Bybit base coin for fee rate parsing (#1696), thanks @filipmacek
+- Added `IndexInstrument` with support for Interactive Brokers (#1703), thanks @rsmb7z
+- Refactored Interactive Brokers client and gateway configuration (#1692), thanks @rsmb7z
+- Improved `InteractiveBrokersInstrumentProvider` contract loading (#1699), thanks @rsmb7z
+- Improved `InteractiveBrokersInstrumentProvider` option chain loading (#1704), thanks @rsmb7z
+- Improved `Instrument.make_qty` error clarity when a positive value is rounded to zero
+- Updated installation from source docs for Clang dependency (#1690), thanks @Troubladore
+- Updated `DockerizedIBGatewayConfig` docs (#1691), thanks @Troubladore
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed DataFusion streaming backend mem usage (now constant mem usage) (#1693), thanks @twitu
+- Fixed `OrderBookDeltaDataWrangler` snapshot parsing (was not prepending a `CLEAR` action), thanks for reporting @VeraLyu
+- Fixed `Instrument.make_price` and `make_qty` when increments have a lower precision (was not rounding to the minimum increment)
+- Fixed `EMACrossTrailingStop` example strategy trailing stop logic (could submit multiple trailing stops on partial fills)
+- Fixed Binance `TRAILING_STOP_MARKET` orders (callback rounding was incorrect, was also not handling updates)
+- Fixed Interactive Brokers multiple gateway clients (incorrect port handling in factory) (#1702), thanks @dodofarm
+- Fixed time alerts Python example in docs (#1713), thanks @davidsblom
+
+---
+
+# NautilusTrader 1.194.0 Beta
+
+Released on 31st May 2024 (UTC).
+
+### Enhancements
+- Added `DataEngine` order book deltas buffering to `F_LAST` flag (#1673), thanks @davidsblom
+- Added `DataEngineConfig.buffer_deltas` config option for the above (#1670), thanks @davidsblom
+- Improved Bybit order book deltas parsing to set `F_LAST` flag (#1670), thanks @davidsblom
+- Improved Bybit handling for top-of-book quotes and order book deltas (#1672), thanks @davidsblom
+- Improved Interactive Brokers integration test mocks (#1669), thanks @rsmb7z
+- Improved error message when no tick scheme initialized for an instrument, thanks for reporting @VeraLyu
+- Improved `SandboxExecutionClient` instrument handling (instruments just need to be added to cache)
+- Ported `VolumeWeightedAveragePrice` indicator to Rust (#1665), thanks @Pushkarm029
+- Ported `VerticalHorizontalFilter` indicator to Rust (#1666), thanks @Pushkarm029
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed `SimulatedExchange` processing of commands in real-time for sandbox mode
+- Fixed `DataEngine` unsubscribe handling (edge case would attempt to unsubscribe from the client multiple times)
+- Fixed Bybit order book deltas parsing (was appending bid side twice) (#1668), thanks @davidsblom
+- Fixed Binance instruments price and size precision parsing (was incorrectly stripping trailing zeros)
+- Fixed `BinanceBar` streaming feather writing (was not setting up writer)
+- Fixed backtest high-level tutorial documentation errors, thanks for reporting @Leonz5288
+
+---
+
+# NautilusTrader 1.193.0 Beta
+
+Released on 24th May 2024 (UTC).
+
+### Enhancements
+- Added Interactive Brokers support for Market-on-Close (MOC) and Limit-on-Close (LOC) order types (#1663), thanks @rsmb7z
+- Added Bybit sandbox example (#1659), thanks @davidsblom
+- Added Binance sandbox example
+
+### Breaking Changes
+- Overhauled `SandboxExecutionClientConfig` to more closely match `BacktestVenueConfig` (many changes and additions)
+
+### Fixes
+- Fixed DataFusion backend data ordering by `ts_init` when streaming (#1656), thanks @twitu
+- Fixed Interactive Brokers tick level historical data downloading (#1653), thanks @DracheShiki
+
+---
+
+# NautilusTrader 1.192.0 Beta
+
+Released on 18th May 2024 (UTC).
+
+### Enhancements
+- Added Nautilus CLI (see [docs](https://nautilustrader.io/docs/nightly/developer_guide/index.html)) (#1602), many thanks @filipmacek
+- Added `Cfd` and `Commodity` instruments with Interactive Brokers support (#1604), thanks @DracheShiki
+- Added `OrderMatchingEngine` futures and options contract activation and expiration simulation
+- Added Sandbox example with Interactive Brokers (#1618), thanks @rsmb7z
+- Added `ParquetDataCatalog` S3 support (#1620), thanks @benjaminsingleton
+- Added `Bar.from_raw_arrays_to_list` (#1623), thanks @rsmb7z
+- Added `SandboxExecutionClientConfig.bar_execution` config option (#1646), thanks @davidsblom
+- Improved venue order ID generation and assignment (it was previously possible for the `OrderMatchingEngine` to generate multiple IDs for the same order)
+- Improved `LiveTimer` robustness and flexibility by not requiring positive intervals or stop times in the future (will immediately produce a time event), thanks for reporting @davidsblom
+
+### Breaking Changes
+- Removed `allow_cash_positions` config (simplify to the most common use case, spot trading should track positions)
+- Changed `tags` parameter and return type from `str` to `list[str]` (more naturally expresses multiple tags)
+- Changed `Order.to_dict()` `commission` and `linked_order_id` fields to lists of strings rather than comma separated strings
+- Changed `OrderMatchingEngine` to no longer process internally aggregated bars for execution (no tests failed, but still classifying as a behavior change), thanks for reporting @davidsblom
+
+### Fixes
+- Fixed `CashAccount` PnL and balance calculations (was adjusting filled quantity based on open position quantity - causing a desync and incorrect balance values)
+- Fixed `from_str` for `Price`, `Quantity` and `Money` when input string contains underscores in Rust, thanks for reporting @filipmacek
+- Fixed `Money` string parsing where the value from `str(money)` can now be passed to `Money.from_str`
+- Fixed `TimeEvent` equality (now based on the event `id` rather than the event `name`)
+- Fixed `ParquetDataCatalog` bar queries by `instrument_id` which were no longer returning data (the intent is to use `bar_type`, however using `instrument_id` now returns all matching bars)
+- Fixed venue order ID generation and application in sandbox mode (was previously generating additional venue order IDs), thanks for reporting @rsmb7z and @davidsblom
+- Fixed multiple fills causing overfills in sandbox mode (`OrderMatchingEngine` now caching filled quantity to prevent this) (#1642), thanks @davidsblom
+- Fixed `leaves_qty` exception message underflow (now correctly displays the projected negative leaves quantity)
+- Fixed Interactive Brokers contract details parsing (#1615), thanks @rsmb7z
+- Fixed Interactive Brokers portfolio registration (#1616), thanks @rsmb7z
+- Fixed Interactive Brokers `IBOrder` attributes assignment (#1634), thanks @rsmb7z
+- Fixed IBKR reconnection after gateway/TWS disconnection (#1622), thanks @benjaminsingleton
+- Fixed Binance Futures account balance calculation (was over stating `free` balance with margin collateral, which could result in a negative `locked` balance)
+- Fixed Betfair stream reconnection and avoid multiple reconnect attempts (#1644), thanks @imemo88
+
+---
+
+# NautilusTrader 1.191.0 Beta
+
+Released on 20th April 2024 (UTC).
+
+### Enhancements
+- Implemented `FeeModel` including `FixedFeeModel` and `MakerTakerFeeModel` (#1584), thanks @rsmb7z
+- Implemented `TradeTickDataWrangler.process_bar_data` (#1585), thanks @rsmb7z
+- Implemented multiple timeframe bar execution (will use lowest timeframe per instrument)
+- Optimized `LiveTimer` efficiency and accuracy with `tokio` timer under the hood
+- Optimized `QuoteTickDataWrangler` and `TradeTickDataWrangler` (#1590), thanks @rsmb7z
+- Standardized adapter client logging (handle more logging from client base classes)
+- Simplified and consolidated Rust `OrderBook` design
+- Improved `CacheDatabaseAdapter` graceful close and thread join
+- Improved `MessageBus` graceful close and thread join
+- Improved `modify_order` error logging when order values remain unchanged
+- Added `RecordFlag` enum for Rust and Python
+- Interactive Brokers further improvements and fixes, thanks @rsmb7z
+- Ported `Bias` indicator to Rust, thanks @Pushkarm029
+
+### Breaking Changes
+- Reordered `OrderBookDelta` params `flags` and `sequence` and removed default 0 values (more explicit and less chance of mismatches)
+- Reordered `OrderBook` params `flags` and `sequence` and removed default 0 values (more explicit and less chance of mismatches)
+- Added `flags` parameter to `OrderBook.add`
+- Added `flags` parameter to `OrderBook.update`
+- Added `flags` parameter to `OrderBook.delete`
+- Changed Arrow schema for all instruments: added `info` binary field
+- Changed Arrow schema for `CryptoFuture`: added `is_inverse` boolean field
+- Renamed both `OrderBookMbo` and `OrderBookMbp` to `OrderBook` (consolidated)
+- Renamed `Indicator.handle_book_mbo` and `Indicator.handle_book_mbp` to `handle_book` (consolidated)
+- Renamed `register_serializable_object` to `register_serializable_type` (also renames first parameter from `obj` to `cls`)
+
+### Fixes
+- Fixed `MessageBus` pattern resolving (fixes a performance regression where topics published with no subscribers would always re-resolve)
+- Fixed `BacktestNode` streaming data management (was not clearing between chunks), thanks for reporting @dpmabo
+- Fixed `RiskEngine` cumulative notional calculations for margin accounts (was incorrectly using base currency when selling)
+- Fixed selling `Equity` instruments with `CASH` account and `NETTING` OMS incorrectly rejecting (should be able to reduce position)
+- Fixed Databento bars decoding (was incorrectly applying display factor)
+- Fixed `BinanceBar` (kline) to use `close_time` for `ts_event` was `opentime` (#1591), thanks for reporting @OnlyC
+- Fixed `AccountMarginExceeded` error condition (margin must actually be exceeded now, and can be zero)
+- Fixed `ParquetDataCatalog` path globbing which was including all paths with substrings of specified instrument IDs
+
+---
+
+# NautilusTrader 1.190.0 Beta
+
+Released on 22nd March 2024 (UTC).
+
+### Enhancements
+- Added Databento adapter `continuous`, `parent` and `instrument_id` symbology support (will infer from symbols)
+- Added `DatabaseConfig.timeout` config option for timeout seconds to wait for a new connection
+- Added CSV tick and bar data loader params, thanks @rterbush
+- Implemented `LogGuard` to ensure global logger is flushed on termination, thanks @ayush-sb and @twitu
+- Improved Interactive Brokers client connectivity resilience and component lifecycle, thanks @benjaminsingleton
+- Improved Binance execution client ping listen key error handling and logging
+- Improved Redis cache adapter and message bus error handling and logging
+- Improved Redis port parsing (`DatabaseConfig.port` can now be either a string or integer)
+- Ported `ChandeMomentumOscillator` indicator to Rust, thanks @Pushkarm029
+- Ported `VIDYA` indicator to Rust, thanks @Pushkarm029
+- Refactored `InteractiveBrokersEWrapper`, thanks @rsmb7z
+- Redact Redis passwords in strings and logs
+- Upgraded `redis` crate to v0.25.2 which bumps up TLS dependencies, and turned on `tls-rustls-webpki-roots` feature flag
+
+### Breaking Changes
+None
+
+### Fixes
+- Fixed JSON format for log file output (was missing `timestamp` and `trader\_id`)
+- Fixed `DatabaseConfig` port JSON parsing for Redis (was always defaulting to 6379)
+- Fixed `ChandeMomentumOscillator` indicator divide by zero error (both Rust and Cython versions)
+
+---
+
+# NautilusTrader 1.189.0 Beta
+
+Released on 15th March 2024 (UTC).
 
 ### Enhancements
 - Implemented Binance order book snapshot rebuilds on websocket reconnect (see integration guide)
 - Added additional validations for `OrderMatchingEngine` (will now raise a `RuntimeError` when a price or size precision for `OrderFilled` does not match the instruments precisions)
-- Added `LoggingConfig.use_pyo3` option for pyo3 based logging initialization (worse performance but allows visibility into logs originating from Rust)
+- Added `LoggingConfig.use_pyo3` config option for PyO3 based logging initialization (worse performance but allows visibility into logs originating from Rust)
+- Added `exchange` field to `FuturesContract`, `FuturesSpread`, `OptionsContract` and `OptionsSpread` (optional)
 
 ### Breaking Changes
-None
+- Changed Arrow schema adding `exchange` field for `FuturesContract`, `FuturesSpread`, `OptionsContract` and `OptionsSpread`
 
 ### Fixes
 - Fixed `MessageBus` handling of subscriptions after a topic has been published on (was previously dropping messages for these late subscribers)
@@ -36,8 +932,8 @@ Released on 25th February 2024 (UTC).
 - Added `OptionsSpread` instrument type
 - Added `InstrumentClass.FUTURE_SPREAD`
 - Added `InstrumentClass.OPTION_SPREAD`
-- Added `managed` parameter to `subscribe_order_book_deltas`, default true to retain current behavior (if false then the data engine will not automatically manage a book)
-- Added `managed` parameter to `subscribe_order_book_snapshots`, default true to retain current behavior (if false then the data engine will not automatically manage a book)
+- Added `managed` parameter to `subscribe_order_book_deltas`, default `True` to retain current behavior (if false then the data engine will not automatically manage a book)
+- Added `managed` parameter to `subscribe_order_book_snapshots`, default `True` to retain current behavior (if false then the data engine will not automatically manage a book)
 - Added additional validations for `OrderMatchingEngine` (will now reject orders with incorrect price or quantity precisions)
 - Removed `interval_ms` 20 millisecond limitation for `subscribe_order_book_snapshots` (i.e. just needs to be positive), although we recommend you consider subscribing to deltas below 100 milliseconds
 - Ported `LiveClock` and `LiveTimer` implementations to Rust
@@ -49,8 +945,8 @@ Released on 25th February 2024 (UTC).
 
 ### Fixes
 - Fixed `TradeId` memory leak due assigning unique values to the `Ustr` global string cache (which are never freed for the lifetime of the program)
-- Fixed `TradeTick` size precision for pyo3 conversion (size precision was incorrectly price precision)
-- Fixed `RiskEngine` cash value check when selling (would previously divide quantity by price which is too much), thanks for reporting@AnthonyVince
+- Fixed `TradeTick` size precision for PyO3 conversion (size precision was incorrectly price precision)
+- Fixed `RiskEngine` cash value check when selling (would previously divide quantity by price which is too much), thanks for reporting @AnthonyVince
 - Fixed FOK time in force behavior (allows fills beyond the top level, will cancel if cannot fill full size)
 - Fixed IOC time in force behavior (allows fills beyond the top level, will cancel any remaining after all fills are applied)
 - Fixed `LiveClock` timer behavior for small intervals causing next time to be less than now (timer then would not run)
@@ -77,7 +973,7 @@ Released on 9th February 2024 (UTC).
 
 ### Enhancements
 - Refined logging system module and writers in Rust, thanks @ayush-sb and @twitu
-- Improved Interactive Brokers adapter symbology and parsing with a `strict_symbology` option, thanks @rsmb7z and @fhill2
+- Improved Interactive Brokers adapter symbology and parsing with a `strict_symbology` config option, thanks @rsmb7z and @fhill2
 
 ### Breaking Changes
 - Reorganized configuration objects (separated into a `config` module per subpackage, with re-exports from `nautilus_trader.config`)
@@ -112,7 +1008,7 @@ None
 Released on 26th January 2024 (UTC).
 
 ### Enhancements
-- Add warning log when `bypass_logging` is set true for a `LIVE` context
+- Added warning log when `bypass_logging` is set true for a `LIVE` context
 - Improved `register_serializable object` to also add type to internal `_EXTERNAL_PUBLIHSABLE_TYPES`
 - Improved Interactive Brokers expiration contract parsing, thanks @fhill2
 
@@ -162,8 +1058,8 @@ Released on 12th January 2024 (UTC).
 ### Enhancements
 - Added `NautilusConfig.json_primitives` to convert object to Python dictionary with JSON primitive values
 - Added `InstrumentClass.BOND`
-- Added `MessageBusConfig` `use_trader_prefix` and `use_trader_id` options (provides more control over stream names)
-- Added `CacheConfig.drop_instruments_on_reset` (default true to retain current behavior)
+- Added `MessageBusConfig` `use_trader_prefix` and `use_trader_id` config options (provides more control over stream names)
+- Added `CacheConfig.drop_instruments_on_reset` (default `True` to retain current behavior)
 - Implemented core logging interface via the `log` crate, thanks @twitu
 - Implemented global atomic clock in Rust (improves performance and ensures properly monotonic timestamps in real-time), thanks @twitu
 - Improved Interactive Brokers adapter raising docker `RuntimeError` only when needed (not when using TWS), thanks @rsmb7z
@@ -187,7 +1083,7 @@ Released on 12th January 2024 (UTC).
 - Renamed `AssetClass.BOND` to `AssetClass.DEBT` (more conventional terminology)
 - Removed `AssetClass.METAL` (not strictly an asset class, more a futures category)
 - Removed `AssetClass.ENERGY` (not strictly an asset class, more a futures category)
-- Removed `multiplier` param from `Equity` constructor (not applicable)
+- Removed `multiplier` parameter from `Equity` constructor (not applicable)
 - Removed `size_precision`, `size_increment`, and `multiplier` fields from `Equity` dictionary representation (not applicable)
 - Removed `TracingConfig` (now redundant with new logging implementation)
 - Removed `Ticker` data type and associated methods (not a type which can be practically normalized and so becomes adapter specific generic data)
@@ -225,7 +1121,7 @@ Released on 23rd December 2023 (UTC).
 - Changed `StrategyConfig.strategy_id` to type `StrategyId | None`
 - Changed `Instrument`, `OrderFilled` and `AccountState` `info` field serialization due below fix (you'll need to flush your cache)
 - Changed `CacheConfig` to take a `DatabaseConfig` (better symmetry with `MessageBusConfig`)
-- Changed `RedisCacheDatabase` data structure for currencies from hashset to simpler key-value (you'll need to clear cache or delete all curreny keys)
+- Changed `RedisCacheDatabase` data structure for currencies from hashset to simpler key-value (you'll need to clear cache or delete all currency keys)
 - Changed `Actor` state loading to now use the standard `Serializer`
 - Renamed `register_json_encoding` to `register_config_encoding`
 - Renamed `register_json_decoding` to `register_config_decoding`
@@ -255,7 +1151,7 @@ This release adds support for Python 3.12.
 - Added Interactive Brokers adapter support for crypto instruments with cash quantity, thanks @benjaminsingleton
 - Added `HistoricInteractiveBrokerClient`, thanks @benjaminsingleton and @limx0
 - Added `DataEngineConfig.time_bars_interval_type` (determines the type of interval used for time aggregation `left-open` or `right-open`)
-- Added `LoggingConfig.log_colors` to optionally use ANSI codes to produce colored logs (default true to retain current behavior)
+- Added `LoggingConfig.log_colors` to optionally use ANSI codes to produce colored logs (default `True` to retain current behavior)
 - Added `QuoteTickDataWrangler.process_bar_data` options for `offset_interval_ms` and `timestamp_is_close`
 - Added identifier generators in Rust, thanks @filipmacek
 - Added `OrderFactory` in Rust, thanks @filipmacek
@@ -275,7 +1171,7 @@ This release adds support for Python 3.12.
 
 ### Fixes
 - Fixed missing `trader_id` in `Position` dictionary representation, thanks @filipmacek
-- Fixed conversion of fixed precision integers to floats (should be dividing to avoid rounding errors), thanks for reporting @filipmacek
+- Fixed conversion of fixed-point integers to floats (should be dividing to avoid rounding errors), thanks for reporting @filipmacek
 - Fixed daily timestamp parsing for Interactive Brokers, thanks @benjaminsingleton
 - Fixed live reconciliation trade processing for partially filled then canceled orders
 - Fixed `RiskEngine` cumulative notional risk check for `CurrencyPair` SELL orders on multi-currency cash accounts
@@ -290,8 +1186,8 @@ Released on 3rd November 2023 (UTC).
 - Improved internal latency for live engines by using `loop.call_soon_threadsafe(...)`
 - Improved `RedisCacheDatabase` client connection error handling with retries
 - Added `WebSocketClient` connection headers, thanks @ruthvik125 and @twitu
-- Added `support_contingent_orders` option for venues (to simulate venues which do not support contingent orders)
-- Added `StrategyConfig.manage_contingent_orders` option (to automatically manage **open** contingent orders)
+- Added `support_contingent_orders` config option for venues (to simulate venues which do not support contingent orders)
+- Added `StrategyConfig.manage_contingent_orders` config option (to automatically manage **open** contingent orders)
 - Added `FuturesContract.activation_utc` property which returns a `pd.Timestamp` tz-aware (UTC)
 - Added `OptionsContract.activation_utc` property which returns a `pd.Timestamp` tz-aware (UTC)
 - Added `CryptoFuture.activation_utc` property which returns a `pd.Timestamp` tz-aware (UTC)
@@ -313,7 +1209,7 @@ Released on 3rd November 2023 (UTC).
 
 ### Fixes
 - Fixed `ParquetDataCatalog` file writing template, thanks @limx0
-- Fixed `Binance` all orders requests which would omit order reports when using a `start` param
+- Fixed Binance all orders requests which would omit order reports when using a `start` param
 - Fixed managed GTD orders past expiry cancellation on restart (orders were not being canceled)
 - Fixed managed GTD orders cancel timer on order cancel (timers were not being canceled)
 - Fixed `BacktestEngine` logging error with immediate stop (caused by certain timestamps being `None`)
@@ -339,8 +1235,8 @@ This will be the final release with support for Python 3.9.
 - Added `Cache.is_order_pending_cancel_local(...)` (tracks local orders in cancel transition)
 - Added `BinanceTimeInForce.GTD` enum member (futures only)
 - Added Binance Futures support for GTD orders
-- Added Binance internal bar aggregation inference from aggregated trade ticks or 1-MINUTE bars (depending on lookback window)
-- Added `BinanceExecClientConfig.use_gtd` option (to remap to GTC and locally manage GTD orders)
+- Added Binance internal bar aggregation inference from aggregated trades or 1-MINUTE bars (depending on lookback window)
+- Added `BinanceExecClientConfig.use_gtd` config option (to remap to GTC and locally manage GTD orders)
 - Added package version check for `nautilus_ibapi`, thanks @rsmb7z
 - Added `RiskEngine` min/max instrument notional limit checks
 - Added `Controller` for dynamically controlling actor and strategy instances for a `Trader`
@@ -402,8 +1298,8 @@ None
 
 Released on 26th August 2023 (UTC).
 
-This release includes a large breaking change to quote tick bid and ask price property and 
-parameter naming. This was done in the interest of maintaining our generally explicit naming 
+This release includes a large breaking change to quote tick bid and ask price property and
+parameter naming. This was done in the interest of maintaining our generally explicit naming
 standards, and has caused confusion for some users in the past. Data using 'bid' and 'ask' columns should
 still work with the legacy data wranglers, as columns are renamed under the hood to accommodate
 this change.
@@ -412,7 +1308,7 @@ this change.
 - Added `ActorExecutor` with `Actor` API for creating and running threaded tasks in live environments
 - Added `OrderEmulated` event and associated `OrderStatus.EMULATED` enum variant
 - Added `OrderReleased` event and associated `OrderStatus.RELEASED` enum variant
-- Added `BacktestVenueConfig.use_position_ids` option (default true to retain current behavior)
+- Added `BacktestVenueConfig.use_position_ids` config option (default `True` to retain current behavior)
 - Added `Cache.exec_spawn_total_quantity(...)` convenience method
 - Added `Cache.exec_spawn_total_filled_qty(...)` convenience method
 - Added `Cache.exec_spawn_total_leaves_qty(...)` convenience method
@@ -447,12 +1343,12 @@ Released on 31st July 2023 (UTC).
 - Added `LiveExecEngineConfig.filter_position_reports` to filter position reports from reconciliation
 - Added `Strategy.cancel_gtd_expiry` to cancel managed GTD order expiration
 - Added Binance Futures support for modifying `LIMIT` orders
-- Added `BinanceExecClientConfig.max_retries` option (for retrying order submit and cancel requests)
-- Added `BinanceExecClientConfig.retry_delay` option (the delay between retry attempts)
-- Added `BinanceExecClientConfig.use_reduce_only` option (default true to retain current behavior)
-- Added `BinanceExecClientConfig.use_position_ids` option (default true to retain current behavior)
-- Added `BinanceExecClientConfig.treat_expired_as_canceled` option (default false to retain current behavior)
-- Added `BacktestVenueConfig.use_reduce_only` option (default true to retain current behavior)
+- Added `BinanceExecClientConfig.max_retries` config option (for retrying order submit and cancel requests)
+- Added `BinanceExecClientConfig.retry_delay` config option (the delay between retry attempts)
+- Added `BinanceExecClientConfig.use_reduce_only` config option (default `True` to retain current behavior)
+- Added `BinanceExecClientConfig.use_position_ids` config option (default `True` to retain current behavior)
+- Added `BinanceExecClientConfig.treat_expired_as_canceled` option (default `False` to retain current behavior)
+- Added `BacktestVenueConfig.use_reduce_only` config option (default `True` to retain current behavior)
 - Added `MessageBus.is_pending_request(...)` method
 - Added `Level` API for core `OrderBook` (exposes the bid and ask levels for the order book)
 - Added `Actor.is_pending_request(...)` convenience method
@@ -460,8 +1356,8 @@ Released on 31st July 2023 (UTC).
 - Added `Actor.pending_requests()` convenience method
 - Added `USDP` (Pax Dollar) and `TUSD` (TrueUSD) stablecoins
 - Improved `OrderMatchingEngine` handling when no fills (an error is now logged)
-- Improved `Binance` live clients logging
-- Upgraded Cython to 3.0.0 stable
+- Improved Binance live clients logging
+- Upgraded Cython to v3.0.0 stable
 
 ### Breaking Changes
 - Moved `filter_unclaimed_external_orders` from `ExecEngineConfig` to `LiveExecEngineConfig`
@@ -484,7 +1380,7 @@ Released on 31st July 2023 (UTC).
 - Fixed Binance reconciliation which was requesting reports for the same symbol multiple times
 - Fixed Binance Futures native symbol parsing (was actually Nautilus symbol values)
 - Fixed Binance Futures `PositionStatusReport` parsing of position side
-- Fixed Binance Futures `TradeReport` assignment of position ID (was hardcoded to hedging mode)
+- Fixed Binance Futures `TradeReport` assignment of position ID (was hard-coded to hedging mode)
 - Fixed Binance execution submitting of order lists
 - Fixed Binance commission rates requests for `InstrumentProvider`
 - Fixed Binance `TriggerType` parsing #1154, thanks for reporting @davidblom603
@@ -511,7 +1407,7 @@ We recommend you do not upgrade to this version if you're using the Betfair adap
 - Added `quote_quantity` parameter to determine if order quantity is denominated in quote currency
 - Added `trigger_instrument_id` parameter to trigger emulated orders from alternative instrument prices
 - Added `use_random_ids` to `add_venue(...)` method, controls whether venue order, position and trade IDs will be random UUID4s (no change to current behavior)
-- Added `ExecEngineConfig.filter_unclaimed_external_orders` options, if unclaimed order events with an `EXTERNAL` strategy ID should be filtered/dropped
+- Added `ExecEngineConfig.filter_unclaimed_external_orders` config option, if unclaimed order events with an `EXTERNAL` strategy ID should be filtered/dropped
 - Changed `BinanceHttpClient` to use new core HTTP client
 - Defined public API for data, can now import directly from `nautilus_trader.model.data` (denest namespace)
 - Defined public API for events, can now import directly from `nautilus_trader.model.events` (denest namespace)
@@ -523,7 +1419,7 @@ We recommend you do not upgrade to this version if you're using the Betfair adap
 - Renamed `Actor.handle_order_book_delta` to `handle_order_book_deltas` (to more clearly reflect the `OrderBookDeltas` data type)
 - Renamed `Actor.on_order_book_delta` to `on_order_book_deltas` (to more clearly reflect the `OrderBookDeltas` data type)
 - Renamed `inverse_as_quote` to `use_quote_for_inverse` (ambiguous name, only applicable for notional calcs on inverse instruments)
-- Changed `Data` contract (custom data), [see docs](https://docs.nautilustrader.io/develop/concepts/advanced/data.html)
+- Changed `Data` contract (custom data), [see docs](https://nautilustrader.io/docs/latest/concepts/advanced/data.html)
 - Renamed core `LogMessage` to `LogEvent` to more clearly distinguish between the `message` field and the event struct itself (aligns with [vector](https://vector.dev/docs/about/under-the-hood/architecture/data-model/log/) language)
 - Renamed core `LogEvent.timestamp_ns` to `LogEvent.timestamp` (affects field name for JSON format)
 - Renamed core `LogEvent.msg` to `LogEvent.message` (affects field name for JSON format)
@@ -549,7 +1445,7 @@ Released on 19th May 2023 (UTC).
 ### Enhancements
 - Improved handling for backtest account blow-up scenarios (balance negative or margin exceeded)
 - Added `AccountMarginExceeded` exception and refined `AccountBalanceNegative`
-- Various improvements to `Binance` clients error handling and logging
+- Various improvements to Binance clients error handling and logging
 - Improve Binance HTTP error messages
 
 ### Fixes
@@ -688,16 +1584,16 @@ Released on 18th February 2023 (UTC).
 
 ### Breaking Changes
 - `NautilusConfig` objects now _pseudo-immutable_ from new msgspec 0.13.0
-- Renamed `OrderFactory.bracket` param `post_only_entry` -> `entry_post_only` (consistency with other params)
-- Renamed `OrderFactory.bracket` param `post_only_tp` -> `tp_post_only` (consistency with other params)
-- Renamed `build_time_bars_with_no_updates` -> `time_bars_build_with_no_updates` (consistency with new param) 
+- Renamed `OrderFactory.bracket` parameter `post_only_entry` -> `entry_post_only` (consistency with other params)
+- Renamed `OrderFactory.bracket` parameter `post_only_tp` -> `tp_post_only` (consistency with other params)
+- Renamed `build_time_bars_with_no_updates` -> `time_bars_build_with_no_updates` (consistency with new param)
 - Renamed `OrderFactory.set_order_count()` -> `set_client_order_id_count()` (clarity)
 - Renamed `TradingNode.start()` to `TradingNode.run()`
 
 ### Enhancements
 - Complete overhaul and improvements to Binance adapter(s), thanks @poshcoe
 - Added Binance aggregated trades functionality with `use_agg_trade_ticks`, thanks @poshcoe
-- Added `time_bars_timestamp_on_close` option for configurable bar timestamping (true by default)
+- Added `time_bars_timestamp_on_close` config option for bar timestamping (`True` by default)
 - Added `OrderFactory.generate_client_order_id()` (calls internal generator)
 - Added `OrderFactory.generate_order_list_id()` (calls internal generator)
 - Added `OrderFactory.create_list(...)` as easier method for creating order lists
@@ -743,7 +1639,7 @@ Released on 28th January 2023 (UTC).
 - Renamed `BookOrder.id` to `order_id`
 
 ### Enhancements
-- Introduced Rust pyo3 based `ParquetReader` and `ParquetWriter`, thanks @twitu
+- Introduced Rust PyO3 based `ParquetReader` and `ParquetWriter`, thanks @twitu
 - Added `msgbus.is_subscribed` (to check if topic and handler already subscribed)
 - Simplified message type model and introduce CQRS-ish live messaging architecture
 
@@ -780,7 +1676,7 @@ Released on 17th January 2023 (UTC).
 
 Released on 14th January 2023 (UTC).
 
-A number of enum variant names have been changed in favour of explicitness, 
+A number of enum variant names have been changed in favour of explicitness,
 and also to avoid C naming collisions.
 
 ### Breaking Changes
@@ -805,7 +1701,7 @@ and also to avoid C naming collisions.
 
 ### Enhancements
 - Added `BarSpecification.timedelta` property, thanks @rsmb7z
-- Added `DataEngineConfig.build_time_bars_with_no_updates` option
+- Added `DataEngineConfig.build_time_bars_with_no_updates` config option
 - Added `OrderFactory.bracket(post_only_tp)` param
 - Added `OrderListIdGenerator` and integrate with `OrderFactory`
 - Added `Cache.add_order_list(...)`
@@ -818,7 +1714,7 @@ and also to avoid C naming collisions.
 - Added `.timedelta` property to `BarSpecification`, thanks @rsmb7z
 - Numerous improvements to the Betfair adapter, thanks @limx0
 - Improvements to Interactive Brokers data subscriptions, thanks @rsmb7z
-- Added `DataEngineConfig.validate_data_sequence` (False by default and currently only for `Bar` data), thanks @rsmb7z
+- Added `DataEngineConfig.validate_data_sequence` (default `False` and currently only for `Bar` data), thanks @rsmb7z
 
 ### Fixes
 - Added `TRD_GRP_*` enum variants for Binance spot permissions
@@ -842,7 +1738,7 @@ None
 - Fixed `OrderEmulator` trigger event handling for live trading
 - Fixed `OrderEmulator` transformation to market orders which had a GTD time in force
 - Fixed serialization of `OrderUpdated` events
-- Fixed typing and edge cases for new `msgspec`, thanks @limx0 
+- Fixed typing and edge cases for new `msgspec`, thanks @limx0
 - Fixed data wrangler processing with missing data, thanks @rsmb7z
 
 ---
@@ -950,7 +1846,7 @@ Released on 18th November 2022 (UTC).
 
 ### Fixes
 - Fixed dealloc of Rust backing struct on Python exceptions causing segfaults
-- Fixed bar aggregation start times for bar specs outside typical intervals (60-SECOND rather than 1-MINUTE etc) 
+- Fixed bar aggregation start times for bar specs outside typical intervals (60-SECOND rather than 1-MINUTE etc)
 - Fixed backtest engine main loop ordering of time events with identically timestamped data
 - Fixed `ModifyOrder` message `str` and `repr` when no quantity
 - Fixed OCO contingent orders which were actually implemented as OUO for backtests
@@ -991,7 +1887,7 @@ Released on 24th October 2022 (UTC).
 
 ### Breaking Changes
 - None
- 
+
 ### Enhancements
 - Added experimental local order emulation for all order types (except `MARKET` and `MARKET_TO_LIMIT`) see docs
 - Added `min_latency`, `max_latency` and `avg_latency` to `HttpClient` base class
@@ -1065,7 +1961,7 @@ Released on September 14th 2022 (UTC).
 
 ### Breaking Changes
 - Changed `ExecEngineConfig` `allow_cash_positions` default to `True` (more typical use case)
-- Removed `check` param from `Bar` (always checked for simplicity)
+- Removed `check` parameter from `Bar` (always checked for simplicity)
 
 ### Enhancements
 - Added `MARKET_TO_LIMIT` order implementation for `SimulatedExchange`
@@ -1312,7 +2208,7 @@ Released on 10th May 2022 (UTC).
 - Added `Actor.publish_signal` for generic dynamic signal data
 - Added `WEEK` and `MONTH` bar aggregation options
 - Added `Position.closing_order_id` property
-- Added `tags` param to `Strategy.submit_order`
+- Added `tags` parameter to `Strategy.submit_order`
 - Added optional `check_positon_exists` flag to `Strategy.submit_order`
 - Eliminated all use of `unsafe` Rust and C null-terminated byte strings
 - The `bypass_logging` config option will also now bypass the `BacktestEngine` logger
@@ -1345,7 +2241,7 @@ Released on 17th April 2022 (UTC).
 
 ### Breaking Changes
 - `BacktestNode` now requires configs at initialization
-- Removed `run_configs` param from `BacktestNode.run()` method
+- Removed `run_configs` parameter from `BacktestNode.run()` method
 - Removed `return_engine` flag
 - Renamed `TradingStrategy` to `Strategy`
 - Renamed `TradingStrategyConfig` to `StrategyConfig`
@@ -1420,8 +2316,8 @@ Released on 13th March 2022 (UTC).
 This is a patch release which fixes a moderate severity security vulnerability in
 pillow < 9.0.1:
 
-    If the path to the temporary directory on Linux or macOS contained a space, 
-    this would break removal of the temporary image file after im.show() (and related actions), 
+    If the path to the temporary directory on Linux or macOS contained a space,
+    this would break removal of the temporary image file after im.show() (and related actions),
     and potentially remove an unrelated file. This been present since PIL.
 
 This release upgrades to pillow 9.0.1.
@@ -1456,7 +2352,7 @@ Released on 11th March 2022 (UTC).
 - Added `LimitIfTouchedOrder` order type
 - Added `Order.has_price` property (convenience)
 - Added `Order.has_trigger_price` property (convenience)
-- Added `msg` param to `LoggerAdapter.exception()`
+- Added `msg` parameter to `LoggerAdapter.exception()`
 - Added WebSocket `log_send` and `log_recv` config options
 - Added WebSocket `auto_ping_interval` (seconds) config option
 - Replaced `msgpack` with `msgspec` (faster drop in replacement https://github.com/jcrist/msgspec)
@@ -1477,9 +2373,9 @@ Released on 15th February 2022 (UTC).
 
 **This release contains numerous method, parameter and property name changes**
 
-For consistency and standardization with other protocols, the `ExecutionId` type 
-has been renamed to `TradeId` as they express the same concept with a more 
-standardized terminology. In the interests of enforcing correctness and 
+For consistency and standardization with other protocols, the `ExecutionId` type
+has been renamed to `TradeId` as they express the same concept with a more
+standardized terminology. In the interests of enforcing correctness and
 safety this type is now utilized for the `TradeTick.trade_id`.
 
 ### Breaking Changes
@@ -1498,12 +2394,12 @@ safety this type is now utilized for the `TradeTick.trade_id`.
 ### Enhancements
 - Introduced the `TradeId` type to enforce `trade_id` typing
 - Improve handling of unleveraged cash asset positions including Crypto and Fiat spot currency instruments
-- Added `ExecEngineConfig` option `allow_cash_positions` (`False` by default)
+- Added `ExecEngineConfig` config option `allow_cash_positions` (`False` by default)
 - Added `TrailingOffsetType` enum
 - Added `TrailingStopMarketOrder`
 - Added `TrailingStopLimitOrder`
 - Added trailing order factory methods
-- Added `trigger_type` param to stop orders
+- Added `trigger_type` parameter to stop orders
 - Added `TriggerType` enum
 - Large refactoring of order base and impl classes
 - Overhaul of execution reports
@@ -1537,10 +2433,10 @@ This release upgrades to `pillow 9.0.0`.
 Released on 12th January 2022 (UTC).
 
 ### Breaking Changes
-- Removed redundant `currency` param from `AccountBalance`
+- Removed redundant `currency` parameter from `AccountBalance`
 - Renamed `local_symbol` to `native_symbol`
-- Removed the `VenueType` enum and `venue_type` param in favour of a `routing` bool flag
-- Removed `account_id` param from execution client factories and constructors
+- Removed the `VenueType` enum and `venue_type` parameter in favour of a `routing` bool flag
+- Removed `account_id` parameter from execution client factories and constructors
 - Changed venue generated IDs (order, execution, position) which now begin with the venue ID
 
 ### Enhancements
@@ -1567,8 +2463,8 @@ Released on 29th December 2021.
 - Changed `subscribe_data(...)` method (`client_id` now optional)
 - Changed `unsubscribe_data(...)` method (`client_id` now optional)
 - Changed `publish_data(...)` method (added `data_type`)
-- Renamed `MessageBus.subscriptions` method param to `pattern`
-- Renamed `MessageBus.has_subscribers` method param to `pattern`
+- Renamed `MessageBus.subscriptions` method parameter to `pattern`
+- Renamed `MessageBus.has_subscribers` method parameter to `pattern`
 - Removed `subscribe_strategy_data(...)` method
 - Removed `unsubscribe_strategy_data(...)` method
 - Removed `publish_strategy_data(...)` method
@@ -1649,7 +2545,7 @@ None
 - Added `LatencyModel` for simulated exchange
 - Added `last_update_id` to order books
 - Added `update_id` to order book data
-- Added `depth` param when subscribing to order book deltas
+- Added `depth` parameter when subscribing to order book deltas
 - Added `Clock.timestamp_ms()`
 - Added `TestDataProvider` and consolidate test data
 - Added orjson default serializer for arrow
@@ -1786,7 +2682,7 @@ Released on 12th September 2021.
 Released on 30th August 2021.
 
 This release continues the focus on the core system, with upgrades and cleanups
-to the component base class. The concept of an `active` order has been introduced, 
+to the component base class. The concept of an `active` order has been introduced,
 which is an order whose state can change (is not a `completed` order).
 
 ### Breaking Changes
@@ -1828,9 +2724,9 @@ which is an order whose state can change (is not a `completed` order).
 
 Released on 17th August 2021.
 
-This release has again focused on core areas of the platform, including a 
-significant overhaul of accounting and portfolio components. The wiring between 
-the `DataEngine` and `DataClient`(s) has also received attention, and should now 
+This release has again focused on core areas of the platform, including a
+significant overhaul of accounting and portfolio components. The wiring between
+the `DataEngine` and `DataClient`(s) has also received attention, and should now
 exhibit correct subscription mechanics.
 
 The Betfair adapter has been completely re-written, providing various fixes and
@@ -1872,8 +2768,8 @@ as closely as possible with established terminology in the domain.
 
 Released on 3rd August 2021.
 
-This is a patch release which fixes a bug involving `NotImplementedError` 
-exception handling when subscribing to order book deltas when not supported by 
+This is a patch release which fixes a bug involving `NotImplementedError`
+exception handling when subscribing to order book deltas when not supported by
 a client. This bug affected CCXT order book subscriptions.
 
 ### Breaking Changes
@@ -1893,36 +2789,36 @@ None
 
 Released on 2nd August 2021.
 
-This release sees the completion of the initial implementation of the 
-`MessageBus`, with data now being handled by Pub/Sub patterns, along with the 
+This release sees the completion of the initial implementation of the
+`MessageBus`, with data now being handled by Pub/Sub patterns, along with the
 additions of point-to-point and Req/Rep messaging functionality.
 
 An `Actor` base class has been abstracted from `TradingStrategy` which allows
-custom components to be added to a `Trader` which aren't necessarily trading 
-strategies, opening up further possibilities for extending NautilusTrader with 
+custom components to be added to a `Trader` which aren't necessarily trading
+strategies, opening up further possibilities for extending NautilusTrader with
 custom functionality.
 
 For the sake of simplicity and to favour more idiomatic Python, the null object
 pattern is no longer utilized for handling identifiers. This has removed a layer
-of 'logical indirection' in certain parts of the codebase, and allows for simpler 
+of 'logical indirection' in certain parts of the codebase, and allows for simpler
 code.
 
-An order is now considered 'in-flight' if it is actively pending a state 
+An order is now considered 'in-flight' if it is actively pending a state
 transition i.e. in the `SUBMITTED`,`PENDING_UPDATE` or `PENDING_CANCEL` states.
 
-It is now a well established convention that all integer based timestamps are 
-expressed in UNIX nanoseconds, therefore the `_ns` postfix has now been dropped. 
-For clarity - time periods/intervals/objects where the units may not be obvious 
+It is now a well established convention that all integer based timestamps are
+expressed in UNIX nanoseconds, therefore the `_ns` postfix has now been dropped.
+For clarity - time periods/intervals/objects where the units may not be obvious
 have retained the `_ns` postfix.
 
 The opportunity was identified to unify the parameter naming for the concept
 of object instantiation by renaming `timestamp_ns` and `ts_recv_ns` to `ts_init`.
-Along the same lines, the timestamps for both event and data occurrence have 
+Along the same lines, the timestamps for both event and data occurrence have
 been standardized to `ts_event`.
 
-It is acknowledged that the frequent name changes and modifications to core 
-concepts may be frustrating, however whilst still in a beta phase - we're taking 
-the opportunity to lay a solid foundation for this project to continue to growth 
+It is acknowledged that the frequent name changes and modifications to core
+concepts may be frustrating, however whilst still in a beta phase - we're taking
+the opportunity to lay a solid foundation for this project to continue to growth
 in the years ahead.
 
 ### Breaking Changes
@@ -1954,12 +2850,12 @@ in the years ahead.
 Released on 18th July 2021.
 
 This release introduces a major re-architecture of the internal messaging system.
-A common message bus has been implemented which now handles all events via a 
-Pub/Sub messaging pattern. The next release will see all data being handled by 
+A common message bus has been implemented which now handles all events via a
+Pub/Sub messaging pattern. The next release will see all data being handled by
 the message bus, see the related issue for further details on this enhancement.
 
-Another notable feature is the introduction of the order 'in-flight' concept, 
-which is a submitted order which has not yet been acknowledged by the 
+Another notable feature is the introduction of the order 'in-flight' concept,
+which is a submitted order which has not yet been acknowledged by the
 trading venue. Several properties on `Order`, and methods on `Cache`, now exist
 to support this.
 
@@ -2000,8 +2896,8 @@ on events, along with numerous 'under the hood' cleanups and two bug fixes.
 
 Released on 6th July 2021.
 
-This release sees the expansion of pre-trade risk check options (see 
-`RiskEngine` class documentation). There has also been extensive 'under the 
+This release sees the expansion of pre-trade risk check options (see
+`RiskEngine` class documentation). There has also been extensive 'under the
 hood' code cleanup and consolidation.
 
 ### Breaking Changes
@@ -2012,7 +2908,7 @@ hood' code cleanup and consolidation.
 - Refactored `PositionEvent` types
 
 ### Enhancements
-- Add pre-trade risk checks to `RiskEngine` iteration 2
+- Added pre-trade risk checks to `RiskEngine` iteration 2
 - Improve `Throttler` functionality and performance
 - Removed redundant `OrderInvalid` state and associated code
 - Improve analysis reports
@@ -2033,9 +2929,9 @@ A major feature of this release is a complete re-design of serialization for the
 platform, along with initial support for the [Parquet](https://parquet.apache.org/) format.
 The MessagePack serialization functionality has been refined and retained.
 
-In the interests of explicitness there is now a convention that timestamps are 
-named either `timestamp_ns`, or prepended with `ts`. Timestamps which are 
-represented with an `int64` are always in nanosecond resolution, and appended 
+In the interests of explicitness there is now a convention that timestamps are
+named either `timestamp_ns`, or prepended with `ts`. Timestamps which are
+represented with an `int64` are always in nanosecond resolution, and appended
 with `_ns` accordingly.
 
 Initial scaffolding for new backtest data tooling has been added.
@@ -2086,9 +2982,9 @@ Initial scaffolding for new backtest data tooling has been added.
 Released on 6th June 2021.
 
 This release includes numerous breaking changes with a view to enhancing the core
-functionality and API of the platform. The data and execution caches have been 
-unified for simplicity. There have also been large changes to the accounting 
-functionality, with 'hooks' added in preparation for accurate calculation and 
+functionality and API of the platform. The data and execution caches have been
+unified for simplicity. There have also been large changes to the accounting
+functionality, with 'hooks' added in preparation for accurate calculation and
 handling of margins.
 
 ### Breaking Changes
@@ -2137,9 +3033,9 @@ so the compiler won’t be able to inline them in almost all cases."_.
 https://cython.readthedocs.io/en/latest/src/userguide/pyrex_differences.html?highlight=inline.
 
 It has been found that adding `inline` to method signatures makes no difference
-to the performance of the system - and so they have been removed to reduce 
-'noise' and simplify the codebase. Note that the use of `inline` for 
-module level functions will be passed to the C compiler with the expected 
+to the performance of the system - and so they have been removed to reduce
+'noise' and simplify the codebase. Note that the use of `inline` for
+module level functions will be passed to the C compiler with the expected
 result of inlining the function.
 
 ### Breaking Changes
@@ -2159,7 +3055,7 @@ result of inlining the function.
 - Improved `ExecutionEngine` client registration
 - Added order routing configuration
 - Added `VenueType` enum and parser
-- Improved param typing for identifier generators
+- Improved parameter typing for identifier generators
 - Improved log formatting of `Money` and `Quantity` thousands commas
 
 ### Fixes
@@ -2208,7 +3104,7 @@ is implicitly zero for ints, or implied in the number of digits after the '.'
 point for strings. Convenience methods have also been added to `Instrument` to
 assist the UX.
 
-The serialization of `Money` has been improved with the inclusion of the 
+The serialization of `Money` has been improved with the inclusion of the
 currency code in the string delimited by whitespace. This avoids an additional
 field for the currency code.
 
@@ -2243,7 +3139,7 @@ natural flow of command and event messages.
 
 ## Release Notes
 
-This release simplifies the backtesting workflow by removing the need for the 
+This release simplifies the backtesting workflow by removing the need for the
 intermediate `BacktestDataContainer`. There has also been some simplifications
 for `OrderFill` events, as well as additional order states and events.
 
@@ -2255,7 +3151,7 @@ for `OrderFill` events, as well as additional order states and events.
 - Removed redundant `OrderFilled.leaves_qty`
 - `BacktestEngine` constructor simplified
 - `BacktestMarketDataClient` no longer needs instruments
-- Rename `PortfolioAnalyzer.get_realized_pnls` to `.realized_pnls`
+- Renamed `PortfolioAnalyzer.get_realized_pnls` to `.realized_pnls`
 
 ### Enhancements
 - Re-engineered `BacktestEngine` to take data directly
@@ -2287,7 +3183,7 @@ for `OrderFill` events, as well as additional order states and events.
 The major thrust of this release is added support for order book data in
 backtests. The `SimulatedExchange` now maintains order books of each instrument
 and will accurately simulate market impact with L2/L3 data. For quote and trade
-tick data a L1 order book is used as a proxy. A future release will include 
+tick data a L1 order book is used as a proxy. A future release will include
 improved fill modelling assumptions and customizations.
 
 ### Breaking Changes
@@ -2298,7 +3194,7 @@ improved fill modelling assumptions and customizations.
 - `LiveLogger` now exhibits better blocking behavior and logging
 
 ### Fixes
-- Various patches to the `Betfair` adapter
+- Various patches to the Betfair adapter
 - Documentation builds
 
 ---
@@ -2316,8 +3212,8 @@ None
 
 ### Enhancements
 - Performance test refactoring
-- Remove redundant performance harness
-- Add `Queue.peek()` to high-performance queue
+- Removed redundant performance harness
+- Added `Queue.peek()` to high-performance queue
 - GitHub action refactoring, CI for Windows
 - Builds for 32-bit platforms
 
@@ -2337,10 +3233,10 @@ Further fundamental changes to the core API have been made.
 
 ### Breaking Changes
 - Introduce `ClientId` for data and execution client identification
-- Standardize client IDs to upper case
-- Rename `OrderBookOperation` to `OrderBookDelta`
-- Rename `OrderBookOperations` to `OrderBookDeltas`
-- Rename `OrderBookOperationType` to `OrderBookDeltaType`
+- Standardized client IDs to upper case
+- Renamed `OrderBookOperation` to `OrderBookDelta`
+- Renamed `OrderBookOperations` to `OrderBookDeltas`
+- Renamed `OrderBookOperationType` to `OrderBookDeltaType`
 
 ### Enhancements
 None
@@ -2367,16 +3263,16 @@ its full name `Order.venue_order_id`. This naturally resulted in `ClientOrderId`
 being renamed in properties and variables from `cl_ord_id` to `client_order_id`.
 
 ### Breaking Changes
-- Rename `OrderId` to `VenueOrderId`
-- Rename `Order.id` to `Order.venue_order_id`
-- Rename `Order.cl_ord_id` to `Order.client_order_id`
-- Rename `AssetClass.STOCK` to `AssetClass.EQUITY`
-- Remove redundant flag `generate_position_ids` (handled by `OmsType`)
+- Renamed `OrderId` to `VenueOrderId`
+- Renamed `Order.id` to `Order.venue_order_id`
+- Renamed `Order.cl_ord_id` to `Order.client_order_id`
+- Renamed `AssetClass.STOCK` to `AssetClass.EQUITY`
+- Removed redundant flag `generate_position_ids` (handled by `OmsType`)
 
 ### Enhancements
 - Introduce integration for Betfair.
-- Add `AssetClass.METAL` and `AssetClass.ENERGY`
-- Add `VenueStatusEvent`, `InstrumentStatusEvent` and `InstrumentClosePrice`
+- Added `AssetClass.METAL` and `AssetClass.ENERGY`
+- Added `VenueStatusEvent`, `InstrumentStatusEvent` and `InstrumentClosePrice`
 - Usage of `np.ndarray` to improve function and indicator performance
 
 ### Fixes
@@ -2394,16 +3290,16 @@ Further standardization of naming conventions along with internal refinements
 and fixes.
 
 ### Breaking Changes
-- Rename `AmendOrder` to `UpdateOrder`
-- Rename `OrderAmended` to `OrderUpdated`
-- Rename `amend` and `amended` related methods to `update` and `updated`
-- Rename `OrderCancelReject` to `OrderCancelRejected` (standardize tense)
+- Renamed `AmendOrder` to `UpdateOrder`
+- Renamed `OrderAmended` to `OrderUpdated`
+- Renamed `amend` and `amended` related methods to `update` and `updated`
+- Renamed `OrderCancelReject` to `OrderCancelRejected` (standardize tense)
 
 ### Enhancements
 - Improve efficiency of data wrangling
 - Simplify `Logger` and general system logging
-- Add `stdout` and `stderr` log streams with configuration
-- Add `OrderBookData` base class
+- Added `stdout` and `stderr` log streams with configuration
+- Added `OrderBookData` base class
 
 ### Fixes
 - Backtest handling of `GenericData` and `OrderBook` related data
@@ -2421,10 +3317,10 @@ Further standardization of naming conventions along with internal refinements
 and fixes.
 
 ### Breaking Changes
-- Rename `AmendOrder` to `UpdateOrder`
-- Rename `OrderAmended` to `OrderUpdated`
-- Rename `amend` and `amended` related methods to `update` and `updated`
-- Rename `OrderCancelReject` to `OrderCancelRejected` (standardize tense)
+- Renamed `AmendOrder` to `UpdateOrder`
+- Renamed `OrderAmended` to `OrderUpdated`
+- Renamed `amend` and `amended` related methods to `update` and `updated`
+- Renamed `OrderCancelReject` to `OrderCancelRejected` (standardize tense)
 
 ### Enhancements
 - Introduce `OrderUpdateRejected`, event separated for clarity
@@ -2455,26 +3351,26 @@ closely with established financial market terminology with reference to the
 FIX5.0 SP2 specification, and CME MDP 3.0.
 
 ### Breaking Changes
-- Move `BarType` into `Bar` as a property
-- Change signature of `Bar` handling methods due to above
-- Remove `Instrument.leverage` (incorrect place for concept)
-- Change `ExecutionClient.venue` as a `Venue` to `ExecutionClient.name` as a `str`
-- Change serialization of timestamp datatype to `int64`
-- Extensive changes to serialization constant names
-- Rename `OrderFilled.filled_qty` to `OrderFilled.last_qty`
-- Rename `OrderFilled.filled_price` to `OrderFilled.last_px`
-- Rename `avg_price` to `avg_px` in methods and properties
-- Rename `avg_open` to `avg_px_open` in methods and properties
-- Rename `avg_close` to `avg_px_close` in methods and properties
-- Rename `Position.relative_quantity` to `Position.relative_qty`
-- Rename `Position.peak_quantity` to `Position.peak_qty`
+- Moved `BarType` into `Bar` as a property
+- Changed signature of `Bar` handling methods due to above
+- Removed `Instrument.leverage` (incorrect place for concept)
+- Changed `ExecutionClient.venue` as a `Venue` to `ExecutionClient.name` as a `str`
+- Changed serialization of timestamp datatype to `int64`
+- Changed serialization constant names extensively
+- Renamed `OrderFilled.filled_qty` to `OrderFilled.last_qty`
+- Renamed `OrderFilled.filled_price` to `OrderFilled.last_px`
+- Renamed `avg_price` to `avg_px` in methods and properties
+- Renamed `avg_open` to `avg_px_open` in methods and properties
+- Renamed `avg_close` to `avg_px_close` in methods and properties
+- Renamed `Position.relative_quantity` to `Position.relative_qty`
+- Renamed `Position.peak_quantity` to `Position.peak_qty`
 
 ### Enhancements
-- Standardize nanosecond timestamps
-- Add time unit conversion functions as found in `nautilus_trader.core.datetime`
-- Add optional `broker` property to `Venue` to assist with routing
-- Enhance state reconciliation from both `LiveExecutionEngine` and `LiveExecutionClient`
-- Add internal messages to aid state reconciliation
+- Standardized nanosecond timestamps
+- Added time unit conversion functions as found in `nautilus_trader.core.datetime`
+- Added optional `broker` property to `Venue` to assist with routing
+- Enhanced state reconciliation from both `LiveExecutionEngine` and `LiveExecutionClient`
+- Added internal messages to aid state reconciliation
 
 ### Fixes
 - `DataCache` incorrectly caching bars
@@ -2493,13 +3389,13 @@ None
 ### Enhancements
 - `RiskEngine` built out including configuration options hook and
   `LiveRiskEngine` implementation
-- Add generic `Throttler`
-- Add details `dict` to `instrument_id` related requests to cover IB futures
+- Added generic `Throttler`
+- Added details `dict` to `instrument_id` related requests to cover IB futures
   contracts
-- Add missing Fiat currencies
-- Add additional Crypto currencies
-- Add ISO 4217 codes
-- Add currency names
+- Added missing Fiat currencies
+- Added additional Crypto currencies
+- Added ISO 4217 codes
+- Added currency names
 
 ### Fixes
 - Queue `put` coroutines in live engines when blocking at `maxlen` was not
@@ -2529,8 +3425,8 @@ A `RiskEngine` base class has also been scaffolded.
 - `on_data` methods now take `GenericData`
 
 ### Enhancements
-- Add `GenericData`
-- Add `Future` instrument
+- Added `GenericData`
+- Added`Future` instrument
 
 ### Fixes
 None
@@ -2553,7 +3449,7 @@ Errors in the CCXT clients caused by the last release have been addressed.
 
 ### Enhancements
 - Ensure `TestTimer` advances monotonically increase
-- Add `AssetClass.BETTING`
+- Added `AssetClass.BETTING`
 
 ### Fixes
 - CCXT data and execution clients regarding `instrument_id` vs `symbol` naming
@@ -2584,7 +3480,7 @@ symbol string, a primary `Venue`, `AssetClass` and `AssetType` properties.
 
 ### Enhancements
 - Reports now include full instrument_id name
-- Add `AssetType.WARRANT`
+- Added `AssetType.WARRANT`
 
 ### Fixes
 - `StopLimitOrder` serialization
@@ -2631,7 +3527,7 @@ None
 
 ### Enhancements
 - Refactored `SimulatedExchange` order matching and amendment logic
-- Add `risk` subpackage to group risk components
+- Added `risk` subpackage to group risk components
 
 ### Fixes
 - `StopLimitOrder` triggering behavior
@@ -2651,10 +3547,10 @@ integration, and begin adding platform capabilities to support this effort.
 
 ### Enhancements
 - Scaffold Interactive Brokers integration in `adapters/ib`
-- Add the `Future` instrument type
-- Add the `StopLimitOrder` order type
-- Add the `Data` and `DataType` types to support custom data handling
-- Add the `InstrumentId` identifier types initial implementation to support extending the platforms capabilities
+- Added the `Future` instrument type
+- Added the `StopLimitOrder` order type
+- Added the `Data` and `DataType` types to support custom data handling
+- Added the `InstrumentId` identifier types initial implementation to support extending the platforms capabilities
 
 ### Fixes
 - `BracketOrder` correctness

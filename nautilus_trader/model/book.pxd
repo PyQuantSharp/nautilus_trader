@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,7 +17,8 @@ from libc.stdint cimport uint8_t
 from libc.stdint cimport uint64_t
 
 from nautilus_trader.core.data cimport Data
-from nautilus_trader.core.rust.model cimport Level_API
+from nautilus_trader.core.rust.model cimport BookLevel_API
+from nautilus_trader.core.rust.model cimport BookType
 from nautilus_trader.core.rust.model cimport OrderBook_API
 from nautilus_trader.core.rust.model cimport OrderSide
 from nautilus_trader.model.data cimport BookOrder
@@ -33,11 +34,12 @@ from nautilus_trader.model.orders.base cimport Order
 
 cdef class OrderBook(Data):
     cdef OrderBook_API _mem
+    cdef BookType _book_type
 
     cpdef void reset(self)
-    cpdef void add(self, BookOrder order, uint64_t ts_event, uint64_t sequence=*)
-    cpdef void update(self, BookOrder order, uint64_t ts_event, uint64_t sequence=*)
-    cpdef void delete(self, BookOrder order, uint64_t ts_event, uint64_t sequence=*)
+    cpdef void add(self, BookOrder order, uint64_t ts_event, uint8_t flags=*, uint64_t sequence=*)
+    cpdef void update(self, BookOrder order, uint64_t ts_event, uint8_t flags=*, uint64_t sequence=*)
+    cpdef void delete(self, BookOrder order, uint64_t ts_event, uint8_t flags=*, uint64_t sequence=*)
     cpdef void clear(self, uint64_t ts_event, uint64_t sequence=*)
     cpdef void clear_bids(self, uint64_t ts_event, uint64_t sequence=*)
     cpdef void clear_asks(self, uint64_t ts_event, uint64_t sequence=*)
@@ -63,12 +65,12 @@ cdef class OrderBook(Data):
     cpdef str pprint(self, int num_levels=*)
 
 
-cdef class Level:
-    cdef Level_API _mem
+cdef class BookLevel:
+    cdef BookLevel_API _mem
 
     cpdef list orders(self)
     cpdef double size(self)
     cpdef double exposure(self)
 
     @staticmethod
-    cdef Level from_mem_c(Level_API mem)
+    cdef BookLevel from_mem_c(BookLevel_API mem)

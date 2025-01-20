@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,30 +13,32 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
-use nautilus_core::{time::UnixNanos, uuid::UUID4};
+use indexmap::IndexMap;
+use nautilus_core::{UnixNanos, UUID4};
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use ustr::Ustr;
 
-use super::base::{Order, OrderCore, OrderError};
+use super::{
+    any::OrderAny,
+    base::{Order, OrderCore, OrderError},
+};
 use crate::{
     enums::{
         ContingencyType, LiquiditySide, OrderSide, OrderStatus, OrderType, TimeInForce,
         TrailingOffsetType, TriggerType,
     },
-    events::order::{event::OrderEvent, initialized::OrderInitialized, updated::OrderUpdated},
+    events::{OrderEventAny, OrderInitialized, OrderUpdated},
     identifiers::{
-        account_id::AccountId, client_order_id::ClientOrderId, exec_algorithm_id::ExecAlgorithmId,
-        instrument_id::InstrumentId, order_list_id::OrderListId, position_id::PositionId,
-        strategy_id::StrategyId, symbol::Symbol, trade_id::TradeId, trader_id::TraderId,
-        venue::Venue, venue_order_id::VenueOrderId,
+        AccountId, ClientOrderId, ExecAlgorithmId, InstrumentId, OrderListId, PositionId,
+        StrategyId, Symbol, TradeId, TraderId, Venue, VenueOrderId,
     },
-    types::{price::Price, quantity::Quantity},
+    types::{Price, Quantity},
 };
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
@@ -55,7 +57,7 @@ pub struct LimitIfTouchedOrder {
 }
 
 impl LimitIfTouchedOrder {
-    #[must_use]
+    /// Creates a new [`LimitIfTouchedOrder`] instance.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         trader_id: TraderId,
@@ -80,36 +82,49 @@ impl LimitIfTouchedOrder {
         linked_order_ids: Option<Vec<ClientOrderId>>,
         parent_order_id: Option<ClientOrderId>,
         exec_algorithm_id: Option<ExecAlgorithmId>,
-        exec_algorithm_params: Option<HashMap<Ustr, Ustr>>,
+        exec_algorithm_params: Option<IndexMap<Ustr, Ustr>>,
         exec_spawn_id: Option<ClientOrderId>,
-        tags: Option<Ustr>,
+        tags: Option<Vec<Ustr>>,
         init_id: UUID4,
         ts_init: UnixNanos,
     ) -> Self {
+        let init_order = OrderInitialized::new(
+            trader_id,
+            strategy_id,
+            instrument_id,
+            client_order_id,
+            order_side,
+            OrderType::LimitIfTouched,
+            quantity,
+            time_in_force,
+            post_only,
+            reduce_only,
+            quote_quantity,
+            false,
+            init_id,
+            ts_init,
+            ts_init,
+            Some(price),
+            Some(trigger_price),
+            Some(trigger_type),
+            None,
+            None,
+            None,
+            expire_time,
+            display_qty,
+            emulation_trigger,
+            trigger_instrument_id,
+            contingency_type,
+            order_list_id,
+            linked_order_ids,
+            parent_order_id,
+            exec_algorithm_id,
+            exec_algorithm_params,
+            exec_spawn_id,
+            tags,
+        );
         Self {
-            core: OrderCore::new(
-                trader_id,
-                strategy_id,
-                instrument_id,
-                client_order_id,
-                order_side,
-                OrderType::LimitIfTouched,
-                quantity,
-                time_in_force,
-                reduce_only,
-                quote_quantity,
-                emulation_trigger,
-                contingency_type,
-                order_list_id,
-                linked_order_ids,
-                parent_order_id,
-                exec_algorithm_id,
-                exec_algorithm_params,
-                exec_spawn_id,
-                tags,
-                init_id,
-                ts_init,
-            ),
+            core: OrderCore::new(init_order),
             price,
             trigger_price,
             trigger_type,
@@ -138,6 +153,10 @@ impl DerefMut for LimitIfTouchedOrder {
 }
 
 impl Order for LimitIfTouchedOrder {
+    fn into_any(self) -> OrderAny {
+        OrderAny::LimitIfTouched(self)
+    }
+
     fn status(&self) -> OrderStatus {
         self.status
     }
@@ -234,11 +253,11 @@ impl Order for LimitIfTouchedOrder {
         self.display_qty
     }
 
-    fn limit_offset(&self) -> Option<Price> {
+    fn limit_offset(&self) -> Option<Decimal> {
         None
     }
 
-    fn trailing_offset(&self) -> Option<Price> {
+    fn trailing_offset(&self) -> Option<Decimal> {
         None
     }
 
@@ -262,8 +281,8 @@ impl Order for LimitIfTouchedOrder {
         self.order_list_id
     }
 
-    fn linked_order_ids(&self) -> Option<Vec<ClientOrderId>> {
-        self.linked_order_ids.clone()
+    fn linked_order_ids(&self) -> Option<&[ClientOrderId]> {
+        self.linked_order_ids.as_deref()
     }
 
     fn parent_order_id(&self) -> Option<ClientOrderId> {
@@ -274,16 +293,16 @@ impl Order for LimitIfTouchedOrder {
         self.exec_algorithm_id
     }
 
-    fn exec_algorithm_params(&self) -> Option<HashMap<Ustr, Ustr>> {
-        self.exec_algorithm_params.clone()
+    fn exec_algorithm_params(&self) -> Option<&IndexMap<Ustr, Ustr>> {
+        self.exec_algorithm_params.as_ref()
     }
 
     fn exec_spawn_id(&self) -> Option<ClientOrderId> {
         self.exec_spawn_id
     }
 
-    fn tags(&self) -> Option<Ustr> {
-        self.tags
+    fn tags(&self) -> Option<&[Ustr]> {
+        self.tags.as_deref()
     }
 
     fn filled_qty(&self) -> Quantity {
@@ -314,7 +333,7 @@ impl Order for LimitIfTouchedOrder {
         self.ts_last
     }
 
-    fn events(&self) -> Vec<&OrderEvent> {
+    fn events(&self) -> Vec<&OrderEventAny> {
         self.events.iter().collect()
     }
 
@@ -326,11 +345,11 @@ impl Order for LimitIfTouchedOrder {
         self.trade_ids.iter().collect()
     }
 
-    fn apply(&mut self, event: OrderEvent) -> Result<(), OrderError> {
-        if let OrderEvent::OrderUpdated(ref event) = event {
+    fn apply(&mut self, event: OrderEventAny) -> Result<(), OrderError> {
+        if let OrderEventAny::Updated(ref event) = event {
             self.update(event);
         };
-        let is_order_filled = matches!(event, OrderEvent::OrderFilled(_));
+        let is_order_filled = matches!(event, OrderEventAny::Filled(_));
 
         self.core.apply(event)?;
 
@@ -352,6 +371,20 @@ impl Order for LimitIfTouchedOrder {
 
         self.quantity = event.quantity;
         self.leaves_qty = self.quantity - self.filled_qty;
+    }
+}
+
+impl From<OrderAny> for LimitIfTouchedOrder {
+    fn from(order: OrderAny) -> LimitIfTouchedOrder {
+        match order {
+            OrderAny::LimitIfTouched(order) => order,
+            _ => {
+                panic!(
+                    "Invalid `OrderAny` not `{}`, was {order:?}",
+                    stringify!(LimitIfTouchedOrder),
+                )
+            }
+        }
     }
 }
 

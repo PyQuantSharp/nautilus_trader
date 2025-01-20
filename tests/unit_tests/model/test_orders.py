@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -273,7 +274,7 @@ class TestOrders:
             Price.from_str("1.00000"),
         )
 
-        assert order2.client_order_id.value == "O-19700101-0000-000-001-1"
+        assert order2.client_order_id.value == "O-19700101-000000-000-001-1"
 
     def test_initialize_buy_market_order(self):
         # Arrange, Act
@@ -360,18 +361,18 @@ class TestOrders:
             AUDUSD_SIM.id,
             OrderSide.BUY,
             Quantity.from_int(100_000),
-            tags="ENTRY",
+            tags=["ENTRY"],
         )
 
         # Act, Assert
         assert isinstance(hash(order), int)
         assert (
             str(order)
-            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=ENTRY)"  # noqa
+            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=['ENTRY'])"  # noqa
         )
         assert (
             repr(order)
-            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=ENTRY)"  # noqa
+            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=['ENTRY'])"  # noqa
         )
 
     def test_market_order_to_dict(self):
@@ -380,17 +381,20 @@ class TestOrders:
             AUDUSD_SIM.id,
             OrderSide.BUY,
             Quantity.from_int(100_000),
+            tags=["tag-01", "tag-02", "tag-03"],
         )
 
         # Act
         result = order.to_dict()
+        # remove init_id as it non-deterministic with order-factory
+        del result["init_id"]
 
         # Assert
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -406,6 +410,7 @@ class TestOrders:
             "avg_px": None,
             "slippage": None,
             "commissions": None,
+            "emulation_trigger": "NO_TRIGGER",
             "status": "INITIALIZED",
             "contingency_type": "NO_CONTINGENCY",
             "order_list_id": None,
@@ -414,7 +419,7 @@ class TestOrders:
             "exec_algorithm_id": None,
             "exec_algorithm_params": None,
             "exec_spawn_id": None,
-            "tags": None,
+            "tags": ["tag-01", "tag-02", "tag-03"],
             "ts_init": 0,
             "ts_last": 0,
         }
@@ -447,11 +452,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, exec_algorithm_id=TWAP, exec_spawn_id=O-19700101-0000-000-001-1, tags=None)"  # noqa
+            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, exec_algorithm_id=TWAP, exec_spawn_id=O-19700101-000000-000-001-1, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, exec_algorithm_id=TWAP, exec_spawn_id=O-19700101-0000-000-001-1, tags=None)"  # noqa
+            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, exec_algorithm_id=TWAP, exec_spawn_id=O-19700101-000000-000-001-1, tags=None)"  # noqa
         )
 
     def test_limit_order_to_dict(self):
@@ -468,13 +473,15 @@ class TestOrders:
 
         # Act
         result = order.to_dict()
+        # remove init_id as it non-deterministic with order-factory
+        del result["init_id"]
 
         # Assert
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -483,7 +490,7 @@ class TestOrders:
             "side": "BUY",
             "quantity": "100000",
             "price": "1.00000",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -503,7 +510,7 @@ class TestOrders:
             "parent_order_id": None,
             "exec_algorithm_id": "VWAP",
             "exec_algorithm_params": {"period": 60},
-            "exec_spawn_id": "O-19700101-0000-000-001-1",
+            "exec_spawn_id": "O-19700101-000000-000-001-1",
             "tags": None,
             "ts_init": 0,
             "ts_last": 0,
@@ -531,11 +538,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTD 1970-01-01T00:01:00.000Z, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTD 1970-01-01T00:01:00.000Z, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTD 1970-01-01T00:01:00.000Z, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "LimitOrder(BUY 100_000 AUD/USD.SIM LIMIT @ 1.00000 GTD 1970-01-01T00:01:00.000Z, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_initialize_stop_market_order(self):
@@ -561,11 +568,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "StopMarketOrder(BUY 100_000 AUD/USD.SIM STOP_MARKET @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "StopMarketOrder(BUY 100_000 AUD/USD.SIM STOP_MARKET @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "StopMarketOrder(BUY 100_000 AUD/USD.SIM STOP_MARKET @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "StopMarketOrder(BUY 100_000 AUD/USD.SIM STOP_MARKET @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_stop_market_order_to_dict(self):
@@ -584,11 +591,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -598,7 +607,7 @@ class TestOrders:
             "quantity": "100000",
             "trigger_price": "1.00000",
             "trigger_type": "DEFAULT",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -630,7 +639,7 @@ class TestOrders:
             Quantity.from_int(100_000),
             Price.from_str("1.00000"),
             Price.from_str("1.10010"),
-            tags="ENTRY",
+            tags=["ENTRY"],
         )
 
         # Assert
@@ -646,11 +655,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "StopLimitOrder(BUY 100_000 AUD/USD.SIM STOP_LIMIT @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=ENTRY)"  # noqa
+            == "StopLimitOrder(BUY 100_000 AUD/USD.SIM STOP_LIMIT @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=['ENTRY'])"  # noqa
         )
         assert (
             repr(order)
-            == "StopLimitOrder(BUY 100_000 AUD/USD.SIM STOP_LIMIT @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=ENTRY)"  # noqa
+            == "StopLimitOrder(BUY 100_000 AUD/USD.SIM STOP_LIMIT @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=['ENTRY'])"  # noqa
         )
 
     def test_stop_limit_order_to_dict(self):
@@ -662,18 +671,20 @@ class TestOrders:
             Price.from_str("1.00000"),
             Price.from_str("1.10010"),
             trigger_type=TriggerType.MARK_PRICE,
-            tags="STOP_LOSS",
+            tags=["STOP_LOSS"],
         )
 
         # Act
         result = order.to_dict()
+        # remove init_id as it non-deterministic with order-factory
+        del result["init_id"]
 
         # Assert
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -687,7 +698,7 @@ class TestOrders:
             "price": "1.00000",
             "trigger_price": "1.10010",
             "trigger_type": "MARK_PRICE",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -705,7 +716,7 @@ class TestOrders:
             "order_list_id": None,
             "linked_order_ids": None,
             "parent_order_id": None,
-            "tags": "STOP_LOSS",
+            "tags": ["STOP_LOSS"],
             "ts_init": 0,
             "ts_last": 0,
         }
@@ -735,11 +746,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "MarketToLimitOrder(BUY 100_000 AUD/USD.SIM MARKET_TO_LIMIT @ None GTD 1970-01-01T01:00:00.000Z, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "MarketToLimitOrder(BUY 100_000 AUD/USD.SIM MARKET_TO_LIMIT @ None GTD 1970-01-01T01:00:00.000Z, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "MarketToLimitOrder(BUY 100_000 AUD/USD.SIM MARKET_TO_LIMIT @ None GTD 1970-01-01T01:00:00.000Z, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "MarketToLimitOrder(BUY 100_000 AUD/USD.SIM MARKET_TO_LIMIT @ None GTD 1970-01-01T01:00:00.000Z, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_market_to_limit_order_to_dict(self):
@@ -756,11 +767,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -816,11 +829,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "MarketIfTouchedOrder(BUY 100_000 AUD/USD.SIM MARKET_IF_TOUCHED @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "MarketIfTouchedOrder(BUY 100_000 AUD/USD.SIM MARKET_IF_TOUCHED @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "MarketIfTouchedOrder(BUY 100_000 AUD/USD.SIM MARKET_IF_TOUCHED @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "MarketIfTouchedOrder(BUY 100_000 AUD/USD.SIM MARKET_IF_TOUCHED @ 1.00000[BID_ASK] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_market_if_touched_order_to_dict(self):
@@ -836,11 +849,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -853,7 +868,7 @@ class TestOrders:
             "quantity": "100000",
             "trigger_price": "1.00000",
             "trigger_type": "DEFAULT",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -882,8 +897,8 @@ class TestOrders:
             Quantity.from_int(100_000),
             Price.from_str("1.00000"),
             Price.from_str("1.10010"),
-            emulation_trigger=TriggerType.LAST_TRADE,
-            tags="ENTRY",
+            emulation_trigger=TriggerType.LAST_PRICE,
+            tags=["ENTRY"],
         )
 
         # Assert
@@ -901,11 +916,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "LimitIfTouchedOrder(BUY 100_000 AUD/USD.SIM LIMIT_IF_TOUCHED @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC EMULATED[LAST_TRADE], status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=ENTRY)"  # noqa
+            == "LimitIfTouchedOrder(BUY 100_000 AUD/USD.SIM LIMIT_IF_TOUCHED @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC EMULATED[LAST_PRICE], status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=['ENTRY'])"  # noqa
         )
         assert (
             repr(order)
-            == "LimitIfTouchedOrder(BUY 100_000 AUD/USD.SIM LIMIT_IF_TOUCHED @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC EMULATED[LAST_TRADE], status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=ENTRY)"  # noqa
+            == "LimitIfTouchedOrder(BUY 100_000 AUD/USD.SIM LIMIT_IF_TOUCHED @ 1.10010-STOP[DEFAULT] 1.00000-LIMIT GTC EMULATED[LAST_PRICE], status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=['ENTRY'])"  # noqa
         )
 
     def test_limit_if_touched_order_to_dict(self):
@@ -917,20 +932,22 @@ class TestOrders:
             Price.from_str("1.00000"),
             Price.from_str("1.10010"),
             trigger_type=TriggerType.MARK_PRICE,
-            emulation_trigger=TriggerType.LAST_TRADE,
+            emulation_trigger=TriggerType.LAST_PRICE,
             trigger_instrument_id=TestIdStubs.usdjpy_id(),
-            tags="STOP_LOSS",
+            tags=["STOP_LOSS"],
         )
 
         # Act
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -944,7 +961,7 @@ class TestOrders:
             "price": "1.00000",
             "trigger_price": "1.10010",
             "trigger_type": "MARK_PRICE",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -956,13 +973,13 @@ class TestOrders:
             "is_reduce_only": False,
             "is_quote_quantity": False,
             "display_qty": None,
-            "emulation_trigger": "LAST_TRADE",
+            "emulation_trigger": "LAST_PRICE",
             "trigger_instrument_id": "USD/JPY.SIM",
             "contingency_type": "NO_CONTINGENCY",
             "order_list_id": None,
             "linked_order_ids": None,
             "parent_order_id": None,
-            "tags": "STOP_LOSS",
+            "tags": ["STOP_LOSS"],
             "ts_init": 0,
             "ts_last": 0,
         }
@@ -994,11 +1011,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] @ 1.00000-STOP 0.00050-TRAILING_OFFSET[PRICE] GTC EMULATED[BID_ASK], status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] @ 1.00000-STOP 0.00050-TRAILING_OFFSET[PRICE] GTC EMULATED[BID_ASK], status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] @ 1.00000-STOP 0.00050-TRAILING_OFFSET[PRICE] GTC EMULATED[BID_ASK], status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] @ 1.00000-STOP 0.00050-TRAILING_OFFSET[PRICE] GTC EMULATED[BID_ASK], status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_initialize_trailing_stop_market_order_with_no_initial_trigger(self):
@@ -1023,11 +1040,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] 0.00050-TRAILING_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] 0.00050-TRAILING_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] 0.00050-TRAILING_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopMarketOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_MARKET[DEFAULT] 0.00050-TRAILING_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_trailing_stop_market_order_to_dict(self):
@@ -1044,11 +1061,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -1063,7 +1082,7 @@ class TestOrders:
             "trigger_type": "DEFAULT",
             "trailing_offset": "0.00050",
             "trailing_offset_type": "PRICE",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -1097,11 +1116,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -1116,7 +1137,7 @@ class TestOrders:
             "trigger_type": "DEFAULT",
             "trailing_offset": "0.00050",
             "trailing_offset_type": "PRICE",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -1161,11 +1182,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] @ 1.10010-STOP [DEFAULT] 1.00000-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] @ 1.10010-STOP [DEFAULT] 1.00000-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] @ 1.10010-STOP [DEFAULT] 1.00000-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] @ 1.10010-STOP [DEFAULT] 1.00000-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_initialize_trailing_stop_limit_order_with_no_initial_prices(self):
@@ -1189,11 +1210,11 @@ class TestOrders:
         assert isinstance(order.init_event, OrderInitialized)
         assert (
             str(order)
-            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] [DEFAULT] None-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] [DEFAULT] None-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] [DEFAULT] None-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
+            == "TrailingStopLimitOrder(BUY 100_000 AUD/USD.SIM TRAILING_STOP_LIMIT[DEFAULT] [DEFAULT] None-LIMIT 10-TRAILING_OFFSET[PRICE] 5-LIMIT_OFFSET[PRICE] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, tags=None)"  # noqa
         )
 
     def test_trailing_stop_limit_order_to_dict(self):
@@ -1214,11 +1235,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -1235,7 +1258,7 @@ class TestOrders:
             "limit_offset": "5",
             "trailing_offset": "10",
             "trailing_offset_type": "BASIS_POINTS",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -1274,11 +1297,13 @@ class TestOrders:
         result = order.to_dict()
 
         # Assert
+        assert "init_id" in result and uuid.UUID(result["init_id"], version=4)
+        del result["init_id"]  # Random UUID4
         assert result == {
             "trader_id": "TESTER-000",
             "strategy_id": "S-001",
             "instrument_id": "AUD/USD.SIM",
-            "client_order_id": "O-19700101-0000-000-001-1",
+            "client_order_id": "O-19700101-000000-000-001-1",
             "venue_order_id": None,
             "position_id": None,
             "account_id": None,
@@ -1292,7 +1317,7 @@ class TestOrders:
             "limit_offset": "5",
             "trailing_offset": "10",
             "trailing_offset_type": "BASIS_POINTS",
-            "expire_time_ns": 0,
+            "expire_time_ns": None,
             "time_in_force": "GTC",
             "filled_qty": "0",
             "liquidity_side": "NO_LIQUIDITY_SIDE",
@@ -1350,7 +1375,7 @@ class TestOrders:
         )
 
         # Assert
-        assert bracket.id == OrderListId("OL-19700101-0000-000-001-1")
+        assert bracket.id == OrderListId("OL-19700101-000000-000-001-1")
         assert bracket.instrument_id == AUDUSD_SIM.id
         assert len(bracket) == 3
         assert len(bracket.orders) == 3
@@ -1360,9 +1385,9 @@ class TestOrders:
         assert bracket.orders[0].instrument_id == AUDUSD_SIM.id
         assert bracket.orders[1].instrument_id == AUDUSD_SIM.id
         assert bracket.orders[2].instrument_id == AUDUSD_SIM.id
-        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-0000-000-001-1")
-        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-0000-000-001-2")
-        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-0000-000-001-3")
+        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-000000-000-001-2")
+        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-000000-000-001-3")
         assert bracket.orders[0].side == OrderSide.BUY
         assert bracket.orders[1].side == OrderSide.SELL
         assert bracket.orders[2].side == OrderSide.SELL
@@ -1379,13 +1404,13 @@ class TestOrders:
         assert bracket.orders[1].contingency_type == ContingencyType.OUO
         assert bracket.orders[2].contingency_type == ContingencyType.OUO
         assert bracket.orders[0].linked_order_ids == [
-            ClientOrderId("O-19700101-0000-000-001-2"),
-            ClientOrderId("O-19700101-0000-000-001-3"),
+            ClientOrderId("O-19700101-000000-000-001-2"),
+            ClientOrderId("O-19700101-000000-000-001-3"),
         ]
-        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-0000-000-001-3")]
-        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-0000-000-001-2")]
-        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-0000-000-001-1")
-        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-0000-000-001-1")
+        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-3")]
+        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-2")]
+        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
         assert bracket.ts_init == 0
 
     def test_bracket_limit_entry_order_list(self):
@@ -1405,7 +1430,7 @@ class TestOrders:
         )
 
         # Assert
-        assert bracket.id == OrderListId("OL-19700101-0000-000-001-1")
+        assert bracket.id == OrderListId("OL-19700101-000000-000-001-1")
         assert bracket.instrument_id == AUDUSD_SIM.id
         assert len(bracket) == 3
         assert len(bracket.orders) == 3
@@ -1415,9 +1440,9 @@ class TestOrders:
         assert bracket.orders[0].instrument_id == AUDUSD_SIM.id
         assert bracket.orders[1].instrument_id == AUDUSD_SIM.id
         assert bracket.orders[2].instrument_id == AUDUSD_SIM.id
-        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-0000-000-001-1")
-        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-0000-000-001-2")
-        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-0000-000-001-3")
+        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-000000-000-001-2")
+        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-000000-000-001-3")
         assert bracket.orders[0].side == OrderSide.BUY
         assert bracket.orders[1].side == OrderSide.SELL
         assert bracket.orders[2].side == OrderSide.SELL
@@ -1437,16 +1462,16 @@ class TestOrders:
         assert bracket.orders[1].contingency_type == ContingencyType.OUO
         assert bracket.orders[2].contingency_type == ContingencyType.OUO
         assert bracket.orders[0].linked_order_ids == [
-            ClientOrderId("O-19700101-0000-000-001-2"),
-            ClientOrderId("O-19700101-0000-000-001-3"),
+            ClientOrderId("O-19700101-000000-000-001-2"),
+            ClientOrderId("O-19700101-000000-000-001-3"),
         ]
-        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-0000-000-001-3")]
-        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-0000-000-001-2")]
-        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-0000-000-001-1")
-        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-0000-000-001-1")
+        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-3")]
+        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-2")]
+        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
         assert bracket.ts_init == 0
 
-    def test_bracket_stop_limit_entry_stop_limit_tp_order_list(self):
+    def test_bracket_limit_if_touched_entry_stop_limit_tp_order_list(self):
         # Arrange, Act
         bracket = self.order_factory.bracket(
             AUDUSD_SIM.id,
@@ -1463,7 +1488,7 @@ class TestOrders:
         )
 
         # Assert
-        assert bracket.id == OrderListId("OL-19700101-0000-000-001-1")
+        assert bracket.id == OrderListId("OL-19700101-000000-000-001-1")
         assert bracket.instrument_id == AUDUSD_SIM.id
         assert len(bracket) == 3
         assert len(bracket.orders) == 3
@@ -1473,9 +1498,9 @@ class TestOrders:
         assert bracket.orders[0].instrument_id == AUDUSD_SIM.id
         assert bracket.orders[1].instrument_id == AUDUSD_SIM.id
         assert bracket.orders[2].instrument_id == AUDUSD_SIM.id
-        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-0000-000-001-1")
-        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-0000-000-001-2")
-        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-0000-000-001-3")
+        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-000000-000-001-2")
+        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-000000-000-001-3")
         assert bracket.orders[0].side == OrderSide.BUY
         assert bracket.orders[1].side == OrderSide.SELL
         assert bracket.orders[2].side == OrderSide.SELL
@@ -1492,13 +1517,70 @@ class TestOrders:
         assert bracket.orders[1].contingency_type == ContingencyType.OUO
         assert bracket.orders[2].contingency_type == ContingencyType.OUO
         assert bracket.orders[0].linked_order_ids == [
-            ClientOrderId("O-19700101-0000-000-001-2"),
-            ClientOrderId("O-19700101-0000-000-001-3"),
+            ClientOrderId("O-19700101-000000-000-001-2"),
+            ClientOrderId("O-19700101-000000-000-001-3"),
         ]
-        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-0000-000-001-3")]
-        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-0000-000-001-2")]
-        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-0000-000-001-1")
-        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-0000-000-001-1")
+        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-3")]
+        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-2")]
+        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.ts_init == 0
+
+    def test_bracket_stop_limit_entry_stop_limit_tp_order_list(self):
+        # Arrange, Act
+        bracket = self.order_factory.bracket(
+            AUDUSD_SIM.id,
+            OrderSide.BUY,
+            Quantity.from_int(100_000),
+            entry_trigger_price=Price.from_str("1.00000"),
+            entry_price=Price.from_str("1.00001"),
+            sl_trigger_price=Price.from_str("0.99990"),
+            tp_trigger_price=Price.from_str("1.00010"),
+            tp_price=Price.from_str("1.00010"),
+            time_in_force=TimeInForce.GTC,
+            entry_order_type=OrderType.STOP_LIMIT,
+            tp_order_type=OrderType.LIMIT_IF_TOUCHED,
+        )
+
+        # Assert
+        assert bracket.id == OrderListId("OL-19700101-000000-000-001-1")
+        assert bracket.instrument_id == AUDUSD_SIM.id
+        assert len(bracket) == 3
+        assert len(bracket.orders) == 3
+        assert bracket.orders[0].order_type == OrderType.STOP_LIMIT
+        assert bracket.orders[1].order_type == OrderType.STOP_MARKET
+        assert bracket.orders[2].order_type == OrderType.LIMIT_IF_TOUCHED
+        assert bracket.orders[0].instrument_id == AUDUSD_SIM.id
+        assert bracket.orders[1].instrument_id == AUDUSD_SIM.id
+        assert bracket.orders[2].instrument_id == AUDUSD_SIM.id
+        assert bracket.orders[0].client_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[1].client_order_id == ClientOrderId("O-19700101-000000-000-001-2")
+        assert bracket.orders[2].client_order_id == ClientOrderId("O-19700101-000000-000-001-3")
+        assert bracket.orders[0].side == OrderSide.BUY
+        assert bracket.orders[1].side == OrderSide.SELL
+        assert bracket.orders[2].side == OrderSide.SELL
+        assert bracket.orders[0].quantity == Quantity.from_int(100_000)
+        assert bracket.orders[1].quantity == Quantity.from_int(100_000)
+        assert bracket.orders[2].quantity == Quantity.from_int(100_000)
+        assert bracket.orders[0].trigger_price == Price.from_str("1.00000")
+        assert bracket.orders[1].trigger_price == Price.from_str("0.99990")
+        assert bracket.orders[0].price == Price.from_str("1.00001")
+        assert bracket.orders[2].price == Price.from_str("1.00010")
+        assert bracket.orders[1].time_in_force == TimeInForce.GTC
+        assert bracket.orders[2].time_in_force == TimeInForce.GTC
+        assert bracket.orders[1].expire_time is None
+        assert bracket.orders[2].expire_time is None
+        assert bracket.orders[0].contingency_type == ContingencyType.OTO
+        assert bracket.orders[1].contingency_type == ContingencyType.OUO
+        assert bracket.orders[2].contingency_type == ContingencyType.OUO
+        assert bracket.orders[0].linked_order_ids == [
+            ClientOrderId("O-19700101-000000-000-001-2"),
+            ClientOrderId("O-19700101-000000-000-001-3"),
+        ]
+        assert bracket.orders[1].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-3")]
+        assert bracket.orders[2].linked_order_ids == [ClientOrderId("O-19700101-000000-000-001-2")]
+        assert bracket.orders[1].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
+        assert bracket.orders[2].parent_order_id == ClientOrderId("O-19700101-000000-000-001-1")
         assert bracket.ts_init == 0
 
     def test_order_list_str_and_repr(self):
@@ -1509,17 +1591,17 @@ class TestOrders:
             Quantity.from_int(100_000),
             sl_trigger_price=Price.from_str("0.99990"),
             tp_price=Price.from_str("1.00010"),
-            entry_tags="ENTRY",
-            tp_tags="TAKE_PROFIT",
-            sl_tags="STOP_LOSS",
+            entry_tags=["ENTRY"],
+            sl_tags=["STOP_LOSS"],
+            tp_tags=["TAKE_PROFIT"],
         )
 
         # Assert
         assert str(bracket) == (
-            "OrderList(id=OL-19700101-0000-000-001-1, instrument_id=AUD/USD.SIM, strategy_id=S-001, orders=[MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, contingency_type=OTO, linked_order_ids=[O-19700101-0000-000-001-2, O-19700101-0000-000-001-3], tags=ENTRY), StopMarketOrder(SELL 100_000 AUD/USD.SIM STOP_MARKET @ 0.99990[DEFAULT] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-2, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-0000-000-001-3], parent_order_id=O-19700101-0000-000-001-1, tags=STOP_LOSS), LimitOrder(SELL 100_000 AUD/USD.SIM LIMIT @ 1.00010 GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-3, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-0000-000-001-2], parent_order_id=O-19700101-0000-000-001-1, tags=TAKE_PROFIT)])"  # noqa
+            "OrderList(id=OL-19700101-000000-000-001-1, instrument_id=AUD/USD.SIM, strategy_id=S-001, orders=[MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, contingency_type=OTO, linked_order_ids=[O-19700101-000000-000-001-2, O-19700101-000000-000-001-3], tags=['ENTRY']), StopMarketOrder(SELL 100_000 AUD/USD.SIM STOP_MARKET @ 0.99990[DEFAULT] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-2, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-000000-000-001-3], parent_order_id=O-19700101-000000-000-001-1, tags=['STOP_LOSS']), LimitOrder(SELL 100_000 AUD/USD.SIM LIMIT @ 1.00010 GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-3, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-000000-000-001-2], parent_order_id=O-19700101-000000-000-001-1, tags=['TAKE_PROFIT'])])"  # noqa
         )
         assert repr(bracket) == (
-            "OrderList(id=OL-19700101-0000-000-001-1, instrument_id=AUD/USD.SIM, strategy_id=S-001, orders=[MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=None, position_id=None, contingency_type=OTO, linked_order_ids=[O-19700101-0000-000-001-2, O-19700101-0000-000-001-3], tags=ENTRY), StopMarketOrder(SELL 100_000 AUD/USD.SIM STOP_MARKET @ 0.99990[DEFAULT] GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-2, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-0000-000-001-3], parent_order_id=O-19700101-0000-000-001-1, tags=STOP_LOSS), LimitOrder(SELL 100_000 AUD/USD.SIM LIMIT @ 1.00010 GTC, status=INITIALIZED, client_order_id=O-19700101-0000-000-001-3, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-0000-000-001-2], parent_order_id=O-19700101-0000-000-001-1, tags=TAKE_PROFIT)])"  # noqa
+            "OrderList(id=OL-19700101-000000-000-001-1, instrument_id=AUD/USD.SIM, strategy_id=S-001, orders=[MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=None, position_id=None, contingency_type=OTO, linked_order_ids=[O-19700101-000000-000-001-2, O-19700101-000000-000-001-3], tags=['ENTRY']), StopMarketOrder(SELL 100_000 AUD/USD.SIM STOP_MARKET @ 0.99990[DEFAULT] GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-2, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-000000-000-001-3], parent_order_id=O-19700101-000000-000-001-1, tags=['STOP_LOSS']), LimitOrder(SELL 100_000 AUD/USD.SIM LIMIT @ 1.00010 GTC, status=INITIALIZED, client_order_id=O-19700101-000000-000-001-3, venue_order_id=None, position_id=None, contingency_type=OUO, linked_order_ids=[O-19700101-000000-000-001-2], parent_order_id=O-19700101-000000-000-001-1, tags=['TAKE_PROFIT'])])"  # noqa
         )
 
     def test_apply_order_denied_event(self):
@@ -1593,11 +1675,11 @@ class TestOrders:
         assert not order.is_closed
         assert (
             str(order)
-            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=ACCEPTED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=1, position_id=None, tags=None)"  # noqa
+            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=ACCEPTED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=1, position_id=None, tags=None)"  # noqa
         )
         assert (
             repr(order)
-            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=ACCEPTED, client_order_id=O-19700101-0000-000-001-1, venue_order_id=1, position_id=None, tags=None)"  # noqa
+            == "MarketOrder(BUY 100_000 AUD/USD.SIM MARKET GTC, status=ACCEPTED, client_order_id=O-19700101-000000-000-001-1, venue_order_id=1, position_id=None, tags=None)"  # noqa
         )
 
     def test_apply_order_rejected_event(self):

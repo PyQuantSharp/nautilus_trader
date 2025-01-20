@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -222,7 +222,7 @@ def test_pickling_round_trip_results_in_expected_tick():
 
     # Act
     pickled = pickle.dumps(synthetic)
-    unpickled = pickle.loads(pickled)  # S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)
 
     # Assert
     assert synthetic == unpickled

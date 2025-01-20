@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -70,13 +70,13 @@ cdef class ExecutionClient(Component):
     ----------
     client_id : ClientId
         The client ID.
-    venue : Venue, optional with no default so ``None`` must be passed explicitly
+    venue : Venue or ``None``
         The client venue. If multi-venue then can be ``None``.
     oms_type : OmsType
         The venues order management system type.
     account_type : AccountType
         The account type for the client.
-    base_currency : Currency, optional with no default so ``None`` must be passed explicitly
+    base_currency : Currency or ``None``
         The account base currency. Use ``None`` for multi-currency accounts.
     msgbus : MessageBus
         The message bus for the client.
@@ -170,7 +170,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `submit_order` method for this client.",  # pragma: no cover  # noqa
+            f"You can implement by overriding the `submit_order` method for this client",  # pragma: no cover  # noqa
         )
         raise NotImplementedError("method `submit_order` must be implemented in the subclass")
 
@@ -186,7 +186,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `submit_order_list` method for this client.",  # pragma: no cover   # noqa
+            f"You can implement by overriding the `submit_order_list` method for this client",  # pragma: no cover   # noqa
         )
         raise NotImplementedError("method `submit_order_list` must be implemented in the subclass")
 
@@ -202,7 +202,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `modify_order` method for this client.",  # pragma: no cover  # noqa
+            f"You can implement by overriding the `modify_order` method for this client",  # pragma: no cover  # noqa
         )
         raise NotImplementedError("method `modify_order` must be implemented in the subclass")
 
@@ -218,7 +218,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `cancel_order` method for this client.",  # pragma: no cover  # noqa
+            f"You can implement by overriding the `cancel_order` method for this client",  # pragma: no cover  # noqa
         )
         raise NotImplementedError("method `cancel_order` must be implemented in the subclass")
 
@@ -234,7 +234,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `cancel_all_orders` method for this client.",  # pragma: no cover  # noqa
+            f"You can implement by overriding the `cancel_all_orders` method for this client",  # pragma: no cover  # noqa
         )
         raise NotImplementedError("method `cancel_all_orders` must be implemented in the subclass")
 
@@ -250,7 +250,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `batch_cancel_orders` method for this client.",  # pragma: no cover  # noqa
+            f"You can implement by overriding the `batch_cancel_orders` method for this client",  # pragma: no cover  # noqa
         )
         raise NotImplementedError("method `batch_cancel_orders` must be implemented in the subclass")
 
@@ -267,7 +267,7 @@ cdef class ExecutionClient(Component):
         """
         self._log.error(  # pragma: no cover
             f"Cannot execute command {command}: not implemented. "  # pragma: no cover
-            f"You can implement by overriding the `query_order` method for this client.",  # pragma: no cover  # noqa
+            f"You can implement by overriding the `query_order` method for this client",  # pragma: no cover  # noqa
         )
         raise NotImplementedError("method `query_order` must be implemented in the subclass")
 
@@ -293,7 +293,7 @@ cdef class ExecutionClient(Component):
         reported : bool
             If the balances are reported directly from the exchange.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the account state event occurred.
+            UNIX timestamp (nanoseconds) when the account state event occurred.
         info : dict [str, object]
             The additional implementation specific account information.
 
@@ -333,7 +333,7 @@ cdef class ExecutionClient(Component):
         client_order_id : ClientOrderId
             The client order ID.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order submitted event occurred.
+            UNIX timestamp (nanoseconds) when the order submitted event occurred.
 
         """
         # Generate event
@@ -372,7 +372,7 @@ cdef class ExecutionClient(Component):
         reason : datetime
             The order rejected reason.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order rejected event occurred.
+            UNIX timestamp (nanoseconds) when the order rejected event occurred.
 
         """
         # Generate event
@@ -412,7 +412,7 @@ cdef class ExecutionClient(Component):
         venue_order_id : VenueOrderId
             The venue order ID (assigned by the venue).
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order accepted event occurred.
+            UNIX timestamp (nanoseconds) when the order accepted event occurred.
 
         """
         # Generate event
@@ -455,7 +455,7 @@ cdef class ExecutionClient(Component):
         reason : str
             The order update rejected reason.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order update rejection event occurred.
+            UNIX timestamp (nanoseconds) when the order update rejection event occurred.
 
         """
         # Generate event
@@ -499,7 +499,7 @@ cdef class ExecutionClient(Component):
         reason : str
             The order cancel rejected reason.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order cancel rejected event occurred.
+            UNIX timestamp (nanoseconds) when the order cancel rejected event occurred.
 
         """
         # Generate event
@@ -547,10 +547,10 @@ cdef class ExecutionClient(Component):
             The orders current quantity.
         price : Price
             The orders current price.
-        trigger_price : Price, optional with no default so ``None`` must be passed explicitly
+        trigger_price : Price or ``None``
             The orders current trigger price.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order update event occurred.
+            UNIX timestamp (nanoseconds) when the order update event occurred.
         venue_order_id_modified : bool
             If the ID was modified for this event.
 
@@ -606,7 +606,7 @@ cdef class ExecutionClient(Component):
         venue_order_id : VenueOrderId
             The venue order ID (assigned by the venue).
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when order canceled event occurred.
+            UNIX timestamp (nanoseconds) when order canceled event occurred.
 
         """
         # Generate event
@@ -646,7 +646,7 @@ cdef class ExecutionClient(Component):
         venue_order_id : VenueOrderId
             The venue order ID (assigned by the venue).
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order triggered event occurred.
+            UNIX timestamp (nanoseconds) when the order triggered event occurred.
 
         """
         # Generate event
@@ -686,7 +686,7 @@ cdef class ExecutionClient(Component):
         venue_order_id : VenueOrderId
             The venue order ID (assigned by the venue).
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order expired event occurred.
+            UNIX timestamp (nanoseconds) when the order expired event occurred.
 
         """
         # Generate event
@@ -720,6 +720,7 @@ cdef class ExecutionClient(Component):
         Money commission,
         LiquiditySide liquidity_side,
         uint64_t ts_event,
+        dict info = None,
     ):
         """
         Generate an `OrderFilled` event and send it to the `ExecutionEngine`.
@@ -736,7 +737,7 @@ cdef class ExecutionClient(Component):
             The venue order ID (assigned by the venue).
         trade_id : TradeId
             The trade ID.
-        venue_position_id : PositionId, optional with no default so ``None`` must be passed explicitly
+        venue_position_id : PositionId or ``None``
             The venue position ID associated with the order. If the trading
             venue has assigned a position ID / ticket then pass that here,
             otherwise pass ``None`` and the execution engine OMS will handle
@@ -756,7 +757,9 @@ cdef class ExecutionClient(Component):
         liquidity_side : LiquiditySide {``NO_LIQUIDITY_SIDE``, ``MAKER``, ``TAKER``}
             The execution liquidity side.
         ts_event : uint64_t
-            The UNIX timestamp (nanoseconds) when the order filled event occurred.
+            UNIX timestamp (nanoseconds) when the order filled event occurred.
+        info : dict[str, object], optional
+            The additional fill information.
 
         """
         Condition.not_none(instrument_id, "instrument_id")
@@ -781,6 +784,7 @@ cdef class ExecutionClient(Component):
             event_id=UUID4(),
             ts_event=ts_event,
             ts_init=self._clock.timestamp_ns(),
+            info=info,
         )
 
         self._send_order_event(fill)

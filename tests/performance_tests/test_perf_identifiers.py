@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -23,11 +23,7 @@ def test_symbol_equality(benchmark):
     def symbol_equality() -> bool:
         return symbol == symbol
 
-    benchmark.pedantic(
-        target=symbol_equality,
-        rounds=1_000_000,
-        iterations=1,
-    )
+    benchmark(symbol_equality)
 
 
 def test_venue_equality(benchmark):
@@ -36,8 +32,4 @@ def test_venue_equality(benchmark):
     def venue_equality() -> bool:
         return venue == venue
 
-    benchmark.pedantic(
-        target=venue_equality,
-        rounds=1_000_000,
-        iterations=1,
-    )
+    benchmark(venue_equality)

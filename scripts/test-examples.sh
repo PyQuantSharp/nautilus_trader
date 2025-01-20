@@ -4,7 +4,6 @@ set -e
 
 # Backtest examples
 example_scripts=(
-    # "betfair_backtest_orderbook_imbalance.py"
     "crypto_ema_cross_ethusdt_trade_ticks.py"
     "crypto_ema_cross_ethusdt_trailing_stop.py"
     "fx_ema_cross_audusd_bars_from_ticks.py"
@@ -20,7 +19,7 @@ do
 
     # Run the backtest script
     chmod +x "examples/backtest/$script"
-    yes | poetry run "examples/backtest/$script"
+    yes | python "examples/backtest/$script"
 
     # Get the exit status of the last example run
     exit_status=$?

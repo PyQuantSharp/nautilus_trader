@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,12 +30,12 @@ from nautilus_trader.model.objects import Quantity
 from nautilus_trader.serialization.arrow.serializer import make_dict_deserializer
 from nautilus_trader.serialization.arrow.serializer import make_dict_serializer
 from nautilus_trader.serialization.arrow.serializer import register_arrow
-from nautilus_trader.serialization.base import register_serializable_object
+from nautilus_trader.serialization.base import register_serializable_type
 
 
 class SubscriptionStatus(Enum):
     """
-    Represents a `Betfair` subscription status.
+    Represents a Betfair subscription status.
     """
 
     UNSUBSCRIBED = 0
@@ -72,6 +72,8 @@ class BSPOrderBookDelta(OrderBookDelta):
                 instrument_id=instrument_id,
                 action=action,
                 order=book_order,
+                flags=0,
+                sequence=0,
                 ts_event=batch["ts_event"].to_pylist()[idx],
                 ts_init=batch["ts_init"].to_pylist()[idx],
             )
@@ -121,7 +123,7 @@ class BSPOrderBookDelta(OrderBookDelta):
 
 class BetfairTicker(Data):
     """
-    Represents a `Betfair` ticker.
+    Represents a Betfair ticker.
     """
 
     def __init__(
@@ -153,7 +155,7 @@ class BetfairTicker(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -165,7 +167,7 @@ class BetfairTicker(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -246,7 +248,7 @@ class BetfairStartingPrice(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -258,7 +260,7 @@ class BetfairStartingPrice(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -300,7 +302,7 @@ class BetfairStartingPrice(Data):
 
 
 # Register serialization/parquet BetfairTicker
-register_serializable_object(
+register_serializable_type(
     BetfairTicker,
     BetfairTicker.to_dict,
     BetfairTicker.from_dict,
@@ -314,7 +316,7 @@ register_arrow(
 )
 
 # Register serialization/parquet BetfairStartingPrice
-register_serializable_object(
+register_serializable_type(
     BetfairStartingPrice,
     BetfairStartingPrice.to_dict,
     BetfairStartingPrice.from_dict,
@@ -329,7 +331,7 @@ register_arrow(
 
 
 # Register serialization/parquet BSPOrderBookDeltas
-register_serializable_object(
+register_serializable_type(
     BSPOrderBookDelta,
     BSPOrderBookDelta.to_dict,
     BSPOrderBookDelta.from_dict,

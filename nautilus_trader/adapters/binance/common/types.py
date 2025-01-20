@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -28,9 +28,9 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceBar(Bar):
     """
-    Represents an aggregated `Binance` bar.
+    Represents an aggregated Binance bar.
 
-    This data type includes the raw data provided by `Binance`.
+    This data type includes the raw data provided by Binance.
 
     Parameters
     ----------
@@ -55,9 +55,9 @@ class BinanceBar(Bar):
     taker_buy_quote_volume : Decimal
         The liquidity taker volume on the buy side for the quote asset.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
 
     References
     ----------
@@ -141,7 +141,7 @@ class BinanceBar(Bar):
     @staticmethod
     def from_dict(values: dict[str, Any]) -> BinanceBar:
         """
-        Return a `Binance` bar parsed from the given values.
+        Return a Binance bar parsed from the given values.
 
         Parameters
         ----------
@@ -197,9 +197,9 @@ class BinanceBar(Bar):
 
 class BinanceTicker(Data):
     """
-    Represents a `Binance` 24hr statistics ticker.
+    Represents a Binance 24hr statistics ticker.
 
-    This data type includes the raw data provided by `Binance`.
+    This data type includes the raw data provided by Binance.
 
     Parameters
     ----------
@@ -236,9 +236,9 @@ class BinanceTicker(Data):
     quote_volume : Decimal
         The quote volume.
     open_time_ms : int
-        The UNIX timestamp (milliseconds) when the ticker opened.
+        UNIX timestamp (milliseconds) when the ticker opened.
     close_time_ms : int
-        The UNIX timestamp (milliseconds) when the ticker closed.
+        UNIX timestamp (milliseconds) when the ticker closed.
     first_id : int
         The first trade match ID (assigned by the venue) for the ticker.
     last_id : int
@@ -246,9 +246,9 @@ class BinanceTicker(Data):
     count : int
         The count of trades over the tickers time range.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the ticker event occurred.
+        UNIX timestamp (nanoseconds) when the ticker event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
     References
     ----------
@@ -346,7 +346,7 @@ class BinanceTicker(Data):
     @property
     def ts_event(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
 
         Returns
         -------
@@ -358,7 +358,7 @@ class BinanceTicker(Data):
     @property
     def ts_init(self) -> int:
         """
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
 
         Returns
         -------
@@ -370,7 +370,7 @@ class BinanceTicker(Data):
     @staticmethod
     def from_dict(values: dict[str, Any]) -> BinanceTicker:
         """
-        Return a `Binance Spot/Margin` ticker parsed from the given values.
+        Return a Binance Spot/Margin ticker parsed from the given values.
 
         Parameters
         ----------

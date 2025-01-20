@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -41,4 +41,4 @@ cdef class AccountsManager:
     cdef void _update_balance_single_currency(self, Account account, OrderFilled fill, Money pnl)
     cdef void _update_balance_multi_currency(self, Account account, OrderFilled fill, list pnls)
     cdef AccountState _generate_account_state(self, Account account, uint64_t ts_event)
-    cdef double _calculate_xrate_to_base(self, Account account, Instrument instrument, OrderSide side)
+    cdef object _calculate_xrate_to_base(self, Account account, Instrument instrument, OrderSide side)

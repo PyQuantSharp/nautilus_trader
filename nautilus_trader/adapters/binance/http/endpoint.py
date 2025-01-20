@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,16 +18,14 @@ from typing import Any
 import msgspec
 
 from nautilus_trader.adapters.binance.common.enums import BinanceSecurityType
-from nautilus_trader.adapters.binance.common.schemas.symbol import BinanceSymbol
-from nautilus_trader.adapters.binance.common.schemas.symbol import BinanceSymbols
+from nautilus_trader.adapters.binance.common.symbol import BinanceSymbol
+from nautilus_trader.adapters.binance.common.symbol import BinanceSymbols
 from nautilus_trader.adapters.binance.http.client import BinanceHttpClient
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 
 def enc_hook(obj: Any) -> Any:
-    if isinstance(obj, BinanceSymbol):
-        return str(obj)  # serialize BinanceSymbol as string.
-    elif isinstance(obj, BinanceSymbols):
+    if isinstance(obj, BinanceSymbol) or isinstance(obj, BinanceSymbols):
         return str(obj)  # serialize BinanceSymbol as string.
     else:
         raise TypeError(f"Objects of type {type(obj)} are not supported")
@@ -68,10 +66,10 @@ class BinanceHttpEndpoint:
     async def _method(
         self,
         method_type: HttpMethod,
-        parameters: Any,
+        params: Any,
         ratelimiter_keys: list[str] | None = None,
     ) -> bytes:
-        payload: dict = self.decoder.decode(self.encoder.encode(parameters))
+        payload: dict = self.decoder.decode(self.encoder.encode(params))
         if self.methods_desc[method_type] is None:
             raise RuntimeError(
                 f"{method_type.name} not available for {self.url_path}",

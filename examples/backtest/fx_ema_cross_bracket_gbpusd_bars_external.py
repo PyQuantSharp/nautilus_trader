@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     GBPUSD_SIM = TestInstrumentProvider.default_fx_ccy("GBP/USD", SIM)
     engine.add_instrument(GBPUSD_SIM)
 
-    # Setup wranglers
+    # Set up wranglers
     bid_wrangler = BarDataWrangler(
         bar_type=BarType.from_str("GBP/USD.SIM-1-MINUTE-BID-EXTERNAL"),
         instrument=GBPUSD_SIM,

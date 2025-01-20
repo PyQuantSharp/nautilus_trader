@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,31 +13,29 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use anyhow::Result;
+//! Type stubs to facilitate testing.
+
 use rstest::fixture;
 use rust_decimal::prelude::ToPrimitive;
 
 use crate::{
     data::order::BookOrder,
-    enums::{LiquiditySide, OrderSide},
-    identifiers::instrument_id::InstrumentId,
-    instruments::{currency_pair::CurrencyPair, stubs::audusd_sim, Instrument},
-    orderbook::book_mbp::OrderBookMbp,
-    orders::{
-        market::MarketOrder,
-        stubs::{TestOrderEventStubs, TestOrderStubs},
-    },
+    enums::{BookType, LiquiditySide, OrderSide, OrderType},
+    identifiers::InstrumentId,
+    instruments::{stubs::audusd_sim, CurrencyPair, InstrumentAny},
+    orderbook::OrderBook,
+    orders::{builder::OrderTestBuilder, stubs::TestOrderEventStubs},
     position::Position,
-    types::{money::Money, price::Price, quantity::Quantity},
+    types::{Money, Price, Quantity},
 };
 
 /// Calculate commission for testing
-pub fn calculate_commission<T: Instrument>(
-    instrument: T,
+pub fn calculate_commission(
+    instrument: &InstrumentAny,
     last_qty: Quantity,
     last_px: Price,
     use_quote_for_inverse: Option<bool>,
-) -> Result<Money> {
+) -> anyhow::Result<Money> {
     let liquidity_side = LiquiditySide::Taker;
     assert_ne!(
         liquidity_side,
@@ -52,58 +50,63 @@ pub fn calculate_commission<T: Instrument>(
     } else if liquidity_side == LiquiditySide::Taker {
         notional * instrument.taker_fee().to_f64().unwrap()
     } else {
-        panic!("Invalid liquid side {liquidity_side}")
+        panic!("Invalid liquidity side {liquidity_side}")
     };
     if instrument.is_inverse() && !use_quote_for_inverse.unwrap_or(false) {
-        Ok(Money::new(commission, instrument.base_currency().unwrap()).unwrap())
+        Ok(Money::new(commission, instrument.base_currency().unwrap()))
     } else {
-        Ok(Money::new(commission, instrument.quote_currency()).unwrap())
+        Ok(Money::new(commission, instrument.quote_currency()))
     }
 }
 
 #[fixture]
-pub fn test_position_long(audusd_sim: CurrencyPair) -> Position {
-    let order =
-        TestOrderStubs::market_order(audusd_sim.id, OrderSide::Buy, Quantity::from(1), None, None);
-    let order_filled = TestOrderEventStubs::order_filled::<MarketOrder, CurrencyPair>(
+pub fn stub_position_long(audusd_sim: CurrencyPair) -> Position {
+    let audusd_sim = InstrumentAny::CurrencyPair(audusd_sim);
+    let order = OrderTestBuilder::new(OrderType::Market)
+        .instrument_id(audusd_sim.id())
+        .side(OrderSide::Buy)
+        .quantity(Quantity::from(1))
+        .build();
+    let filled = TestOrderEventStubs::order_filled(
         &order,
         &audusd_sim,
-        None,
         None,
         None,
         Some(Price::from("1.0002")),
         None,
         None,
         None,
+        None,
+        None,
     );
-    Position::new(audusd_sim, order_filled).unwrap()
+    Position::new(&audusd_sim, filled.into())
 }
 
 #[fixture]
-pub fn test_position_short(audusd_sim: CurrencyPair) -> Position {
-    let order = TestOrderStubs::market_order(
-        audusd_sim.id,
-        OrderSide::Sell,
-        Quantity::from(1),
-        None,
-        None,
-    );
-    let order_filled = TestOrderEventStubs::order_filled::<MarketOrder, CurrencyPair>(
+pub fn stub_position_short(audusd_sim: CurrencyPair) -> Position {
+    let audusd_sim = InstrumentAny::CurrencyPair(audusd_sim);
+    let order = OrderTestBuilder::new(OrderType::Market)
+        .instrument_id(audusd_sim.id())
+        .side(OrderSide::Sell)
+        .quantity(Quantity::from(1))
+        .build();
+    let filled = TestOrderEventStubs::order_filled(
         &order,
         &audusd_sim,
-        None,
         None,
         None,
         Some(Price::from("22000.0")),
         None,
         None,
         None,
+        None,
+        None,
     );
-    Position::new(audusd_sim, order_filled).unwrap()
+    Position::new(&audusd_sim, filled.into())
 }
 
 #[must_use]
-pub fn stub_order_book_mbp_appl_xnas() -> OrderBookMbp {
+pub fn stub_order_book_mbp_appl_xnas() -> OrderBook {
     stub_order_book_mbp(
         InstrumentId::from("AAPL.XNAS"),
         101.0,
@@ -131,28 +134,26 @@ pub fn stub_order_book_mbp(
     size_precision: u8,
     size_increment: f64,
     num_levels: usize,
-) -> OrderBookMbp {
-    let mut book = OrderBookMbp::new(instrument_id, false);
+) -> OrderBook {
+    let mut book = OrderBook::new(instrument_id, BookType::L2_MBP);
 
     // Generate bids
     for i in 0..num_levels {
         let price = Price::new(
             price_increment.mul_add(-(i as f64), top_bid_price),
             price_precision,
-        )
-        .unwrap();
+        );
         let size = Quantity::new(
             size_increment.mul_add(i as f64, top_bid_size),
             size_precision,
-        )
-        .unwrap();
+        );
         let order = BookOrder::new(
             OrderSide::Buy,
             price,
             size,
             0, // order_id not applicable for MBP (market by price) books
         );
-        book.add(order, 0, 1);
+        book.add(order, 0, 1, 2.into());
     }
 
     // Generate asks
@@ -160,20 +161,18 @@ pub fn stub_order_book_mbp(
         let price = Price::new(
             price_increment.mul_add(i as f64, top_ask_price),
             price_precision,
-        )
-        .unwrap();
+        );
         let size = Quantity::new(
             size_increment.mul_add(i as f64, top_ask_size),
             size_precision,
-        )
-        .unwrap();
+        );
         let order = BookOrder::new(
             OrderSide::Sell,
             price,
             size,
             0, // order_id not applicable for MBP (market by price) books
         );
-        book.add(order, 0, 1);
+        book.add(order, 0, 1, 2.into());
     }
 
     book

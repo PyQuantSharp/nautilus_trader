@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import itertools
 import os
-import pathlib
 import platform
 from collections import defaultdict
 from collections.abc import Callable
@@ -25,7 +24,7 @@ from collections.abc import Generator
 from itertools import groupby
 from os import PathLike
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Union
 
 import fsspec
 import pandas as pd
@@ -37,14 +36,15 @@ from fsspec.implementations.memory import MemoryFileSystem
 from fsspec.utils import infer_storage_options
 from pyarrow import ArrowInvalid
 
+from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.core.data import Data
 from nautilus_trader.core.datetime import dt_to_unix_nanos
+from nautilus_trader.core.datetime import time_object_to_dt
 from nautilus_trader.core.inspect import is_nautilus_class
 from nautilus_trader.core.message import Event
 from nautilus_trader.core.nautilus_pyo3 import DataBackendSession
 from nautilus_trader.core.nautilus_pyo3 import NautilusDataType
-from nautilus_trader.model import NautilusRustDataType
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import CustomData
 from nautilus_trader.model.data import DataType
@@ -64,6 +64,14 @@ from nautilus_trader.serialization.arrow.serializer import list_schemas
 
 
 TimestampLike = int | str | float
+
+NautilusRustDataType = Union[  # noqa: UP007 (mypy does not like pipe operators)
+    nautilus_pyo3.OrderBookDelta,
+    nautilus_pyo3.OrderBookDepth10,
+    nautilus_pyo3.QuoteTick,
+    nautilus_pyo3.TradeTick,
+    nautilus_pyo3.Bar,
+]
 
 
 class FeatherFile(NamedTuple):
@@ -111,7 +119,7 @@ class ParquetDataCatalog(BaseDataCatalog):
 
     Notes
     -----
-    For more details about `fsspec` and its filesystem protocols, see
+    For further details about `fsspec` and its filesystem protocols, see
     https://filesystem-spec.readthedocs.io/en/latest/.
 
     """
@@ -123,11 +131,16 @@ class ParquetDataCatalog(BaseDataCatalog):
         fs_storage_options: dict | None = None,
         dataset_kwargs: dict | None = None,
         min_rows_per_group: int = 0,
-        max_rows_per_group: int = 5000,
+        max_rows_per_group: int = 5_000,
         show_query_paths: bool = False,
     ) -> None:
         self.fs_protocol: str = fs_protocol or _DEFAULT_FS_PROTOCOL
+        if isinstance(self.fs_protocol, str) and self.fs_protocol.startswith("("):
+            print(f"Unexpected `fs_protocol` format: {self.fs_protocol}, defaulting to 'file'")
+            self.fs_protocol = "file"
+
         self.fs_storage_options = fs_storage_options or {}
+
         self.fs: fsspec.AbstractFileSystem = fsspec.filesystem(
             self.fs_protocol,
             **self.fs_storage_options,
@@ -138,7 +151,10 @@ class ParquetDataCatalog(BaseDataCatalog):
         self.max_rows_per_group = max_rows_per_group
         self.show_query_paths = show_query_paths
 
-        final_path = str(make_path_posix(str(path)))
+        if self.fs_protocol == "file":
+            final_path = str(make_path_posix(str(path)))
+        else:
+            final_path = str(path)
 
         if (
             isinstance(self.fs, MemoryFileSystem)
@@ -201,13 +217,13 @@ class ParquetDataCatalog(BaseDataCatalog):
         sorted_data = sorted(data, key=lambda x: x.ts_init)
 
         # Check data is strictly non-decreasing prior to write
-        for original, sorted_version in zip(data, sorted_data):
+        for original, sorted_version in zip(data, sorted_data, strict=False):
             if original.ts_init != sorted_version.ts_init:
                 raise ValueError(
                     "Data should be monotonically increasing (or non-decreasing) based on `ts_init`: "
                     f"found {original.ts_init} followed by {sorted_version.ts_init}. "
                     "Consider sorting your data with something like "
-                    "`data.sort(key=lambda x: x.ts_init)` prior to writing to the catalog.",
+                    "`data.sort(key=lambda x: x.ts_init)` prior to writing to the catalog",
                 )
 
         table_or_batch = self.serializer.serialize_batch(data, data_cls=data_cls)
@@ -232,6 +248,7 @@ class ParquetDataCatalog(BaseDataCatalog):
         data_cls: type[Data],
         instrument_id: str | None = None,
         basename_template: str = "part-{i}",
+        mode: str = "overwrite",
         **kwargs: Any,
     ) -> None:
         if isinstance(data[0], CustomData):
@@ -246,6 +263,7 @@ class ParquetDataCatalog(BaseDataCatalog):
                 path=path,
                 fs=self.fs,
                 basename_template=basename_template,
+                mode=mode,
             )
         else:
             # Write parquet file
@@ -257,8 +275,7 @@ class ParquetDataCatalog(BaseDataCatalog):
                 filesystem=self.fs,
                 min_rows_per_group=self.min_rows_per_group,
                 max_rows_per_group=self.max_rows_per_group,
-                **self.dataset_kwargs,
-                **kwargs,
+                **kw,
             )
 
     def _fast_write(
@@ -267,20 +284,43 @@ class ParquetDataCatalog(BaseDataCatalog):
         path: str,
         fs: fsspec.AbstractFileSystem,
         basename_template: str,
+        mode: str = "overwrite",
     ) -> None:
         name = basename_template.format(i=0)
         fs.mkdirs(path, exist_ok=True)
-        pq.write_table(
-            table,
-            where=f"{path}/{name}.parquet",
-            filesystem=fs,
-            row_group_size=self.max_rows_per_group,
-        )
+        parquet_file = f"{path}/{name}.parquet"
+
+        # following solution from https://stackoverflow.com/a/70817689
+        if mode != "overwrite" and Path(parquet_file).exists():
+            existing_table = pq.read_table(source=parquet_file, pre_buffer=False, memory_map=True)
+
+            with pq.ParquetWriter(
+                where=parquet_file,
+                schema=existing_table.schema,
+                filesystem=fs,
+                write_batch_size=self.max_rows_per_group,
+            ) as pq_writer:
+                table = table.cast(existing_table.schema)
+
+                if mode == "append":
+                    pq_writer.write_table(existing_table)
+                    pq_writer.write_table(table)
+                elif mode == "prepend":
+                    pq_writer.write_table(table)
+                    pq_writer.write_table(existing_table)
+        else:
+            pq.write_table(
+                table,
+                where=parquet_file,
+                filesystem=fs,
+                row_group_size=self.max_rows_per_group,
+            )
 
     def write_data(
         self,
         data: list[Data | Event] | list[NautilusRustDataType],
         basename_template: str = "part-{i}",
+        mode: str = "overwrite",
         **kwargs: Any,
     ) -> None:
         """
@@ -299,6 +339,13 @@ class ParquetDataCatalog(BaseDataCatalog):
             The token '{i}' will be replaced with an automatically incremented
             integer as files are partitioned.
             If not specified, it defaults to 'part-{i}' + the default extension '.parquet'.
+        mode : str, optional
+            The mode to use when writing data and when not using using the "partitioning" option.
+            Can be one of the following:
+            - "append": Appends the data to the existing data.
+            - "prepend": Prepends the data to the existing data.
+            - "overwrite": Overwrites the existing data.
+            If not specified, it defaults to 'overwrite'.
         kwargs : Any
             Additional keyword arguments to be passed to the `write_chunk` method.
 
@@ -311,11 +358,11 @@ class ParquetDataCatalog(BaseDataCatalog):
 
         Notes
         -----
-         - All data of the same type is expected to be monotonically increasing, or non-decreasing
-         - The data is sorted and grouped based on its class name and instrument ID (if applicable) before writing
-         - Instrument-specific data should have either an `instrument_id` attribute or be an instance of `Instrument`
-         - The `Bar` class is treated as a special case, being grouped based on its `bar_type` attribute
-         - The input data list must be non-empty, and all data items must be of the appropriate class type
+         - All data of the same type is expected to be monotonically increasing, or non-decreasing.
+         - The data is sorted and grouped based on its class name and instrument ID (if applicable) before writing.
+         - Instrument-specific data should have either an `instrument_id` attribute or be an instance of `Instrument`.
+         - The `Bar` class is treated as a special case, being grouped based on its `bar_type` attribute.
+         - The input data list must be non-empty, and all data items must be of the appropriate class type.
 
         Raises
         ------
@@ -331,13 +378,13 @@ class ParquetDataCatalog(BaseDataCatalog):
                 name = type(obj).__name__
             if isinstance(obj, Instrument):
                 return name, obj.id.value
-            elif isinstance(obj, Bar):
+            elif hasattr(obj, "bar_type"):
                 return name, str(obj.bar_type)
             elif hasattr(obj, "instrument_id"):
                 return name, obj.instrument_id.value
             return name, None
 
-        def obj_to_type(obj) -> type:
+        def obj_to_type(obj: Data) -> type:
             return type(obj) if not isinstance(obj, CustomData) else obj.data.__class__
 
         name_to_cls = {cls.__name__: cls for cls in {obj_to_type(d) for d in data}}
@@ -348,6 +395,7 @@ class ParquetDataCatalog(BaseDataCatalog):
                 data_cls=name_to_cls[cls_name],
                 instrument_id=instrument_id,
                 basename_template=basename_template,
+                mode=mode,
                 **kwargs,
             )
 
@@ -363,7 +411,14 @@ class ParquetDataCatalog(BaseDataCatalog):
         where: str | None = None,
         **kwargs: Any,
     ) -> list[Data | CustomData]:
-        if data_cls in (OrderBookDelta, OrderBookDepth10, QuoteTick, TradeTick, Bar):
+        if self.fs_protocol == "file" and data_cls in (
+            OrderBookDelta,
+            OrderBookDeltas,
+            OrderBookDepth10,
+            QuoteTick,
+            TradeTick,
+            Bar,
+        ):
             data = self.query_rust(
                 data_cls=data_cls,
                 instrument_ids=instrument_ids,
@@ -377,6 +432,7 @@ class ParquetDataCatalog(BaseDataCatalog):
             data = self.query_pyarrow(
                 data_cls=data_cls,
                 instrument_ids=instrument_ids,
+                bar_types=bar_types,
                 start=start,
                 end=end,
                 where=where,
@@ -407,21 +463,39 @@ class ParquetDataCatalog(BaseDataCatalog):
 
         if session is None:
             session = DataBackendSession()
-        if session is None:
-            raise ValueError("`session` was `None` when a value was expected")
 
         file_prefix = class_to_filename(data_cls)
         glob_path = f"{self.path}/data/{file_prefix}/**/*"
-        dirs = self.fs.glob(glob_path)
-        if self.show_query_paths:
-            print(dirs)
+        paths: list[str] = self.fs.glob(glob_path)
 
-        for idx, path in enumerate(dirs):
+        # Ensure all paths are files (fsspec now includes directories in recursive globbing)
+        paths = [path for path in paths if self.fs.isfile(path)]
+
+        if self.show_query_paths:
+            for dir in paths:
+                print(dir)
+
+        for idx, path in enumerate(paths):
             assert self.fs.exists(path)
-            if instrument_ids and not any(urisafe_instrument_id(x) in path for x in instrument_ids):
+            # Parse the parent directory which *should* be the instrument ID,
+            # this prevents us matching all instrument ID substrings.
+            dir = path.split("/")[-2]
+
+            # Filter by instrument ID
+            if data_cls == Bar:
+                if instrument_ids and not any(
+                    dir.startswith(urisafe_instrument_id(x) + "-") for x in instrument_ids
+                ):
+                    continue
+            elif instrument_ids and not any(
+                dir == urisafe_instrument_id(x) for x in instrument_ids
+            ):
                 continue
-            if bar_types and not any(urisafe_instrument_id(x) in path for x in bar_types):
+
+            # Filter by bar type
+            if bar_types and not any(dir == urisafe_instrument_id(x) for x in bar_types):
                 continue
+
             table = f"{file_prefix}_{idx}"
             query = self._build_query(
                 table,
@@ -445,8 +519,9 @@ class ParquetDataCatalog(BaseDataCatalog):
         where: str | None = None,
         **kwargs: Any,
     ) -> list[Data]:
+        query_data_cls = OrderBookDelta if data_cls == OrderBookDeltas else data_cls
         session = self.backend_session(
-            data_cls=data_cls,
+            data_cls=query_data_cls,
             instrument_ids=instrument_ids,
             bar_types=bar_types,
             start=start,
@@ -462,12 +537,18 @@ class ParquetDataCatalog(BaseDataCatalog):
         for chunk in result:
             data.extend(capsule_to_list(chunk))
 
+        if data_cls == OrderBookDeltas:
+            # Batch process deltas into `OrderBookDeltas`,
+            # will warn when there are deltas after the final `F_LAST` flag.
+            data = OrderBookDeltas.batch(data)
+
         return data
 
     def query_pyarrow(
         self,
         data_cls: type,
         instrument_ids: list[str] | None = None,
+        bar_types: list[str] | None = None,
         start: TimestampLike | None = None,
         end: TimestampLike | None = None,
         filter_expr: str | None = None,
@@ -481,6 +562,7 @@ class ParquetDataCatalog(BaseDataCatalog):
             path=dataset_path,
             filter_expr=filter_expr,
             instrument_ids=instrument_ids,
+            bar_types=bar_types,
             start=start,
             end=end,
         )
@@ -499,9 +581,34 @@ class ParquetDataCatalog(BaseDataCatalog):
         path: str,
         filter_expr: str | None = None,
         instrument_ids: list[str] | None = None,
+        bar_types: list[str] | None = None,
         start: TimestampLike | None = None,
         end: TimestampLike | None = None,
         ts_column: str = "ts_init",
+    ) -> pds.Dataset | None:
+        # Original dataset
+        dataset = self._load_dataset(
+            path=path,
+            instrument_ids=instrument_ids,
+            bar_types=bar_types,
+        )
+
+        if dataset is None:
+            return None
+
+        return self._filter_dataset(
+            dataset=dataset,
+            filter_expr=filter_expr,
+            start=start,
+            end=end,
+            ts_column=ts_column,
+        )
+
+    def _load_dataset(
+        self,
+        path: str,
+        instrument_ids: list[str] | str | None = None,
+        bar_types: list[str] | str | None = None,
     ) -> pds.Dataset | None:
         # Original dataset
         dataset = pds.dataset(path, filesystem=self.fs)
@@ -510,6 +617,7 @@ class ParquetDataCatalog(BaseDataCatalog):
         if instrument_ids is not None:
             if not isinstance(instrument_ids, list):
                 instrument_ids = [instrument_ids]
+
             valid_files = [
                 fn
                 for fn in dataset.files
@@ -517,7 +625,30 @@ class ParquetDataCatalog(BaseDataCatalog):
             ]
             dataset = pds.dataset(valid_files, filesystem=self.fs)
 
+        if bar_types is not None:
+            if not isinstance(bar_types, list):
+                bar_types = [bar_types]
+
+            valid_files = [
+                fn for fn in dataset.files if any(str(x).replace("/", "") in fn for x in bar_types)
+            ]
+            dataset = pds.dataset(valid_files, filesystem=self.fs)
+
+        return dataset
+
+    def _filter_dataset(
+        self,
+        dataset: pds.Dataset,
+        filter_expr: str | None = None,
+        start: TimestampLike | None = None,
+        end: TimestampLike | None = None,
+        ts_column: str = "ts_init",
+    ) -> pds.Dataset | None:
+        if dataset is None:
+            return None
+
         filters: list[pds.Expression] = [filter_expr] if filter_expr is not None else []
+
         if start is not None:
             filters.append(pds.field(ts_column) >= pd.Timestamp(start).value)
         if end is not None:
@@ -526,7 +657,63 @@ class ParquetDataCatalog(BaseDataCatalog):
             filter_ = combine_filters(*filters)
         else:
             filter_ = None
+
         return dataset.to_table(filter=filter_)
+
+    def query_last_timestamp(
+        self,
+        data_cls: type,
+        instrument_id: str | None = None,
+        bar_type: str | None = None,
+        ts_column: str = "ts_init",
+    ) -> pd.Timestamp | None:
+        if data_cls == Instrument:
+            for instrument_type in Instrument.__subclasses__():
+                last_timestamp = self._query_last_timestamp(
+                    data_cls=instrument_type,
+                    instrument_id=instrument_id,
+                    bar_type=bar_type,
+                    ts_column=ts_column,
+                )
+
+                if last_timestamp is not None:
+                    return last_timestamp
+
+            return None
+
+        return self._query_last_timestamp(
+            data_cls=data_cls,
+            instrument_id=instrument_id,
+            bar_type=bar_type,
+            ts_column=ts_column,
+        )
+
+    def _query_last_timestamp(
+        self,
+        data_cls: type,
+        instrument_id: str | None = None,
+        bar_type: str | None = None,
+        ts_column: str = "ts_init",
+    ) -> pd.Timestamp | None:
+        file_prefix = class_to_filename(data_cls)
+        dataset_path = f"{self.path}/data/{file_prefix}"
+
+        if not self.fs.exists(dataset_path):
+            return None
+
+        # Original dataset
+        dataset = self._load_dataset(
+            path=dataset_path,
+            instrument_ids=instrument_id,
+            bar_types=bar_type,
+        )
+
+        if dataset is None:
+            return None
+
+        return time_object_to_dt(
+            dataset.sort_by([(ts_column, "descending")]).head(1)[ts_column].to_pylist()[0],
+        )
 
     def _build_query(
         self,
@@ -548,6 +735,7 @@ class ParquetDataCatalog(BaseDataCatalog):
         if conditions:
             query += f" WHERE {' AND '.join(conditions)}"
 
+        query += " ORDER BY ts_init"
         return query
 
     @staticmethod
@@ -575,7 +763,7 @@ class ParquetDataCatalog(BaseDataCatalog):
         data = ArrowSerializer.deserialize(data_cls=data_cls, batch=table)
         # TODO (bm/cs) remove when pyo3 objects are used everywhere.
         module = data[0].__class__.__module__
-        if "builtins" in module:
+        if "nautilus_pyo3" in module:
             cython_cls = {
                 "OrderBookDelta": OrderBookDelta,
                 "OrderBookDeltas": OrderBookDelta,
@@ -584,7 +772,7 @@ class ParquetDataCatalog(BaseDataCatalog):
                 "TradeTick": TradeTick,
                 "Bar": Bar,
             }.get(data_cls.__name__, data_cls.__name__)
-            data = cython_cls.from_pyo3(data)
+            data = cython_cls.from_pyo3_list(data)
         return data
 
     def _query_subclasses(
@@ -637,17 +825,18 @@ class ParquetDataCatalog(BaseDataCatalog):
             **kwargs,
         )
 
-    def list_data_types(self):
-        glob_path = f"{self.path}/data/*"
-        return [pathlib.Path(p).stem for p in self.fs.glob(glob_path)]
+    def _list_directory_stems(self, subdirectory: str) -> list[str]:
+        glob_path = f"{self.path}/{subdirectory}/*"
+        return [Path(p).stem for p in self.fs.glob(glob_path)]
+
+    def list_data_types(self) -> list[str]:
+        return self._list_directory_stems("data")
 
     def list_backtest_runs(self) -> list[str]:
-        glob_path = f"{self.path}/backtest/*"
-        return [p.stem for p in map(Path, self.fs.glob(glob_path))]
+        return self._list_directory_stems("backtest")
 
     def list_live_runs(self) -> list[str]:
-        glob_path = f"{self.path}/live/*"
-        return [p.stem for p in map(Path, self.fs.glob(glob_path))]
+        return self._list_directory_stems("live")
 
     def read_live_run(self, instance_id: str, **kwargs: Any) -> list[Data]:
         return self._read_feather(kind="live", instance_id=instance_id, **kwargs)
@@ -692,14 +881,24 @@ class ParquetDataCatalog(BaseDataCatalog):
         prefix = f"{self.path}/{kind}/{urisafe_instrument_id(instance_id)}"
 
         # Non-instrument feather files
-        for fn in self.fs.glob(f"{prefix}/*.feather"):
-            cls_name = fn.replace(prefix + "/", "").replace(".feather", "")
-            yield FeatherFile(path=fn, class_name=cls_name)
+        for path_str in self.fs.glob(f"{prefix}/*.feather"):
+            if not Path(path_str).is_file():
+                continue
+            file_name = path_str.replace(prefix + "/", "").replace(".feather", "")
+            cls_name = "_".join(file_name.split("_")[:-1])
+            if not cls_name:
+                raise ValueError(f"`cls_name` was empty when a value was expected: {path_str}")
+            yield FeatherFile(path=path_str, class_name=cls_name)
 
         # Per-instrument feather files
-        for ins_fn in self.fs.glob(f"{prefix}/**/*.feather"):
-            ins_cls_name = pathlib.Path(ins_fn.replace(prefix + "/", "")).parent.name
-            yield FeatherFile(path=ins_fn, class_name=ins_cls_name)
+        for path_str in self.fs.glob(f"{prefix}/**/*.feather"):
+            if not Path(path_str).is_file():
+                continue
+            file_name = path_str.replace(prefix + "/", "").replace(".feather", "")
+            cls_name = Path(file_name).parent.name
+            if not cls_name:
+                continue
+            yield FeatherFile(path=path_str, class_name=cls_name)
 
     def _read_feather_file(
         self,
@@ -713,3 +912,31 @@ class ParquetDataCatalog(BaseDataCatalog):
                 return reader.read_all()
         except (pa.ArrowInvalid, OSError):
             return None
+
+    def convert_stream_to_data(
+        self,
+        instance_id: str,
+        data_cls: type,
+        other_catalog: ParquetDataCatalog | None = None,
+        subdirectory: str = "backtest",
+        **kwargs: Any,
+    ) -> None:
+        table_name = class_to_filename(data_cls)
+        feather_dir = Path(self.path) / subdirectory / instance_id
+
+        if (feather_dir / table_name).is_dir():
+            feather_files = sorted((feather_dir / table_name).glob("*.feather"))
+        else:
+            feather_files = sorted(feather_dir.glob(f"{table_name}_*.feather"))
+
+        all_data = []
+        for feather_file in feather_files:
+            feather_table = self._read_feather_file(str(feather_file))
+            if feather_table is not None:
+                custom_data_list = self._handle_table_nautilus(feather_table, data_cls)
+                all_data.extend(custom_data_list)
+
+        all_data.sort(key=lambda x: x.ts_init)
+
+        used_catalog = self if other_catalog is None else other_catalog
+        used_catalog.write_data(all_data, **kwargs)

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,18 +22,18 @@ use nautilus_core::{
     ffi::{
         cvec::CVec,
         parsing::{bytes_to_string_vec, string_vec_to_bytes},
-        string::{cstr_to_str, str_to_cstr},
+        string::{cstr_as_str, str_to_cstr},
     },
-    time::UnixNanos,
+    UnixNanos,
 };
 
 use crate::{
-    identifiers::{instrument_id::InstrumentId, symbol::Symbol},
+    identifiers::{InstrumentId, Symbol},
     instruments::synthetic::SyntheticInstrument,
-    types::price::{Price, ERROR_PRICE},
+    types::{Price, ERROR_PRICE},
 };
 
-/// Provides a C compatible Foreign Function Interface (FFI) for an underlying
+/// C compatible Foreign Function Interface (FFI) for an underlying
 /// [`SyntheticInstrument`].
 ///
 /// This struct wraps `SyntheticInstrument` in a way that makes it compatible with C function
@@ -78,17 +78,17 @@ pub unsafe extern "C" fn synthetic_instrument_new(
         .into_iter()
         .map(|s| InstrumentId::from(s.as_str()))
         .collect::<Vec<InstrumentId>>();
-    let formula = cstr_to_str(formula_ptr).to_string();
+    let formula = cstr_as_str(formula_ptr).to_string();
     let synth = SyntheticInstrument::new(
         symbol,
         price_precision,
         components,
         formula,
-        ts_event,
-        ts_init,
+        ts_event.into(),
+        ts_init.into(),
     );
 
-    SyntheticInstrument_API(Box::new(synth.unwrap()))
+    SyntheticInstrument_API(Box::new(synth))
 }
 
 #[no_mangle]
@@ -107,6 +107,7 @@ pub extern "C" fn synthetic_instrument_price_precision(synth: &SyntheticInstrume
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn synthetic_instrument_price_increment(synth: &SyntheticInstrument_API) -> Price {
     synth.price_increment
 }
@@ -157,7 +158,7 @@ pub unsafe extern "C" fn synthetic_instrument_is_valid_formula(
     if formula_ptr.is_null() {
         return u8::from(false);
     }
-    let formula = cstr_to_str(formula_ptr);
+    let formula = cstr_as_str(formula_ptr);
     u8::from(synth.is_valid_formula(formula))
 }
 
@@ -169,11 +170,12 @@ pub unsafe extern "C" fn synthetic_instrument_change_formula(
     synth: &mut SyntheticInstrument_API,
     formula_ptr: *const c_char,
 ) {
-    let formula = cstr_to_str(formula_ptr);
+    let formula = cstr_as_str(formula_ptr);
     synth.change_formula(formula.to_string()).unwrap();
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
 pub extern "C" fn synthetic_instrument_calculate(
     synth: &mut SyntheticInstrument_API,
     inputs_ptr: &CVec,

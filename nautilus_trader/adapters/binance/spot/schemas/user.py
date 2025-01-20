@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -23,7 +23,7 @@ from nautilus_trader.adapters.binance.common.enums import BinanceOrderSide
 from nautilus_trader.adapters.binance.common.enums import BinanceOrderStatus
 from nautilus_trader.adapters.binance.common.enums import BinanceOrderType
 from nautilus_trader.adapters.binance.common.enums import BinanceTimeInForce
-from nautilus_trader.adapters.binance.common.execution import BinanceCommonExecutionClient
+from nautilus_trader.adapters.binance.execution import BinanceCommonExecutionClient
 from nautilus_trader.adapters.binance.spot.enums import BinanceSpotEventType
 from nautilus_trader.core.datetime import millis_to_nanos
 from nautilus_trader.core.uuid import UUID4
@@ -52,7 +52,7 @@ from nautilus_trader.model.objects import Quantity
 
 class BinanceSpotUserMsgData(msgspec.Struct, frozen=True):
     """
-    Inner struct for execution WebSocket messages from `Binance`
+    Inner struct for execution WebSocket messages from Binance.
     """
 
     e: BinanceSpotEventType
@@ -60,7 +60,7 @@ class BinanceSpotUserMsgData(msgspec.Struct, frozen=True):
 
 class BinanceSpotUserMsgWrapper(msgspec.Struct, frozen=True):
     """
-    Provides a wrapper for execution WebSocket messages from `Binance`.
+    Provides a wrapper for execution WebSocket messages from Binance.
     """
 
     stream: str
@@ -69,7 +69,7 @@ class BinanceSpotUserMsgWrapper(msgspec.Struct, frozen=True):
 
 class BinanceSpotBalance(msgspec.Struct, frozen=True):
     """
-    Inner struct for `Binance Spot/Margin` balances.
+    Inner struct for Binance Spot/Margin balances.
     """
 
     a: str  # Asset
@@ -90,7 +90,7 @@ class BinanceSpotBalance(msgspec.Struct, frozen=True):
 
 class BinanceSpotAccountUpdateMsg(msgspec.Struct, frozen=True):
     """
-    WebSocket message for `Binance Spot/Margin` Account Update events.
+    WebSocket message for Binance Spot/Margin Account Update events.
     """
 
     e: str  # Event Type
@@ -115,7 +115,7 @@ class BinanceSpotAccountUpdateMsg(msgspec.Struct, frozen=True):
 
 class BinanceSpotAccountUpdateWrapper(msgspec.Struct, frozen=True):
     """
-    WebSocket message wrapper for `Binance Spot/Margin` Account Update events.
+    WebSocket message wrapper for Binance Spot/Margin Account Update events.
     """
 
     stream: str
@@ -124,7 +124,7 @@ class BinanceSpotAccountUpdateWrapper(msgspec.Struct, frozen=True):
 
 class BinanceSpotOrderUpdateData(msgspec.Struct, kw_only=True):
     """
-    WebSocket message 'inner struct' for `Binance Spot/Margin` Order Update events.
+    WebSocket message 'inner struct' for Binance Spot/Margin Order Update events.
     """
 
     e: BinanceSpotEventType
@@ -193,7 +193,7 @@ class BinanceSpotOrderUpdateData(msgspec.Struct, kw_only=True):
             order_status=OrderStatus.ACCEPTED,
             price=price,
             trigger_price=trigger_price,
-            trigger_type=TriggerType.LAST_TRADE,
+            trigger_type=TriggerType.LAST_PRICE,
             trailing_offset=None,
             trailing_offset_type=TrailingOffsetType.NO_TRAILING_OFFSET,
             quantity=Quantity.from_str(self.q),
@@ -218,7 +218,7 @@ class BinanceSpotOrderUpdateData(msgspec.Struct, kw_only=True):
         client_order_id_str: str = self.c
         if not client_order_id_str or not client_order_id_str.startswith("O"):
             client_order_id_str = self.C
-        client_order_id = ClientOrderId(client_order_id_str)
+        client_order_id = ClientOrderId(client_order_id_str or UUID4().value)
         ts_event = millis_to_nanos(self.T)
         venue_order_id = VenueOrderId(str(self.i))
         instrument_id = exec_client._get_cached_instrument_id(self.s)
@@ -293,7 +293,7 @@ class BinanceSpotOrderUpdateData(msgspec.Struct, kw_only=True):
 
 class BinanceSpotOrderUpdateWrapper(msgspec.Struct, frozen=True):
     """
-    WebSocket message wrapper for `Binance Spot/Margin` Order Update events.
+    WebSocket message wrapper for Binance Spot/Margin Order Update events.
     """
 
     stream: str

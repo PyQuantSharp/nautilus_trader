@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,10 +13,10 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-
 import msgspec
 
 from nautilus_trader.adapters.binance.common.enums import BinanceAccountType
+from nautilus_trader.adapters.binance.common.enums import BinanceFuturesPositionSide
 from nautilus_trader.adapters.binance.common.enums import BinanceNewOrderRespType
 from nautilus_trader.adapters.binance.common.enums import BinanceOrderSide
 from nautilus_trader.adapters.binance.common.enums import BinanceOrderType
@@ -24,7 +24,7 @@ from nautilus_trader.adapters.binance.common.enums import BinanceSecurityType
 from nautilus_trader.adapters.binance.common.enums import BinanceTimeInForce
 from nautilus_trader.adapters.binance.common.schemas.account import BinanceOrder
 from nautilus_trader.adapters.binance.common.schemas.account import BinanceUserTrade
-from nautilus_trader.adapters.binance.common.schemas.symbol import BinanceSymbol
+from nautilus_trader.adapters.binance.common.symbol import BinanceSymbol
 from nautilus_trader.adapters.binance.http.client import BinanceHttpClient
 from nautilus_trader.adapters.binance.http.endpoint import BinanceHttpEndpoint
 from nautilus_trader.common.component import LiveClock
@@ -137,6 +137,9 @@ class BinanceOrderHttp(BinanceHttpEndpoint):
         timeInForce : BinanceTimeInForce, optional
             Mandatory for LIMIT, STOP_LOSS_LIMIT, TAKE_PROFIT_LIMIT orders.
             The time in force of the order (GTC, IOC..)
+        positionSide : BinanceFuturesPositionSide, optional
+            Only for FUTURES orders.
+            Must be sent in Hedge Mode and the position side must be one of LONG and SHORT.
         quantity : str, optional
             Mandatory for all order types, except STOP_MARKET/TAKE_PROFIT_MARKET
             and TRAILING_STOP_MARKET orders
@@ -215,6 +218,7 @@ class BinanceOrderHttp(BinanceHttpEndpoint):
         side: BinanceOrderSide
         type: BinanceOrderType
         timeInForce: BinanceTimeInForce | None = None
+        positionSide: BinanceFuturesPositionSide | None = None
         quantity: str | None = None
         quoteOrderQty: str | None = None
         price: str | None = None
@@ -269,24 +273,24 @@ class BinanceOrderHttp(BinanceHttpEndpoint):
         origClientOrderId: str | None = None
         recvWindow: str | None = None
 
-    async def get(self, parameters: GetDeleteParameters) -> BinanceOrder:
+    async def get(self, params: GetDeleteParameters) -> BinanceOrder:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._resp_decoder.decode(raw)
 
-    async def delete(self, parameters: GetDeleteParameters) -> BinanceOrder:
+    async def delete(self, params: GetDeleteParameters) -> BinanceOrder:
         method_type = HttpMethod.DELETE
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._resp_decoder.decode(raw)
 
-    async def post(self, parameters: PostParameters) -> BinanceOrder:
+    async def post(self, params: PostParameters) -> BinanceOrder:
         method_type = HttpMethod.POST
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._resp_decoder.decode(raw)
 
-    async def put(self, parameters: PutParameters) -> BinanceOrder:
+    async def put(self, params: PutParameters) -> BinanceOrder:
         method_type = HttpMethod.PUT
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._resp_decoder.decode(raw)
 
 
@@ -355,9 +359,9 @@ class BinanceAllOrdersHttp(BinanceHttpEndpoint):
         limit: int | None = None
         recvWindow: str | None = None
 
-    async def get(self, parameters: GetParameters) -> list[BinanceOrder]:
+    async def get(self, params: GetParameters) -> list[BinanceOrder]:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._get_resp_decoder.decode(raw)
 
 
@@ -419,9 +423,9 @@ class BinanceOpenOrdersHttp(BinanceHttpEndpoint):
         symbol: BinanceSymbol | None = None
         recvWindow: str | None = None
 
-    async def get(self, parameters: GetParameters) -> list[BinanceOrder]:
+    async def get(self, params: GetParameters) -> list[BinanceOrder]:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._get_resp_decoder.decode(raw)
 
 
@@ -492,9 +496,9 @@ class BinanceUserTradesHttp(BinanceHttpEndpoint):
         limit: int | None = None
         recvWindow: str | None = None
 
-    async def _get(self, parameters: GetParameters) -> list[BinanceUserTrade]:
+    async def _get(self, params: GetParameters) -> list[BinanceUserTrade]:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         return self._get_resp_decoder.decode(raw)
 
 
@@ -566,7 +570,7 @@ class BinanceAccountHttpAPI:
                 "Either orderId or origClientOrderId must be sent.",
             )
         binance_order = await self._endpoint_order.get(
-            parameters=self._endpoint_order.GetDeleteParameters(
+            params=self._endpoint_order.GetDeleteParameters(
                 symbol=BinanceSymbol(symbol),
                 timestamp=self._timestamp(),
                 orderId=order_id,
@@ -599,7 +603,7 @@ class BinanceAccountHttpAPI:
                 "Either orderId or origClientOrderId must be sent.",
             )
         binance_order = await self._endpoint_order.delete(
-            parameters=self._endpoint_order.GetDeleteParameters(
+            params=self._endpoint_order.GetDeleteParameters(
                 symbol=BinanceSymbol(symbol),
                 timestamp=self._timestamp(),
                 orderId=order_id,
@@ -615,6 +619,7 @@ class BinanceAccountHttpAPI:
         side: BinanceOrderSide,
         order_type: BinanceOrderType,
         time_in_force: BinanceTimeInForce | None = None,
+        position_side: BinanceFuturesPositionSide | None = None,
         quantity: str | None = None,
         quote_order_qty: str | None = None,
         price: str | None = None,
@@ -638,12 +643,13 @@ class BinanceAccountHttpAPI:
         Send in a new order to Binance.
         """
         binance_order = await self._endpoint_order.post(
-            parameters=self._endpoint_order.PostParameters(
+            params=self._endpoint_order.PostParameters(
                 symbol=BinanceSymbol(symbol),
                 timestamp=self._timestamp(),
                 side=side,
                 type=order_type,
                 timeInForce=time_in_force,
+                positionSide=position_side,
                 quantity=quantity,
                 quoteOrderQty=quote_order_qty,
                 price=price,
@@ -680,7 +686,7 @@ class BinanceAccountHttpAPI:
         Modify a LIMIT order with Binance.
         """
         binance_order = await self._endpoint_order.put(
-            parameters=self._endpoint_order.PutParameters(
+            params=self._endpoint_order.PutParameters(
                 symbol=BinanceSymbol(symbol),
                 timestamp=self._timestamp(),
                 orderId=order_id,
@@ -706,7 +712,7 @@ class BinanceAccountHttpAPI:
         Query all orders, active or filled.
         """
         return await self._endpoint_all_orders.get(
-            parameters=self._endpoint_all_orders.GetParameters(
+            params=self._endpoint_all_orders.GetParameters(
                 symbol=BinanceSymbol(symbol),
                 timestamp=self._timestamp(),
                 orderId=order_id,
@@ -726,8 +732,8 @@ class BinanceAccountHttpAPI:
         Query open orders.
         """
         return await self._endpoint_open_orders.get(
-            parameters=self._endpoint_open_orders.GetParameters(
-                symbol=BinanceSymbol(symbol),
+            params=self._endpoint_open_orders.GetParameters(
+                symbol=BinanceSymbol(symbol) if symbol else None,
                 timestamp=self._timestamp(),
                 recvWindow=recv_window,
             ),
@@ -751,7 +757,7 @@ class BinanceAccountHttpAPI:
                 "Cannot specify both order_id/from_id AND start_time/end_time parameters.",
             )
         return await self._endpoint_user_trades._get(
-            parameters=self._endpoint_user_trades.GetParameters(
+            params=self._endpoint_user_trades.GetParameters(
                 symbol=BinanceSymbol(symbol),
                 timestamp=self._timestamp(),
                 orderId=order_id,

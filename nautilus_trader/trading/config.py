@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -41,7 +41,7 @@ class StrategyConfig(NautilusConfig, kw_only=True, frozen=True):
         amongst all running strategies for a particular trader ID.
     oms_type : OmsType, optional
         The order management system type for the strategy. This will determine
-        how the `ExecutionEngine` handles position IDs (see docs).
+        how the `ExecutionEngine` handles position IDs.
     external_order_claims : list[InstrumentId], optional
         The external order claim instrument IDs.
         External orders for matching instrument IDs will be associated with (claimed by) the strategy.
@@ -50,7 +50,12 @@ class StrategyConfig(NautilusConfig, kw_only=True, frozen=True):
         Any emulated orders which are active local will be managed by the `OrderEmulator` instead.
     manage_gtd_expiry : bool, default False
         If all order GTD time in force expirations should be managed by the strategy.
-        If True then will ensure open orders have their GTD timers re-activated on start.
+        If True, then will ensure open orders have their GTD timers re-activated on start.
+    log_events : bool, default True
+        If events should be logged by the strategy.
+        If False, then only warning events and above are logged.
+    log_commands : bool, default True
+        If commands should be logged by the strategy.
 
     """
 
@@ -60,6 +65,8 @@ class StrategyConfig(NautilusConfig, kw_only=True, frozen=True):
     external_order_claims: list[InstrumentId] | None = None
     manage_contingent_orders: bool = False
     manage_gtd_expiry: bool = False
+    log_events: bool = True
+    log_commands: bool = True
 
 
 class ImportableStrategyConfig(NautilusConfig, frozen=True):

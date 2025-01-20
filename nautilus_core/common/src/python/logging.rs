@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -16,8 +16,8 @@
 use std::collections::HashMap;
 
 use log::LevelFilter;
-use nautilus_core::uuid::UUID4;
-use nautilus_model::identifiers::trader_id::TraderId;
+use nautilus_core::UUID4;
+use nautilus_model::identifiers::TraderId;
 use pyo3::prelude::*;
 use ustr::Ustr;
 
@@ -25,30 +25,35 @@ use crate::{
     enums::{LogColor, LogLevel},
     logging::{
         self, headers,
-        logger::{self, LoggerConfig},
-        logging_set_bypass, map_log_level_to_filter, parse_level_filter_str,
+        logger::{self, LogGuard, LoggerConfig},
+        logging_clock_set_realtime_mode, logging_clock_set_static_mode,
+        logging_clock_set_static_time, logging_set_bypass, map_log_level_to_filter,
+        parse_level_filter_str,
         writer::FileWriterConfig,
     },
 };
 
 #[pymethods]
+impl LoggerConfig {
+    #[staticmethod]
+    #[pyo3(name = "from_spec")]
+    #[must_use]
+    pub fn py_from_spec(spec: String) -> Self {
+        Self::from_spec(&spec)
+    }
+}
+
+#[pymethods]
 impl FileWriterConfig {
     #[new]
-    pub fn py_new(
+    #[pyo3(signature = (directory=None, file_name=None, file_format=None))]
+    #[must_use]
+    pub const fn py_new(
         directory: Option<String>,
         file_name: Option<String>,
         file_format: Option<String>,
     ) -> Self {
         Self::new(directory, file_name, file_format)
-    }
-}
-
-#[pymethods]
-impl LoggerConfig {
-    #[staticmethod]
-    #[pyo3(name = "from_spec")]
-    pub fn py_from_spec(spec: String) -> Self {
-        LoggerConfig::from_spec(&spec)
     }
 }
 
@@ -82,6 +87,7 @@ pub fn py_init_tracing() {
 #[pyfunction]
 #[pyo3(name = "init_logging")]
 #[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (trader_id, instance_id, level_stdout, level_file=None, component_levels=None, directory=None, file_name=None, file_format=None, is_colored=None, is_bypassed=None, print_config=None))]
 pub fn py_init_logging(
     trader_id: TraderId,
     instance_id: UUID4,
@@ -94,10 +100,8 @@ pub fn py_init_logging(
     is_colored: Option<bool>,
     is_bypassed: Option<bool>,
     print_config: Option<bool>,
-) {
-    let level_file = level_file
-        .map(map_log_level_to_filter)
-        .unwrap_or(LevelFilter::Off);
+) -> LogGuard {
+    let level_file = level_file.map_or(LevelFilter::Off, map_log_level_to_filter);
 
     let config = LoggerConfig::new(
         map_log_level_to_filter(level_stdout),
@@ -113,7 +117,7 @@ pub fn py_init_logging(
         logging_set_bypass();
     }
 
-    logging::init_logging(trader_id, instance_id, config, file_config);
+    logging::init_logging(trader_id, instance_id, config, file_config)
 }
 
 fn parse_component_levels(
@@ -136,8 +140,8 @@ fn parse_component_levels(
 /// Create a new log event.
 #[pyfunction]
 #[pyo3(name = "logger_log")]
-pub fn py_logger_log(level: LogLevel, color: LogColor, component: String, message: String) {
-    logger::log(level, color, Ustr::from(&component), message.as_str());
+pub fn py_logger_log(level: LogLevel, color: LogColor, component: &str, message: &str) {
+    logger::log(level, color, Ustr::from(component), message);
 }
 
 /// Logs the standard Nautilus system header.
@@ -151,5 +155,23 @@ pub fn py_log_header(trader_id: TraderId, machine_id: &str, instance_id: UUID4, 
 #[pyfunction]
 #[pyo3(name = "log_sysinfo")]
 pub fn py_log_sysinfo(component: &str) {
-    headers::log_sysinfo(Ustr::from(component))
+    headers::log_sysinfo(Ustr::from(component));
+}
+
+#[pyfunction]
+#[pyo3(name = "logging_clock_set_static_mode")]
+pub fn py_logging_clock_set_static_mode() {
+    logging_clock_set_static_mode();
+}
+
+#[pyfunction]
+#[pyo3(name = "logging_clock_set_realtime_mode")]
+pub fn py_logging_clock_set_realtime_mode() {
+    logging_clock_set_realtime_mode();
+}
+
+#[pyfunction]
+#[pyo3(name = "logging_clock_set_static_time")]
+pub fn py_logging_clock_set_static_time(time_ns: u64) {
+    logging_clock_set_static_time(time_ns);
 }

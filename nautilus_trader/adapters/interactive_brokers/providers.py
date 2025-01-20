@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -23,6 +23,8 @@ from nautilus_trader.adapters.interactive_brokers.client import InteractiveBroke
 from nautilus_trader.adapters.interactive_brokers.common import IBContract
 from nautilus_trader.adapters.interactive_brokers.common import IBContractDetails
 from nautilus_trader.adapters.interactive_brokers.config import InteractiveBrokersInstrumentProviderConfig
+from nautilus_trader.adapters.interactive_brokers.config import SymbologyMethod
+from nautilus_trader.adapters.interactive_brokers.parsing.instruments import VENUE_MEMBERS
 from nautilus_trader.adapters.interactive_brokers.parsing.instruments import instrument_id_to_ib_contract
 from nautilus_trader.adapters.interactive_brokers.parsing.instruments import parse_instrument
 from nautilus_trader.common.providers import InstrumentProvider
@@ -73,6 +75,16 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
         self.contract_details: dict[str, IBContractDetails] = {}
         self.contract_id_to_instrument_id: dict[int, InstrumentId] = {}
 
+    async def initialize(self, reload: bool = False) -> None:
+        await super().initialize(reload)
+        # Trigger contract loading only if `load_ids_on_start` is False and `load_contracts_on_start` is True
+        if not self._load_ids_on_start and self._load_contracts_on_start:
+            self._loaded = False
+            self._loading = True
+            await self.load_ids_async([])  # Asynchronously load contracts with an empty load_ids
+            self._loading = False
+            self._loaded = True
+
     async def load_all_async(self, filters: dict | None = None) -> None:
         await self.load_ids_async([])
 
@@ -81,7 +93,7 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
         instrument_ids: list[InstrumentId],
         filters: dict | None = None,
     ) -> None:
-        # Parse and load InstrumentIds
+        # Parse and load Instrument IDs
         if self._load_ids_on_start:
             for instrument_id in [
                 (InstrumentId.from_str(i) if isinstance(i, str) else i)
@@ -102,6 +114,9 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
     ) -> list[ContractDetails]:
         try:
             details = await self._client.get_contract_details(contract=contract)
+            if not details:
+                self._log.debug(f"No contract details returned for {contract}")
+                return []
             [qualified] = details
             self._log.info(
                 f"Contract qualified for {qualified.contract.localSymbol}."
@@ -110,7 +125,7 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
             )
             self._log.debug(f"Got {details=}")
         except ValueError as e:
-            self._log.error(f"No contract details found for the given kwargs {contract}, {e}")
+            self._log.debug(f"No contract details found for the given kwargs {contract}, {e}")
             return []
         min_expiry = pd.Timestamp.now() + pd.Timedelta(
             days=(contract.min_expiry_days or self._min_expiry_days or 0),
@@ -120,10 +135,8 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
         )
 
         if (
-            contract.secType in ["FUT", "CONTFUT"]
-            and contract.build_futures_chain
-            or self._build_futures_chain
-        ):
+            contract.secType in ["FUT", "CONTFUT"] and contract.build_futures_chain
+        ) or self._build_futures_chain:
             # Return Underlying contract details with Future Chains
             details = await self.get_future_chain_details(
                 underlying=qualified.contract,
@@ -143,20 +156,22 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
             self._log.debug(f"Got {details=}")
 
         if (
-            contract.secType in ["STK", "FUT"]
-            and contract.build_options_chain
-            or self._build_options_chain
-        ):
+            contract.secType in ["STK", "FUT", "IND"] and contract.build_options_chain
+        ) or self._build_options_chain:
             # Return Underlying contract details with Option Chains, including for the Future Chains if apply
             for detail in set(details):
-                details.extend(
-                    await self.get_option_chain_details(
+                if contract.lastTradeDateOrContractMonth:
+                    option_contracts_detail = await self.get_option_chain_details_by_expiry(
+                        underlying=detail.contract,
+                        last_trading_date=contract.lastTradeDateOrContractMonth,
+                    )
+                else:
+                    option_contracts_detail = await self.get_option_chain_details_by_range(
                         underlying=detail.contract,
                         min_expiry=min_expiry,
                         max_expiry=max_expiry,
-                        last_trading_date=contract.lastTradeDateOrContractMonth,
-                    ),
-                )
+                    )
+                details.extend(option_contracts_detail)
         return details
 
     async def get_future_chain_details(
@@ -178,51 +193,54 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
         self._log.debug(f"Got {details=}")
         return details
 
-    async def get_option_chain_details(
+    async def get_option_chain_details_by_range(
         self,
         underlying: IBContract,
         min_expiry: pd.Timestamp,
         max_expiry: pd.Timestamp,
-        last_trading_date: str,
         exchange: str | None = None,
     ) -> list[ContractDetails]:
-        if last_trading_date:
-            expirations = [last_trading_date]
-        else:
-            try:
-                chains = await self._client.get_option_chains(underlying)
-                [chain] = [chain for chain in chains if chain[0] == (exchange or "SMART")]
-            except ValueError as e:
-                self._log.error(
-                    f"No chain details loaded for the given underlying {underlying}, {e}",
-                )
-                return []
+        chains = await self._client.get_option_chains(underlying)
+        filtered_chains = [chain for chain in chains if chain[0] == (exchange or "SMART")]
 
+        details = []
+        for chain in filtered_chains:
             expirations = sorted(
                 exp for exp in chain[1] if (min_expiry <= pd.Timestamp(exp) <= max_expiry)
             )
+            for expiration in expirations:
+                option_contracts_detail = await self.get_option_chain_details_by_expiry(
+                    underlying=underlying,
+                    last_trading_date=expiration,
+                    exchange=exchange,
+                )
+                details.extend(option_contracts_detail)
 
-        details = []
-        for expiration in expirations:
-            [option_details] = (
-                await self._client.get_contract_details(
-                    IBContract(
-                        secType="OPT",
-                        symbol=underlying.symbol,
-                        lastTradeDateOrContractMonth=expiration,
-                        exchange=exchange or "SMART",
-                    ),
-                ),
-            )
-            option_details = [d for d in option_details if d.underConId == underlying.conId]
-            self._log.info(
-                f"Received {len(option_details)} Option Contracts for "
-                f"{underlying.symbol}.{underlying.primaryExchange or underlying.exchange} expiring on {expiration}",
-            )
-            self._log.debug(f"Got {option_details=}")
-            details.extend(option_details)
-        # Finally we need to match the conId with underlying because results may include other securities
         return details
+
+    async def get_option_chain_details_by_expiry(
+        self,
+        underlying: IBContract,
+        last_trading_date: str,
+        exchange: str | None = None,
+    ) -> list[ContractDetails]:
+        [option_details] = (
+            await self._client.get_contract_details(
+                IBContract(
+                    secType=("FOP" if underlying.secType == "FUT" else "OPT"),
+                    symbol=underlying.symbol,
+                    lastTradeDateOrContractMonth=last_trading_date,
+                    exchange=exchange or "SMART",
+                ),
+            ),
+        )
+        option_details = [d for d in option_details if d.underConId == underlying.conId]
+        self._log.info(
+            f"Received {len(option_details)} Option Contracts for "
+            f"{underlying.symbol}.{underlying.primaryExchange or underlying.exchange} expiring on {last_trading_date}",
+        )
+        self._log.debug(f"Got {option_details=}")
+        return option_details
 
     async def load_async(
         self,
@@ -241,27 +259,58 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
             Not applicable in this case.
 
         """
+        databento_venue = None
         if isinstance(instrument_id, InstrumentId):
+            databento_venue = (
+                str(instrument_id.venue)
+                if self.config.symbology_method == SymbologyMethod.DATABENTO
+                else None
+            )
             try:
                 contract = instrument_id_to_ib_contract(
                     instrument_id=instrument_id,
-                    strict_symbology=self.config.strict_symbology,
+                    symbology_method=self.config.symbology_method,
                 )
             except ValueError as e:
-                self._log.error(
-                    f"{self.config.strict_symbology=} failed to parse {instrument_id=}, {e}",
-                )
+                self._log.error(str(e))
                 return
         elif isinstance(instrument_id, IBContract):
+            assert self.config.symbology_method != SymbologyMethod.DATABENTO
             contract = instrument_id
         else:
             self._log.error(f"Expected InstrumentId or IBContract, received {instrument_id}")
             return
 
-        self._log.debug(f"Attempting to find instrument for {contract=}")
-        contract_details: list[ContractDetails]
-        if not (contract_details := await self.get_contract_details(contract)):
-            return
+        self._log.info(f"Attempting to find instrument for {contract=}")
+        contract_details = []
+        if databento_venue in VENUE_MEMBERS.keys():
+            # Use a safe mapping to prevent unintended symbol matches from global venues
+            for exchange in VENUE_MEMBERS.get(databento_venue, []):
+                contract = instrument_id_to_ib_contract(
+                    instrument_id=instrument_id,
+                    symbology_method=self.config.symbology_method,
+                    exchange=exchange,
+                )
+                contract_details = await self.get_contract_details(contract)
+                if contract_details:
+                    break
+        else:
+            contract_details = await self.get_contract_details(contract)
+
+        if contract_details:
+            await self._process_contract_details(contract_details, databento_venue=databento_venue)
+        else:
+            self._log.error(
+                f"Unable to resolve contract details for {instrument_id!r}. "
+                f"If you believe the InstrumentId is correct, please verify its tradability "
+                f"in TWS (Trader Workstation) for Interactive Brokers.",
+            )
+
+    async def _process_contract_details(
+        self,
+        contract_details: list[ContractDetails],
+        databento_venue: str | None = None,
+    ) -> None:
         for details in copy.deepcopy(contract_details):
             details.contract = IBContract(**details.contract.__dict__)
             details = IBContractDetails(**details.__dict__)
@@ -269,10 +318,11 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
             try:
                 instrument: Instrument = parse_instrument(
                     contract_details=details,
-                    strict_symbology=self.config.strict_symbology,
+                    symbology_method=self.config.symbology_method,
+                    databento_venue=databento_venue,
                 )
             except ValueError as e:
-                self._log.error(f"{self.config.strict_symbology=} failed to parse {details=}, {e}")
+                self._log.error(f"{self.config.symbology_method=} failed to parse {details=}, {e}")
                 continue
             if self.config.filter_callable is not None:
                 filter_callable = resolve_path(self.config.filter_callable)
@@ -280,7 +330,8 @@ class InteractiveBrokersInstrumentProvider(InstrumentProvider):
                     continue
             self._log.info(f"Adding {instrument=} from InteractiveBrokersInstrumentProvider")
             self.add(instrument)
-            self._client._cache.add_instrument(instrument)
+            if self.config.symbology_method != SymbologyMethod.DATABENTO:
+                self._client._cache.add_instrument(instrument)
             self.contract_details[instrument.id.value] = details
             self.contract_id_to_instrument_id[details.contract.conId] = instrument.id
 

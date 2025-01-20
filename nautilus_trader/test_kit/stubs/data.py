@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,7 +14,6 @@
 # -------------------------------------------------------------------------------------------------
 
 import json
-from datetime import datetime
 from os import PathLike
 from typing import Any
 
@@ -36,13 +35,12 @@ from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import OrderBookDepth10
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
-from nautilus_trader.model.data import VenueStatus
 from nautilus_trader.model.enums import AggressorSide
 from nautilus_trader.model.enums import BarAggregation
 from nautilus_trader.model.enums import BookAction
 from nautilus_trader.model.enums import BookType
 from nautilus_trader.model.enums import InstrumentCloseType
-from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import MarketStatusAction
 from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.enums import PriceType
 from nautilus_trader.model.identifiers import InstrumentId
@@ -50,6 +48,7 @@ from nautilus_trader.model.identifiers import Symbol
 from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.instruments import Instrument
+from nautilus_trader.model.objects import FIXED_SCALAR
 from nautilus_trader.model.objects import Price
 from nautilus_trader.model.objects import Quantity
 from nautilus_trader.persistence.wranglers import BarDataWrangler
@@ -59,7 +58,9 @@ from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.stubs.identifiers import TestIdStubs
 
 
-UNIX_EPOCH = datetime(1970, 1, 1, 0, 0, 0, 0, tzinfo=pytz.utc)
+# UNIX epoch is the UTC time at midnight on 1970-01-01
+# https://en.wikipedia.org/wiki/Unix_time
+UNIX_EPOCH = pd.Timestamp("1970-01-01", tzinfo=pytz.utc)
 
 
 class TestDataStubs:
@@ -121,6 +122,10 @@ class TestDataStubs:
         return BarSpecification(1, BarAggregation.MINUTE, PriceType.BID)
 
     @staticmethod
+    def bar_spec_5min_bid() -> BarSpecification:
+        return BarSpecification(5, BarAggregation.MINUTE, PriceType.BID)
+
+    @staticmethod
     def bar_spec_1min_ask() -> BarSpecification:
         return BarSpecification(1, BarAggregation.MINUTE, PriceType.ASK)
 
@@ -141,8 +146,20 @@ class TestDataStubs:
         return BarSpecification(100, BarAggregation.TICK, PriceType.LAST)
 
     @staticmethod
+    def bar_spec_month_mid() -> BarSpecification:
+        return BarSpecification(1, BarAggregation.MONTH, PriceType.MID)
+
+    @staticmethod
     def bartype_audusd_1min_bid() -> BarType:
         return BarType(TestIdStubs.audusd_id(), TestDataStubs.bar_spec_1min_bid())
+
+    @staticmethod
+    def bartype_audusd_5min_bid() -> BarType:
+        return BarType(TestIdStubs.audusd_id(), TestDataStubs.bar_spec_5min_bid())
+
+    @staticmethod
+    def bartype_audusd_month_mid() -> BarType:
+        return BarType(TestIdStubs.audusd_id(), TestDataStubs.bar_spec_month_mid())
 
     @staticmethod
     def bartype_audusd_1min_ask() -> BarType:
@@ -177,7 +194,7 @@ class TestDataStubs:
         return BarType(TestIdStubs.adabtc_binance_id(), TestDataStubs.bar_spec_1min_last())
 
     @staticmethod
-    def bar_5decimal() -> Bar:
+    def bar_5decimal(ts_event=0, ts_init=0) -> Bar:
         return Bar(
             bar_type=TestDataStubs.bartype_audusd_1min_bid(),
             open=Price.from_str("1.00002"),
@@ -185,6 +202,32 @@ class TestDataStubs:
             low=Price.from_str("1.00001"),
             close=Price.from_str("1.00003"),
             volume=Quantity.from_int(1_000_000),
+            ts_event=ts_event,
+            ts_init=ts_init,
+        )
+
+    @staticmethod
+    def bar_5decimal_5min_bid() -> Bar:
+        return Bar(
+            bar_type=TestDataStubs.bartype_audusd_5min_bid(),
+            open=Price.from_str("1.00101"),
+            high=Price.from_str("1.00208"),
+            low=Price.from_str("1.00100"),
+            close=Price.from_str("1.00205"),
+            volume=Quantity.from_int(1_000_000),
+            ts_event=0,
+            ts_init=0,
+        )
+
+    @staticmethod
+    def bar_month_mid() -> Bar:
+        return Bar(
+            bar_type=TestDataStubs.bartype_audusd_month_mid(),
+            open=Price.from_str("1.00000"),
+            high=Price.from_str("1.10000"),
+            low=Price.from_str("1.00000"),
+            close=Price.from_str("1.05000"),
+            volume=Quantity.from_int(1_000_000_000),
             ts_event=0,
             ts_init=0,
         )
@@ -203,26 +246,32 @@ class TestDataStubs:
         )
 
     @staticmethod
-    def instrument_close() -> InstrumentClose:
-        from nautilus_trader.adapters.betfair.constants import BETFAIR_PRICE_PRECISION
-
+    def instrument_close(
+        instrument_id: InstrumentId | None = None,
+        price: Price | None = None,
+        close_type: InstrumentCloseType | None = None,
+        ts_event: int = 0,
+    ) -> InstrumentClose:
         return InstrumentClose(
-            TestIdStubs.betting_instrument_id(),
-            Price(1.0, BETFAIR_PRICE_PRECISION),
-            InstrumentCloseType.CONTRACT_EXPIRED,
-            0,
-            0,
+            instrument_id or TestIdStubs.betting_instrument_id(),
+            price or Price(1.0, 2),
+            close_type or InstrumentCloseType.CONTRACT_EXPIRED,
+            ts_event,
+            ts_event,
         )
 
     @staticmethod
     def order(
+        instrument: Instrument | None = None,
         side: OrderSide = OrderSide.BUY,
         price: float = 100.0,
-        size: float = 10.0,
+        size: float = 100.0,
     ) -> BookOrder:
+        instrument = instrument or TestInstrumentProvider.equity()
+        assert instrument
         return BookOrder(
-            price=Price(price, 2),
-            size=Quantity(size, 0),
+            price=instrument.make_price(price),
+            size=instrument.make_qty(size),
             side=side,
             order_id=0,
         )
@@ -231,16 +280,16 @@ class TestDataStubs:
     def order_book(
         instrument: Instrument | None = None,
         book_type: BookType = BookType.L2_MBP,
-        bid_price: float = 10.0,
-        ask_price: float = 15.0,
-        bid_size: float = 10.0,
-        ask_size: float = 10.0,
+        bid_price: float = 100.0,
+        ask_price: float = 101.0,
+        bid_size: float = 1_000.0,
+        ask_size: float = 1_000.0,
         bid_levels: int = 3,
         ask_levels: int = 3,
         ts_event: int = 0,
         ts_init: int = 0,
     ) -> OrderBook:
-        instrument = instrument or TestInstrumentProvider.default_fx_ccy("AUD/USD")
+        instrument = instrument or TestInstrumentProvider.equity()
         assert instrument
         order_book = OrderBook(
             instrument_id=instrument.id,
@@ -263,10 +312,10 @@ class TestDataStubs:
     @staticmethod
     def order_book_snapshot(
         instrument: Instrument | None = None,
-        bid_price: float = 10.0,
-        ask_price: float = 15.0,
-        bid_size: float = 10.0,
-        ask_size: float = 10.0,
+        bid_price: float = 100.0,
+        ask_price: float = 101.0,
+        bid_size: float = 1_000.0,
+        ask_size: float = 1_000.0,
         bid_levels: int = 3,
         ask_levels: int = 3,
         ts_event: int = 0,
@@ -274,7 +323,7 @@ class TestDataStubs:
     ) -> OrderBookDeltas:
         err = "Too many levels generated; orders will be in cross. Increase bid/ask spread or reduce number of levels"
         assert bid_price < ask_price, err
-        instrument = instrument or TestInstrumentProvider.default_fx_ccy("AUD/USD")
+        instrument = instrument or TestInstrumentProvider.equity()
         assert instrument
         bids = [
             BookOrder(
@@ -295,9 +344,9 @@ class TestDataStubs:
             for i in range(ask_levels)
         ]
 
-        deltas = [OrderBookDelta.clear(instrument.id, ts_event, ts_init)]
+        deltas = [OrderBookDelta.clear(instrument.id, 0, ts_event, ts_init)]
         deltas += [
-            OrderBookDelta(instrument.id, BookAction.ADD, order, ts_event, ts_init)
+            OrderBookDelta(instrument.id, BookAction.ADD, order, 0, 0, ts_event, ts_init)
             for order in bids + asks
         ]
         return OrderBookDeltas(
@@ -308,14 +357,19 @@ class TestDataStubs:
     @staticmethod
     def order_book_delta(
         instrument_id: InstrumentId | None = None,
+        action: BookAction | None = None,
         order: BookOrder | None = None,
+        flags: int = 0,
+        sequence: int = 0,
         ts_event: int = 0,
         ts_init: int = 0,
     ) -> OrderBookDeltas:
         return OrderBookDelta(
             instrument_id=instrument_id or TestIdStubs.audusd_id(),
-            action=BookAction.UPDATE,
+            action=action or BookAction.UPDATE,
             order=order or TestDataStubs.order(),
+            flags=flags,
+            sequence=sequence,
             ts_event=ts_event,
             ts_init=ts_init,
         )
@@ -327,6 +381,7 @@ class TestDataStubs:
         sequence: int = 0,
         ts_event: int = 0,
         ts_init: int = 0,
+        levels: int = 10,
     ) -> OrderBookDepth10:
         bids: list[BookOrder] = []
         asks: list[BookOrder] = []
@@ -336,7 +391,7 @@ class TestDataStubs:
         quantity = 100.0
         order_id = 1
 
-        for _ in range(10):
+        for _ in range(levels):
             order = BookOrder(
                 OrderSide.BUY,
                 Price(price, 2),
@@ -355,7 +410,7 @@ class TestDataStubs:
         quantity = 100.0
         order_id = 11
 
-        for _ in range(10):
+        for _ in range(levels):
             order = BookOrder(
                 OrderSide.SELL,
                 Price(price, 2),
@@ -369,8 +424,8 @@ class TestDataStubs:
             quantity += 100.0
             order_id += 1
 
-        bid_counts = [1] * 10
-        ask_counts = [1] * 10
+        bid_counts = [1] * levels
+        ask_counts = [1] * levels
 
         return OrderBookDepth10(
             instrument_id=instrument_id or TestIdStubs.aapl_xnas_id(),
@@ -392,6 +447,8 @@ class TestDataStubs:
             instrument_id=instrument_id or TestIdStubs.audusd_id(),
             action=BookAction.CLEAR,
             order=NULL_ORDER,
+            flags=0,
+            sequence=0,
             ts_event=0,
             ts_init=0,
         )
@@ -400,10 +457,11 @@ class TestDataStubs:
     def order_book_deltas(
         instrument_id: InstrumentId | None = None,
         deltas: list[OrderBookDelta] | None = None,
+        flags: int = 0,
     ) -> OrderBookDeltas:
         return OrderBookDeltas(
             instrument_id=instrument_id or TestIdStubs.audusd_id(),
-            deltas=deltas or [TestDataStubs.order_book_delta()],
+            deltas=deltas or [TestDataStubs.order_book_delta(flags=flags)],
         )
 
     @staticmethod
@@ -443,25 +501,13 @@ class TestDataStubs:
         return book
 
     @staticmethod
-    def venue_status(
-        venue: Venue | None = None,
-        status: MarketStatus | None = None,
-    ) -> VenueStatus:
-        return VenueStatus(
-            venue=venue or Venue("BINANCE"),
-            status=status or MarketStatus.OPEN,
-            ts_event=0,
-            ts_init=0,
-        )
-
-    @staticmethod
     def instrument_status(
         instrument_id: InstrumentId | None = None,
-        status: MarketStatus | None = None,
+        action: MarketStatusAction | None = None,
     ) -> InstrumentStatus:
         return InstrumentStatus(
             instrument_id=instrument_id or InstrumentId(Symbol("BTCUSDT"), Venue("BINANCE")),
-            status=status or MarketStatus.PAUSE,
+            action=action or MarketStatusAction.PAUSE,
             ts_event=0,
             ts_init=0,
         )
@@ -471,13 +517,17 @@ class TestDataStubs:
         provider = TestDataProvider()
         updates = []
         for _, row in provider.read_csv_ticks("truefx/usdjpy-ticks.csv").iterrows():
-            for side, order_side in zip(("bid", "ask"), (OrderSide.BUY, OrderSide.SELL)):
+            for side, order_side in zip(
+                ("bid", "ask"),
+                (OrderSide.BUY, OrderSide.SELL),
+                strict=False,
+            ):
                 updates.append(
                     {
                         "op": "update",
                         "order": BookOrder(
                             price=Price(row[side], precision=6),
-                            size=Quantity(1e9, precision=2),
+                            size=Quantity(FIXED_SCALAR, precision=2),
                             side=order_side,
                             order_id=0,
                         ),
@@ -545,7 +595,7 @@ class TestDataStubs:
                 return
             for values in updates:
                 keys = ("order_id", "price", "size")
-                data = dict(zip(keys, values))
+                data = dict(zip(keys, values, strict=False))
                 side = OrderSide.BUY if data["size"] >= 0 else OrderSide.SELL
                 if data["price"] == 0:
                     yield {

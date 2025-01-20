@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -29,16 +29,18 @@ cdef class DataCommand(Command):
 
     Parameters
     ----------
-    client_id : ClientId, optional with no default so ``None`` must be passed explicitly
+    client_id : ClientId or ``None``
         The data client ID for the command.
-    venue : Venue, optional with no default so ``None`` must be passed explicitly
+    venue : Venue or ``None``
         The venue for the command.
     data_type : type
         The data type for the command.
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
+    params : dict[str, object], optional
+        Additional parameters for the command.
 
     Raises
     ------
@@ -57,16 +59,23 @@ cdef class DataCommand(Command):
         DataType data_type not None,
         UUID4 command_id not None,
         uint64_t ts_init,
+        dict[str, object] params: dict | None = None,
     ):
-        Condition.true(client_id or venue, "Both `client_id` and `venue` were None")
+        Condition.is_true(client_id or venue, "Both `client_id` and `venue` were None")
         super().__init__(command_id, ts_init)
 
         self.client_id = client_id
         self.venue = venue
         self.data_type = data_type
+        self.params = params or {}
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}({self.data_type})"
+        return (
+            f"{type(self).__name__}("
+            f"client_id={self.client_id}, "
+            f"venue={self.venue}, "
+            f"data_type={self.data_type}{form_params_str(self.params)})"
+        )
 
     def __repr__(self) -> str:
         return (
@@ -74,7 +83,7 @@ cdef class DataCommand(Command):
             f"client_id={self.client_id}, "
             f"venue={self.venue}, "
             f"data_type={self.data_type}, "
-            f"id={self.id})"
+            f"id={self.id}{form_params_str(self.params)})"
         )
 
 
@@ -84,16 +93,18 @@ cdef class Subscribe(DataCommand):
 
     Parameters
     ----------
-    client_id : ClientId, optional with no default so ``None`` must be passed explicitly
+    client_id : ClientId or ``None``
         The data client ID for the command.
-    venue : Venue, optional with no default so ``None`` must be passed explicitly
+    venue : Venue or ``None``
         The venue for the command.
     data_type : type
         The data type for the subscription.
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
+    params : dict[str, object], optional
+        Additional parameters for the subscription.
 
     Raises
     ------
@@ -109,6 +120,7 @@ cdef class Subscribe(DataCommand):
         DataType data_type not None,
         UUID4 command_id not None,
         uint64_t ts_init,
+        dict[str, object] params: dict | None = None,
     ):
         super().__init__(
             client_id,
@@ -116,6 +128,7 @@ cdef class Subscribe(DataCommand):
             data_type,
             command_id,
             ts_init,
+            params,
         )
 
 
@@ -125,16 +138,18 @@ cdef class Unsubscribe(DataCommand):
 
     Parameters
     ----------
-    client_id : ClientId, optional with no default so ``None`` must be passed explicitly
+    client_id : ClientId or ``None``
         The data client ID for the command.
-    venue : Venue, optional with no default so ``None`` must be passed explicitly
+    venue : Venue or ``None``
         The venue for the command.
     data_type : type
         The data type to unsubscribe from.
     command_id : UUID4
         The command ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
+    params : dict[str, object], optional
+        Additional parameters for the subscription.
 
     Raises
     ------
@@ -150,6 +165,7 @@ cdef class Unsubscribe(DataCommand):
         DataType data_type not None,
         UUID4 command_id not None,
         uint64_t ts_init,
+        dict[str, object] params: dict | None = None,
     ):
         super().__init__(
             client_id,
@@ -157,6 +173,7 @@ cdef class Unsubscribe(DataCommand):
             data_type,
             command_id,
             ts_init,
+            params,
         )
 
 
@@ -166,9 +183,9 @@ cdef class DataRequest(Request):
 
     Parameters
     ----------
-    client_id : ClientId, optional with no default so ``None`` must be passed explicitly
+    client_id : ClientId or ``None``
         The data client ID for the request.
-    venue : Venue, optional with no default so ``None`` must be passed explicitly
+    venue : Venue or ``None``
         The venue for the request.
     data_type : type
         The data type for the request.
@@ -177,7 +194,9 @@ cdef class DataRequest(Request):
     request_id : UUID4
         The request ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
+    params : dict[str, object], optional
+        Additional parameters for the request.
 
     Raises
     ------
@@ -194,8 +213,9 @@ cdef class DataRequest(Request):
         callback not None: Callable[[Any], None],
         UUID4 request_id not None,
         uint64_t ts_init,
+        dict[str, object] params: dict | None = None,
     ):
-        Condition.true(client_id or venue, "Both `client_id` and `venue` were None")
+        Condition.is_true(client_id or venue, "Both `client_id` and `venue` were None")
         super().__init__(
             callback,
             request_id,
@@ -205,9 +225,15 @@ cdef class DataRequest(Request):
         self.client_id = client_id
         self.venue = venue
         self.data_type = data_type
+        self.params = params or {}
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}({self.data_type})"
+        return (
+            f"{type(self).__name__}("
+            f"client_id={self.client_id}, "
+            f"venue={self.venue}, "
+            f"data_type={self.data_type}{form_params_str(self.params)})"
+        )
 
     def __repr__(self) -> str:
         return (
@@ -216,7 +242,7 @@ cdef class DataRequest(Request):
             f"venue={self.venue}, "
             f"data_type={self.data_type}, "
             f"callback={self.callback}, "
-            f"id={self.id})"
+            f"id={self.id}{form_params_str(self.params)})"
         )
 
 
@@ -226,9 +252,9 @@ cdef class DataResponse(Response):
 
     Parameters
     ----------
-    client_id : ClientId, optional with no default so ``None`` must be passed explicitly
+    client_id : ClientId or ``None``
         The data client ID of the response.
-    venue : Venue, optional with no default so ``None`` must be passed explicitly
+    venue : Venue or ``None``
         The venue for the response.
     data_type : type
         The data type of the response.
@@ -239,7 +265,9 @@ cdef class DataResponse(Response):
     response_id : UUID4
         The response ID.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the object was initialized.
+        UNIX timestamp (nanoseconds) when the object was initialized.
+    params : dict[str, object], optional
+        Additional parameters for the response.
 
     Raises
     ------
@@ -257,8 +285,9 @@ cdef class DataResponse(Response):
         UUID4 correlation_id not None,
         UUID4 response_id not None,
         uint64_t ts_init,
+        dict[str, object] params: dict | None = None,
     ):
-        Condition.true(client_id or venue, "Both `client_id` and `venue` were None")
+        Condition.is_true(client_id or venue, "Both `client_id` and `venue` were None")
         super().__init__(
             correlation_id,
             response_id,
@@ -269,9 +298,15 @@ cdef class DataResponse(Response):
         self.venue = venue
         self.data_type = data_type
         self.data = data
+        self.params = params or {}
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}({self.data_type})"
+        return (
+            f"{type(self).__name__}("
+            f"client_id={self.client_id}, "
+            f"venue={self.venue}, "
+            f"data_type={self.data_type})"
+        )
 
     def __repr__(self) -> str:
         return (
@@ -280,5 +315,5 @@ cdef class DataResponse(Response):
             f"venue={self.venue}, "
             f"data_type={self.data_type}, "
             f"correlation_id={self.correlation_id}, "
-            f"id={self.id})"
+            f"id={self.id}{form_params_str(self.params)})"
         )

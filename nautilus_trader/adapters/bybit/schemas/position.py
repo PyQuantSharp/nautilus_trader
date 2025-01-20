@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -44,7 +44,6 @@ class BybitPositionStruct(msgspec.Struct):
     bustPrice: str
     positionMM: str
     positionIM: str
-    tpslMode: str
     takeProfit: str
     stopLoss: str
     trailingStop: str
@@ -52,6 +51,7 @@ class BybitPositionStruct(msgspec.Struct):
     cumRealisedPnl: str
     createdTime: str
     updatedTime: str
+    tpslMode: str | None = None
 
     def parse_to_position_status_report(
         self,
@@ -61,7 +61,7 @@ class BybitPositionStruct(msgspec.Struct):
         ts_init: int,
     ) -> PositionStatusReport:
         position_side = self.side.parse_to_position_side()
-        size = Quantity.from_str(self.positionValue)
+        size = Quantity.from_str(self.size)
         return PositionStatusReport(
             account_id=account_id,
             instrument_id=instrument_id,

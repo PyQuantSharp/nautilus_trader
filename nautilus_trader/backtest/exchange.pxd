@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,6 +18,7 @@ from libc.stdint cimport uint64_t
 from nautilus_trader.accounting.accounts.base cimport Account
 from nautilus_trader.backtest.execution_client cimport BacktestExecClient
 from nautilus_trader.backtest.matching_engine cimport OrderMatchingEngine
+from nautilus_trader.backtest.models cimport FeeModel
 from nautilus_trader.backtest.models cimport FillModel
 from nautilus_trader.backtest.models cimport LatencyModel
 from nautilus_trader.cache.cache cimport Cache
@@ -31,12 +32,12 @@ from nautilus_trader.core.rust.model cimport OmsType
 from nautilus_trader.execution.messages cimport TradingCommand
 from nautilus_trader.model.book cimport OrderBook
 from nautilus_trader.model.data cimport Bar
+from nautilus_trader.model.data cimport InstrumentClose
 from nautilus_trader.model.data cimport InstrumentStatus
 from nautilus_trader.model.data cimport OrderBookDelta
 from nautilus_trader.model.data cimport OrderBookDeltas
 from nautilus_trader.model.data cimport QuoteTick
 from nautilus_trader.model.data cimport TradeTick
-from nautilus_trader.model.data cimport VenueStatus
 from nautilus_trader.model.identifiers cimport InstrumentId
 from nautilus_trader.model.identifiers cimport Venue
 from nautilus_trader.model.instruments.base cimport Instrument
@@ -78,8 +79,8 @@ cdef class SimulatedExchange:
     """The latency model for the exchange.\n\n:returns: `LatencyModel`"""
     cdef readonly FillModel fill_model
     """The fill model for the exchange.\n\n:returns: `FillModel`"""
-    cdef readonly bint bar_execution
-    """If bars should be processed by the matching engine(s) (and move the market).\n\n:returns: `bool`"""
+    cdef readonly FeeModel fee_model
+    """The fee model for the exchange.\n\n:returns: `FeeModel`"""
     cdef readonly bint reject_stop_orders
     """If stop orders are rejected on submission if in the market.\n\n:returns: `bool`"""
     cdef readonly bint support_gtd_orders
@@ -92,6 +93,14 @@ cdef class SimulatedExchange:
     """If venue order and position IDs will be randomly generated UUID4s.\n\n:returns: `bool`"""
     cdef readonly bint use_reduce_only
     """If the `reduce_only` option on orders will be honored.\n\n:returns: `bool`"""
+    cdef readonly bint use_message_queue
+    """If an internal message queue is being used to sequentially process incoming trading commands.\n\n:returns: `bool`"""
+    cdef readonly bint bar_execution
+    """If bars should be processed by the matching engine(s) (and move the market).\n\n:returns: `bool`"""
+    cdef readonly bint bar_adaptive_high_low_ordering
+    """If the processing order of bar prices is adaptive based on a heuristic.\n\n:returns: `bool`"""
+    cdef readonly bint trade_execution
+    """If trades should be processed by the matching engine(s) (and move the market).\n\n:returns: `bool`"""
     cdef readonly list modules
     """The simulation modules registered with the exchange.\n\n:returns: `list[SimulationModule]`"""
     cdef readonly dict instruments
@@ -133,10 +142,12 @@ cdef class SimulatedExchange:
     cpdef void process_quote_tick(self, QuoteTick tick)
     cpdef void process_trade_tick(self, TradeTick tick)
     cpdef void process_bar(self, Bar bar)
-    cpdef void process_venue_status(self, VenueStatus data)
+    cpdef void process_instrument_close(self, InstrumentClose close)
     cpdef void process_instrument_status(self, InstrumentStatus data)
     cpdef void process(self, uint64_t ts_now)
     cpdef void reset(self)
+
+    cdef void _process_trading_command(self, TradingCommand command)
 
 # -- EVENT GENERATORS -----------------------------------------------------------------------------
 

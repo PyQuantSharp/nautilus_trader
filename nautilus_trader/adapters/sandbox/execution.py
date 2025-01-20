@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,15 +14,15 @@
 # -------------------------------------------------------------------------------------------------
 
 import asyncio
-from decimal import Decimal
-from typing import ClassVar
 
 import pandas as pd
 
+from nautilus_trader.adapters.sandbox.config import SandboxExecutionClientConfig
 from nautilus_trader.backtest.exchange import SimulatedExchange
 from nautilus_trader.backtest.execution_client import BacktestExecClient
 from nautilus_trader.backtest.models import FillModel
 from nautilus_trader.backtest.models import LatencyModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import LiveClock
 from nautilus_trader.common.component import MessageBus
@@ -38,15 +38,14 @@ from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
-from nautilus_trader.model.enums import AccountType
-from nautilus_trader.model.enums import OmsType
+from nautilus_trader.model.enums import account_type_from_str
+from nautilus_trader.model.enums import book_type_from_str
+from nautilus_trader.model.enums import oms_type_from_str
 from nautilus_trader.model.identifiers import ClientId
 from nautilus_trader.model.identifiers import ClientOrderId
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.identifiers import VenueOrderId
-from nautilus_trader.model.instruments import Instrument
-from nautilus_trader.model.objects import AccountBalance
 from nautilus_trader.model.objects import Currency
 from nautilus_trader.model.objects import Money
 from nautilus_trader.portfolio.base import PortfolioFacade
@@ -71,8 +70,6 @@ class SandboxExecutionClient(LiveExecutionClient):
 
     """
 
-    INSTRUMENTS: ClassVar[list[Instrument]] = []
-
     def __init__(
         self,
         loop: asyncio.AbstractEventLoop,
@@ -80,25 +77,22 @@ class SandboxExecutionClient(LiveExecutionClient):
         msgbus: MessageBus,
         cache: Cache,
         clock: LiveClock,
-        venue: str,
-        currency: str,
-        balance: int,
-        oms_type: OmsType = OmsType.NETTING,
-        account_type: AccountType = AccountType.MARGIN,
+        config: SandboxExecutionClientConfig,
     ) -> None:
-        self._currency = Currency.from_str(currency)
-        money = Money(value=balance, currency=self._currency)
-        self.balance = AccountBalance(total=money, locked=Money(0, money.currency), free=money)
+        sandbox_venue = Venue(config.venue)
+        oms_type = oms_type_from_str(config.oms_type)
+        account_type = account_type_from_str(config.account_type)
+        base_currency = Currency.from_str(config.base_currency) if config.base_currency else None
+
         self.test_clock = TestClock()
-        self._account_type = account_type
-        sandbox_venue = Venue(venue)
+
         super().__init__(
             loop=loop,
-            client_id=ClientId(venue),
+            client_id=ClientId(config.venue),
             venue=sandbox_venue,
             oms_type=oms_type,
             account_type=account_type,
-            base_currency=self._currency,
+            base_currency=base_currency,
             instrument_provider=InstrumentProvider(),
             msgbus=msgbus,
             cache=cache,
@@ -108,28 +102,40 @@ class SandboxExecutionClient(LiveExecutionClient):
         self.exchange = SimulatedExchange(
             venue=sandbox_venue,
             oms_type=oms_type,
-            account_type=self._account_type,
-            base_currency=self._currency,
-            starting_balances=[self.balance.free],
-            default_leverage=Decimal(10),
-            leverages={},
-            instruments=self.INSTRUMENTS,
+            account_type=account_type,
+            starting_balances=[Money.from_str(b) for b in config.starting_balances],
+            base_currency=base_currency,
+            default_leverage=config.default_leverage,
+            leverages=config.leverages or {},
             modules=[],
             portfolio=portfolio,
             msgbus=self._msgbus,
             cache=cache,
-            fill_model=FillModel(),
-            latency_model=LatencyModel(0),
             clock=self.test_clock,
-            frozen_account=True,  # <-- Freezing account
+            fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
+            latency_model=LatencyModel(0),
+            book_type=book_type_from_str(config.book_type),
+            frozen_account=config.frozen_account,
+            bar_execution=config.bar_execution,
+            trade_execution=config.trade_execution,
+            reject_stop_orders=config.reject_stop_orders,
+            support_gtd_orders=config.support_gtd_orders,
+            support_contingent_orders=config.support_contingent_orders,
+            use_position_ids=config.use_position_ids,
+            use_random_ids=config.use_random_ids,
+            use_reduce_only=config.use_reduce_only,
+            use_message_queue=False,  # Do not use internal message queue for real-time
         )
+
         self._client = BacktestExecClient(
             exchange=self.exchange,
             msgbus=msgbus,
-            cache=self._cache,
+            cache=cache,
             clock=self.test_clock,
         )
         self.exchange.register_client(self._client)
+        self.exchange.initialize_account()
 
     def connect(self) -> None:
         """
@@ -137,9 +143,14 @@ class SandboxExecutionClient(LiveExecutionClient):
         """
         self._log.info("Connecting...")
         self._msgbus.subscribe("data.*", handler=self.on_data)
+
+        # Load all instruments for venue
+        for instrument in self.exchange.cache.instruments(venue=self.venue):
+            self.exchange.add_instrument(instrument)
+
         self._client._set_connected(True)
         self._set_connected(True)
-        self._log.info("Connected.")
+        self._log.info("Connected")
 
     def disconnect(self) -> None:
         """
@@ -147,7 +158,7 @@ class SandboxExecutionClient(LiveExecutionClient):
         """
         self._log.info("Disconnecting...")
         self._set_connected(False)
-        self._log.info("Disconnected.")
+        self._log.info("Disconnected")
 
     async def generate_order_status_report(
         self,

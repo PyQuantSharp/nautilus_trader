@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
+
 import pkgutil
 
 import msgspec
@@ -33,12 +34,12 @@ fee_rate: BybitFeeRate = BybitFeeRate(
 
 
 class TestBybitInstruments:
-    def setup(self):
+    def setup(self) -> None:
         # linear
         linear_data: BybitInstrumentsLinearResponse = msgspec.json.Decoder(
             BybitInstrumentsLinearResponse,
         ).decode(
-            pkgutil.get_data(
+            pkgutil.get_data(  # type: ignore [arg-type]
                 "tests.integration_tests.adapters.bybit.resources.http_responses.linear",
                 "instruments.json",
             ),
@@ -48,7 +49,7 @@ class TestBybitInstruments:
         spot_data: BybitInstrumentsSpotResponse = msgspec.json.Decoder(
             BybitInstrumentsSpotResponse,
         ).decode(
-            pkgutil.get_data(
+            pkgutil.get_data(  # type: ignore [arg-type]
                 "tests.integration_tests.adapters.bybit.resources.http_responses.spot",
                 "instruments.json",
             ),
@@ -58,7 +59,7 @@ class TestBybitInstruments:
         option_data: BybitInstrumentsOptionResponse = msgspec.json.Decoder(
             BybitInstrumentsOptionResponse,
         ).decode(
-            pkgutil.get_data(
+            pkgutil.get_data(  # type: ignore [arg-type]
                 "tests.integration_tests.adapters.bybit.resources.http_responses.option",
                 "instruments.json",
             ),

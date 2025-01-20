@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,8 +21,10 @@ from collections import deque
 from decimal import Decimal
 
 from nautilus_trader.cache.config import CacheConfig
+from nautilus_trader.core.rust.model import PriceType as PriceType_py
 
 from cpython.datetime cimport datetime
+from cpython.datetime cimport timedelta
 from libc.stdint cimport uint8_t
 from libc.stdint cimport uint64_t
 
@@ -32,6 +34,7 @@ from nautilus_trader.cache.facade cimport CacheDatabaseFacade
 from nautilus_trader.common.component cimport LogColor
 from nautilus_trader.common.component cimport Logger
 from nautilus_trader.core.correctness cimport Condition
+from nautilus_trader.core.rust.model cimport AggregationSource
 from nautilus_trader.core.rust.model cimport ContingencyType
 from nautilus_trader.core.rust.model cimport OmsType
 from nautilus_trader.core.rust.model cimport OrderSide
@@ -40,9 +43,12 @@ from nautilus_trader.core.rust.model cimport PriceType
 from nautilus_trader.core.rust.model cimport TriggerType
 from nautilus_trader.execution.messages cimport SubmitOrder
 from nautilus_trader.model.data cimport Bar
+from nautilus_trader.model.data cimport BarAggregation
+from nautilus_trader.model.data cimport BarSpecification
 from nautilus_trader.model.data cimport BarType
 from nautilus_trader.model.data cimport QuoteTick
 from nautilus_trader.model.data cimport TradeTick
+from nautilus_trader.model.events.order cimport OrderUpdated
 from nautilus_trader.model.identifiers cimport AccountId
 from nautilus_trader.model.identifiers cimport ClientId
 from nautilus_trader.model.identifiers cimport ClientOrderId
@@ -77,10 +83,6 @@ cdef class Cache(CacheFacade):
         The database adapter for the cache. If ``None`` then will bypass persistence.
     config : CacheConfig, optional
         The cache configuration.
-    snapshot_orders : bool, default False
-        If order state snapshots should be persisted.
-    snapshot_positions : bool, default False
-        If position state snapshots should be persisted.
 
     Raises
     ------
@@ -91,10 +93,8 @@ cdef class Cache(CacheFacade):
     def __init__(
         self,
         CacheDatabaseFacade database: CacheDatabaseFacade | None = None,
-        bint snapshot_orders: bool = False,
-        bint snapshot_positions: bool = False,
         config: CacheConfig | None = None,
-    ):
+    ) -> None:
         if config is None:
             config = CacheConfig()
         Condition.type(config, CacheConfig, "config")
@@ -105,10 +105,9 @@ cdef class Cache(CacheFacade):
 
         # Configuration
         self._drop_instruments_on_reset = config.drop_instruments_on_reset
+        self.has_backing = database is not None
         self.tick_capacity = config.tick_capacity
         self.bar_capacity = config.bar_capacity
-        self.snapshot_orders = snapshot_orders
-        self.snapshot_positions = snapshot_positions
 
         # Caches
         self._general: dict[str, bytes] = {}
@@ -132,7 +131,8 @@ cdef class Cache(CacheFacade):
         self._index_venue_account: dict[Venue, AccountId] = {}
         self._index_venue_orders: dict[Venue, set[ClientOrderId]] = {}
         self._index_venue_positions: dict[Venue, set[PositionId]] = {}
-        self._index_order_ids: dict[VenueOrderId, ClientOrderId] = {}
+        self._index_venue_order_ids: dict[VenueOrderId, ClientOrderId] = {}
+        self._index_client_order_ids: dict[ClientOrderId, VenueOrderId] = {}
         self._index_order_position: dict[ClientOrderId, PositionId] = {}
         self._index_order_strategy: dict[ClientOrderId, StrategyId] = {}
         self._index_order_client: dict[ClientOrderId, ClientId] = {}
@@ -157,7 +157,7 @@ cdef class Cache(CacheFacade):
         self._index_strategies: set[StrategyId] = set()
         self._index_exec_algorithms: set[ExecAlgorithmId] = set()
 
-        self._log.info("READY.")
+        self._log.info("READY")
 
 # -- COMMANDS -------------------------------------------------------------------------------------
 
@@ -166,7 +166,7 @@ cdef class Cache(CacheFacade):
         Clear the current general cache and load the general objects from the
         cache database.
         """
-        self._log.debug(f"Loading general cache from database...")
+        self._log.debug(f"Loading general cache from database")
 
         if self._database is not None:
             self._general = self._database.load()
@@ -175,7 +175,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._general)
         self._log.info(
-            f"Cached {count} general object{'' if count == 1 else 's'} from database.",
+            f"Cached {count} general object{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._general else LogColor.NORMAL,
         )
 
@@ -184,7 +184,7 @@ cdef class Cache(CacheFacade):
         Clear the current currencies cache and load currencies from the cache
         database.
         """
-        self._log.debug(f"Loading currencies from database...")
+        self._log.debug(f"Loading currencies from database")
 
         if self._database is not None:
             self._currencies = self._database.load_currencies()
@@ -198,7 +198,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._currencies)
         self._log.info(
-            f"Cached {count} currenc{'y' if count == 1 else 'ies'} from database.",
+            f"Cached {count} currenc{'y' if count == 1 else 'ies'} from database",
             color=LogColor.BLUE if self._currencies else LogColor.NORMAL,
         )
 
@@ -207,7 +207,7 @@ cdef class Cache(CacheFacade):
         Clear the current instruments cache and load instruments from the cache
         database.
         """
-        self._log.debug(f"Loading instruments from database...")
+        self._log.debug(f"Loading instruments from database")
 
         if self._database is not None:
             self._instruments = self._database.load_instruments()
@@ -216,7 +216,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._instruments)
         self._log.info(
-            f"Cached {count} instrument{'' if count == 1 else 's'} from database.",
+            f"Cached {count} instrument{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._instruments else LogColor.NORMAL,
         )
 
@@ -225,7 +225,7 @@ cdef class Cache(CacheFacade):
         Clear the current synthetic instruments cache and load synthetic instruments from the cache
         database.
         """
-        self._log.debug(f"Loading synthetic instruments from database...")
+        self._log.debug(f"Loading synthetic instruments from database")
 
         if self._database is not None:
             self._synthetics = self._database.load_synthetics()
@@ -234,7 +234,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._synthetics)
         self._log.info(
-            f"Cached {count} synthetic instrument{'' if count == 1 else 's'} from database.",
+            f"Cached {count} synthetic instrument{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._synthetics else LogColor.NORMAL,
         )
 
@@ -243,7 +243,7 @@ cdef class Cache(CacheFacade):
         Clear the current accounts cache and load accounts from the cache
         database.
         """
-        self._log.debug(f"Loading accounts from database...")
+        self._log.debug(f"Loading accounts from database")
 
         if self._database is not None:
             self._accounts = self._database.load_accounts()
@@ -252,7 +252,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._accounts)
         self._log.info(
-            f"Cached {count} account{'' if count == 1 else 's'} from database.",
+            f"Cached {count} account{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._accounts else LogColor.NORMAL,
         )
 
@@ -260,7 +260,7 @@ cdef class Cache(CacheFacade):
         """
         Clear the current orders cache and load orders from the cache database.
         """
-        self._log.debug(f"Loading orders from database...")
+        self._log.debug(f"Loading orders from database")
 
         if self._database is not None:
             self._orders = self._database.load_orders()
@@ -277,7 +277,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._orders)
         self._log.info(
-            f"Cached {count} order{'' if count == 1 else 's'} from database.",
+            f"Cached {count} order{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._orders else LogColor.NORMAL,
         )
 
@@ -285,7 +285,7 @@ cdef class Cache(CacheFacade):
         """
         Clear the current order lists cache and load order lists using cached orders.
         """
-        self._log.debug(f"Loading order lists...")
+        self._log.debug(f"Loading order lists")
 
         cdef dict order_list_index = {}  # type: dict[OrderListId, list[Order]]
 
@@ -314,7 +314,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._order_lists)
         self._log.info(
-            f"Cached {count} order list{'' if count == 1 else 's'} from database.",
+            f"Cached {count} order list{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._order_lists else LogColor.NORMAL,
         )
 
@@ -323,7 +323,7 @@ cdef class Cache(CacheFacade):
         Clear the current positions cache and load positions from the cache
         database.
         """
-        self._log.debug(f"Loading positions from database...")
+        self._log.debug(f"Loading positions from database")
 
         if self._database is not None:
             self._positions = self._database.load_positions()
@@ -332,7 +332,7 @@ cdef class Cache(CacheFacade):
 
         cdef int count = len(self._positions)
         self._log.info(
-            f"Cached {count} position{'' if count == 1 else 's'} from database.",
+            f"Cached {count} position{'' if count == 1 else 's'} from database",
             color=LogColor.BLUE if self._positions else LogColor.NORMAL
         )
 
@@ -342,14 +342,14 @@ cdef class Cache(CacheFacade):
         """
         self.clear_index()
 
-        self._log.debug(f"Building index...")
+        self._log.debug(f"Building index")
         cdef double ts = time.time()
 
         self._build_index_venue_account()
         self._build_indexes_from_orders()
         self._build_indexes_from_positions()
 
-        self._log.debug(f"Index built in {time.time() - ts:.3f}s.")
+        self._log.debug(f"Index built in {time.time() - ts:.3f}s")
 
     cpdef bint check_integrity(self):
         """
@@ -371,7 +371,7 @@ cdef class Cache(CacheFacade):
         # caches and indexes, each cache and index must be checked individually
 
         cdef uint64_t timestamp_us = time.time_ns() // 1000
-        self._log.info("Checking data integrity...")
+        self._log.info("Checking data integrity")
 
         # Needed type defs
         # ----------------
@@ -476,10 +476,18 @@ cdef class Cache(CacheFacade):
                 )
                 error_count += 1
 
-        for client_order_id in self._index_order_ids.values():
+        for client_order_id in self._index_venue_order_ids.values():
             if client_order_id not in self._orders:
                 self._log.error(
                     f"{failure} in _index_venue_order_ids: "
+                    f"{repr(client_order_id)} not found in self._cached_orders"
+                )
+                error_count += 1
+
+        for client_order_id in self._index_client_order_ids:
+            if client_order_id not in self._orders:
+                self._log.error(
+                    f"{failure} in _index_client_order_ids: "
                     f"{repr(client_order_id)} not found in self._cached_orders"
                 )
                 error_count += 1
@@ -635,7 +643,7 @@ cdef class Cache(CacheFacade):
         cdef uint64_t total_us = round((time.time_ns() // 1000) - timestamp_us)
         if error_count == 0:
             self._log.info(
-                f"Integrity check passed in {total_us}μs.",
+                f"Integrity check passed in {total_us}μs",
                 color=LogColor.GREEN
             )
             return True
@@ -643,7 +651,7 @@ cdef class Cache(CacheFacade):
             self._log.error(
                 f"Integrity check failed with "
                 f"{error_count} error{'' if error_count == 1 else 's'} "
-                f"in {total_us}μs."
+                f"in {total_us}μs"
             )
             return False
 
@@ -659,7 +667,7 @@ cdef class Cache(CacheFacade):
             True if residuals exist, else False.
 
         """
-        self._log.debug("Checking residuals...")
+        self._log.debug("Checking residuals")
 
         cdef bint residuals = False
 
@@ -675,12 +683,13 @@ cdef class Cache(CacheFacade):
         return residuals
 
     cpdef void clear_index(self):
-        self._log.debug(f"Clearing index...")
+        self._log.debug(f"Clearing index")
 
         self._index_venue_account.clear()
         self._index_venue_orders.clear()
         self._index_venue_positions.clear()
-        self._index_order_ids.clear()
+        self._index_venue_order_ids.clear()
+        self._index_client_order_ids.clear()
         self._index_order_position.clear()
         self._index_order_strategy.clear()
         self._index_order_client.clear()
@@ -705,7 +714,7 @@ cdef class Cache(CacheFacade):
         self._index_strategies.clear()
         self._index_exec_algorithms.clear()
 
-        self._log.debug(f"Cleared index.")
+        self._log.debug(f"Cleared index")
 
     cpdef void reset(self):
         """
@@ -713,7 +722,7 @@ cdef class Cache(CacheFacade):
 
         All stateful fields are reset to their initial value.
         """
-        self._log.info("Resetting cache...")
+        self._log.debug("Resetting cache")
 
         self._general.clear()
         self._xrate_symbols.clear()
@@ -735,7 +744,15 @@ cdef class Cache(CacheFacade):
         if self._drop_instruments_on_reset:
             self._instruments.clear()
 
-        self._log.debug(f"Reset cache.")
+        self._log.info(f"Reset")
+
+    cpdef void dispose(self):
+        """
+        Dispose of the cache which will close any underlying database adapter.
+
+        """
+        if self._database is not None:
+            self._database.close()
 
     cpdef void flush_db(self):
         """
@@ -746,12 +763,12 @@ cdef class Cache(CacheFacade):
         Permanent data loss.
 
         """
-        self._log.debug("Flushing execution database...")
+        self._log.debug("Flushing cache database")
 
         if self._database is not None:
             self._database.flush()
 
-        self._log.info("Execution database flushed.")
+        self._log.info("Cache database flushed")
 
     cdef void _build_index_venue_account(self):
         cdef AccountId account_id
@@ -770,9 +787,10 @@ cdef class Cache(CacheFacade):
                 self._index_venue_orders[order.instrument_id.venue] = set()
             self._index_venue_orders[order.instrument_id.venue].add(client_order_id)
 
-            # 2: Build _index_order_ids -> {VenueOrderId, ClientOrderId}
+            # 2: Build _index_venue_order_ids -> {VenueOrderId, ClientOrderId}
             if order.venue_order_id is not None:
-                self._index_order_ids[order.venue_order_id] = order.client_order_id
+                self._index_venue_order_ids[order.venue_order_id] = order.client_order_id
+                self._index_client_order_ids[order.client_order_id] = order.venue_order_id
 
             # 3: Build _index_order_position -> {ClientOrderId, PositionId}
             if order.position_id is not None:
@@ -880,7 +898,7 @@ cdef class Cache(CacheFacade):
         for client_order_id in order.linked_order_ids or []:
             contingent_order = self._orders.get(client_order_id)
             if contingent_order is None:
-                self._log.error(f"Contingency order {client_order_id!r} not found.")
+                self._log.error(f"Contingency order {client_order_id!r} not found")
                 continue
             if contingent_order.position_id is None:
                 # Assign the parents position ID
@@ -892,14 +910,14 @@ cdef class Cache(CacheFacade):
                     contingent_order.client_order_id,
                     order.strategy_id,
                 )
-                self._log.info(f"Assigned {order.position_id!r} to {client_order_id!r}.")
+                self._log.info(f"Assigned {order.position_id!r} to {client_order_id!r}")
 
     cpdef Money calculate_unrealized_pnl(self, Position position):
         cdef QuoteTick quote = self.quote_tick(position.instrument_id)
         if quote is None:
             self._log.warning(
                 f"Cannot calculate unrealized PnL for {position.id!r}, "
-                f"no quotes for {position.instrument_id}.",
+                f"no quotes for {position.instrument_id}",
             )
             return None
 
@@ -1005,7 +1023,7 @@ cdef class Cache(CacheFacade):
 
         """
         Condition.not_none(instrument_id, "instrument_id")
-        Condition.true(instrument_id.is_synthetic(), "instrument_id was not a synthetic")
+        Condition.is_true(instrument_id.is_synthetic(), "instrument_id was not a synthetic")
 
         cdef SyntheticInstrument synthetic = self._synthetics.get(instrument_id)
         if synthetic is None and self._database is not None:
@@ -1071,7 +1089,7 @@ cdef class Cache(CacheFacade):
 
     cpdef void add(self, str key, bytes value):
         """
-        Add the given general object to the cache.
+        Add the given general object `value` to the cache.
 
         The cache is agnostic to what the object actually is (and how it may
         be serialized), offering maximum flexibility.
@@ -1172,7 +1190,7 @@ cdef class Cache(CacheFacade):
 
         bars.appendleft(bar)
 
-        cdef PriceType price_type = <PriceType>bar._mem.bar_type.spec.price_type
+        cdef PriceType price_type = bar.bar_type.spec.price_type
         if price_type == PriceType.BID:
             self._bars_bid[bar.bar_type.instrument_id] = bar
         elif price_type == PriceType.ASK:
@@ -1180,7 +1198,7 @@ cdef class Cache(CacheFacade):
 
     cpdef void add_quote_ticks(self, list ticks):
         """
-        Add the given quote ticks to the cache.
+        Add the given quotes to the cache.
 
         Parameters
         ----------
@@ -1194,9 +1212,9 @@ cdef class Cache(CacheFacade):
         cdef InstrumentId instrument_id
         if length > 0:
             instrument_id = ticks[0].instrument_id
-            self._log.debug(f"Received <QuoteTick[{length}]> data for {instrument_id}.")
+            self._log.debug(f"Received <QuoteTick[{length}]> data for {instrument_id}")
         else:
-            self._log.debug("Received <QuoteTick[]> data with no ticks.")
+            self._log.debug("Received <QuoteTick[]> data with no ticks")
             return
 
         cached_ticks = self._quote_ticks.get(instrument_id)
@@ -1205,19 +1223,17 @@ cdef class Cache(CacheFacade):
             # The instrument_id was not registered
             cached_ticks = deque(maxlen=self.tick_capacity)
             self._quote_ticks[instrument_id] = cached_ticks
-        elif len(cached_ticks) > 0:
-            # Currently the simple solution for multiple consumers requesting
-            # ticks at system spool up is just to add only if the cache is empty.
-            self._log.debug("Cache already contains ticks.")
-            return
 
         cdef QuoteTick tick
         for tick in ticks:
+            if cached_ticks and tick.ts_event <= cached_ticks[0].ts_event:
+                # Only add more recent data to cache
+                continue
             cached_ticks.appendleft(tick)
 
     cpdef void add_trade_ticks(self, list ticks):
         """
-        Add the given trade ticks to the cache.
+        Add the given trades to the cache.
 
         Parameters
         ----------
@@ -1231,25 +1247,22 @@ cdef class Cache(CacheFacade):
         cdef InstrumentId instrument_id
         if length > 0:
             instrument_id = ticks[0].instrument_id
-            self._log.debug(f"Received <TradeTick[{length}]> data for {instrument_id}.")
+            self._log.debug(f"Received <TradeTick[{length}]> data for {instrument_id}")
         else:
-            self._log.debug("Received <TradeTick[]> data with no ticks.")
+            self._log.debug("Received <TradeTick[]> data with no ticks")
             return
 
         cached_ticks = self._trade_ticks.get(instrument_id)
 
         if not cached_ticks:
-            # The instrument_id was not registered
             cached_ticks = deque(maxlen=self.tick_capacity)
             self._trade_ticks[instrument_id] = cached_ticks
-        elif len(cached_ticks) > 0:
-            # Currently the simple solution for multiple consumers requesting
-            # ticks at system spool up is just to add only if the cache is empty.
-            self._log.debug("Cache already contains ticks.")
-            return
 
         cdef TradeTick tick
         for tick in ticks:
+            if cached_ticks and tick.ts_event <= cached_ticks[0].ts_event:
+                # Only add more recent data to cache
+                continue
             cached_ticks.appendleft(tick)
 
     cpdef void add_bars(self, list bars):
@@ -1268,29 +1281,26 @@ cdef class Cache(CacheFacade):
         cdef BarType bar_type
         if length > 0:
             bar_type = bars[0].bar_type
-            self._log.debug(f"Received <Bar[{length}]> data for {bar_type}.")
+            self._log.debug(f"Received <Bar[{length}]> data for {bar_type}")
         else:
-            self._log.debug("Received <Bar[]> data with no ticks.")
+            self._log.debug("Received <Bar[]> data with no ticks")
             return
 
         cached_bars = self._bars.get(bar_type)
 
         if not cached_bars:
-            # The instrument_id was not registered
             cached_bars = deque(maxlen=self.bar_capacity)
             self._bars[bar_type] = cached_bars
-        elif len(cached_bars) > 0:
-            # Currently the simple solution for multiple consumers requesting
-            # bars at system spool up is just to add only if the cache is empty.
-            self._log.debug("Cache already contains bars.")
-            return
 
         cdef Bar bar
         for bar in bars:
+            if cached_bars and bar.ts_event <= cached_bars[0].ts_event:
+                # Only add more recent data to cache
+                continue
             cached_bars.appendleft(bar)
 
         bar = bars[-1]
-        cdef PriceType price_type = <PriceType>bar._mem.bar_type.spec.price_type
+        cdef PriceType price_type = bar.bar_type.spec.price_type
         if price_type == PriceType.BID:
             self._bars_bid[bar.bar_type.instrument_id] = bar
         elif price_type == PriceType.ASK:
@@ -1311,7 +1321,7 @@ cdef class Cache(CacheFacade):
         self._currencies[currency.code] = currency
         Currency.register_c(currency, overwrite=False)
 
-        self._log.debug(f"Added currency {currency.code}.")
+        self._log.debug(f"Added currency {currency.code}")
 
         # Update database
         if self._database is not None:
@@ -1334,7 +1344,7 @@ cdef class Cache(CacheFacade):
                 f"{instrument.base_currency}/{instrument.quote_currency}"
             )
 
-        self._log.debug(f"Added instrument {instrument.id}.")
+        self._log.debug(f"Added instrument {instrument.id}")
 
         # Update database
         if self._database is not None:
@@ -1352,7 +1362,7 @@ cdef class Cache(CacheFacade):
         """
         self._synthetics[synthetic.id] = synthetic
 
-        self._log.debug(f"Added synthetic instrument {synthetic.id}.")
+        self._log.debug(f"Added synthetic instrument {synthetic.id}")
 
         # Update database
         if self._database is not None:
@@ -1379,19 +1389,64 @@ cdef class Cache(CacheFacade):
         self._accounts[account.id] = account
         self._cache_venue_account_id(account.id)
 
-        self._log.debug(f"Added Account(id={account.id.to_str()}).")
-        self._log.debug(f"Indexed {repr(account.id)}.")
+        self._log.debug(f"Added Account(id={account.id.to_str()})")
+        self._log.debug(f"Indexed {repr(account.id)}")
 
         # Update database
         if self._database is not None:
             self._database.add_account(account)
+
+    cpdef void add_venue_order_id(
+        self,
+        ClientOrderId client_order_id,
+        VenueOrderId venue_order_id,
+        bint overwrite=False,
+    ):
+        """
+        Index the given client order ID with the given venue order ID.
+
+        Parameters
+        ----------
+        client_order_id : ClientOrderId
+            The client order ID to index.
+        venue_order_id : VenueOrderId
+            The venue order ID to index.
+        overwrite : bool, default False
+            If the venue order ID will 'overwrite' any existing indexing and replace
+            it in the cache. This is currently used for updated orders where the venue
+            order ID may change.
+
+        Raises
+        ------
+        ValueError
+            If `overwrite` is False and the `client_order_id` is already indexed with a different `venue_order_id`.
+
+        """
+        Condition.not_none(client_order_id, "client_order_id")
+        Condition.not_none(venue_order_id, "venue_order_id")
+
+        cdef VenueOrderId existing_venue_order_id = self._index_client_order_ids.get(client_order_id)
+        if not overwrite and existing_venue_order_id is not None and venue_order_id != existing_venue_order_id:
+            raise ValueError(
+                f"Existing {existing_venue_order_id!r} for {client_order_id!r} "
+                f"did not match the given {venue_order_id!r}. "
+                "If you are writing a test then try a different `venue_order_id`, "
+                "otherwise this is probably a bug."
+            )
+
+        self._index_client_order_ids[client_order_id] = venue_order_id
+        self._index_venue_order_ids[venue_order_id] = client_order_id
+
+        self._log.debug(
+            f"Indexed {client_order_id!r} with {venue_order_id!r}",
+        )
 
     cpdef void add_order(
         self,
         Order order,
         PositionId position_id = None,
         ClientId client_id = None,
-        bint override = False,
+        bint overwrite = False,
     ):
         """
         Add the given order to the cache indexed with the given position
@@ -1405,8 +1460,8 @@ cdef class Cache(CacheFacade):
             The position ID to index for the order.
         client_id : ClientId, optional
             The execution client ID for order routing.
-        override : bool, default False
-            If the added order should 'override' any existing order and replace
+        overwrite : bool, default False
+            If the added order should 'overwrite' any existing order and replace
             it in the cache. This is currently used for emulated orders which are
             being released and transformed into another type.
 
@@ -1417,7 +1472,7 @@ cdef class Cache(CacheFacade):
 
         """
         Condition.not_none(order, "order")
-        if not override:
+        if not overwrite:
             Condition.not_in(order.client_order_id, self._orders, "order.client_order_id", "_orders")
             Condition.not_in(order.client_order_id, self._index_orders, "order.client_order_id", "_index_orders")
             Condition.not_in(order.client_order_id, self._index_order_position, "order.client_order_id", "_index_order_position")
@@ -1476,7 +1531,7 @@ cdef class Cache(CacheFacade):
         else:
             self._index_orders_emulated.add(order.client_order_id)
 
-        self._log.debug(f"Added {order}.")
+        self._log.debug(f"Added {order}")
 
         if position_id is not None:
             # Index position ID
@@ -1490,15 +1545,13 @@ cdef class Cache(CacheFacade):
         # Index: ClientOrderId -> ClientId (execution client routing)
         if client_id is not None:
             self._index_order_client[order.client_order_id] = client_id
-            self._log.debug(f"Indexed {client_id!r}.")
+            self._log.debug(f"Indexed {client_id!r}")
 
         if self._database is None:
             return
 
         # Update database
         self._database.add_order(order, position_id, client_id)
-        if self.snapshot_orders:
-            self._database.snapshot_order_state(order)
 
     cpdef void add_order_list(self, OrderList order_list):
         """
@@ -1520,7 +1573,7 @@ cdef class Cache(CacheFacade):
 
         self._order_lists[order_list.id] = order_list
 
-        self._log.debug(f"Added {order_list}.")
+        self._log.debug(f"Added {order_list}")
 
     cpdef void add_position_id(
         self,
@@ -1574,7 +1627,7 @@ cdef class Cache(CacheFacade):
         self._log.debug(
             f"Indexed {position_id!r}, "
             f"client_order_id={client_order_id}, "
-            f"strategy_id={strategy_id}).",
+            f"strategy_id={strategy_id})",
         )
 
     cpdef void add_position(self, Position position, OmsType oms_type):
@@ -1627,19 +1680,13 @@ cdef class Cache(CacheFacade):
         else:
             instrument_positions.add(position.id)
 
-        self._log.debug(f"Added Position(id={position.id.to_str()}, strategy_id={position.strategy_id.to_str()}).")
+        self._log.debug(f"Added Position(id={position.id.to_str()}, strategy_id={position.strategy_id.to_str()})")
 
         if self._database is None:
             return
 
         # Update database
         self._database.add_position(position)
-        if self.snapshot_positions:
-            self._database.snapshot_position_state(
-                position,
-                position.ts_last,
-                self.calculate_unrealized_pnl(position),
-            )
 
     cpdef void snapshot_position(self, Position position):
         """
@@ -1666,12 +1713,13 @@ cdef class Cache(CacheFacade):
         else:
             self._position_snapshots[position_id] = [position_pickled]
 
-        self._log.debug(f"Snapshot {repr(copied_position)}.")
+        self._log.debug(f"Snapshot {repr(copied_position)}")
 
     cpdef void snapshot_position_state(
         self,
         Position position,
         uint64_t ts_snapshot,
+        Money unrealized_pnl=None,
         bint open_only=True,
     ):
         """
@@ -1684,7 +1732,9 @@ cdef class Cache(CacheFacade):
         position : Position
             The position to snapshot the state for.
         ts_snapshot : uint64_t
-            The UNIX timestamp (nanoseconds) when the snapshot was taken.
+            UNIX timestamp (nanoseconds) when the snapshot was taken.
+        unrealized_pnl : Money, optional
+            The current unrealized PnL for the position.
         open_only : bool, default True
             If only open positions should be snapshot, this flag helps to avoid race conditions
             where a position is snapshot when no longer open.
@@ -1697,14 +1747,14 @@ cdef class Cache(CacheFacade):
 
         if self._database is None:
             self._log.warning(
-                "Cannot snapshot position state for {position.id:r!} (no database configured).",
+                "Cannot snapshot position state for {position.id:r!} (no database configured)",
             )
             return
 
         self._database.snapshot_position_state(
             position,
             ts_snapshot,
-            self.calculate_unrealized_pnl(position),
+            unrealized_pnl,
         )
 
     cpdef void snapshot_order_state(self, Order order):
@@ -1723,7 +1773,7 @@ cdef class Cache(CacheFacade):
 
         if self._database is None:
             self._log.warning(
-                "Cannot snapshot order state for {order.client_order_id:r!} (no database configured).",
+                "Cannot snapshot order state for {order.client_order_id:r!} (no database configured)",
             )
             return
 
@@ -1757,9 +1807,14 @@ cdef class Cache(CacheFacade):
         Condition.not_none(order, "order")
 
         # Update venue order ID
-        if order.venue_order_id is not None:
-            # Assumes order_id does not change
-            self._index_order_ids[order.venue_order_id] = order.client_order_id
+        if order.venue_order_id is not None and order.venue_order_id not in self._index_venue_order_ids:
+            # If the order is being modified then we allow a changing `VenueOrderId` to accommodate
+            # venues which use a cancel+replace update strategy.
+            self.add_venue_order_id(
+                order.client_order_id,
+                order.venue_order_id,
+                overwrite=isinstance(order._events[-1], OrderUpdated),
+            )
 
         # Update in-flight state
         if order.is_inflight_c():
@@ -1787,8 +1842,6 @@ cdef class Cache(CacheFacade):
 
         # Update database
         self._database.update_order(order)
-        if self.snapshot_orders:
-            self._database.snapshot_order_state(order)
 
     cpdef void update_order_pending_cancel_local(self, Order order):
         """
@@ -1828,12 +1881,6 @@ cdef class Cache(CacheFacade):
 
         # Update database
         self._database.update_position(position)
-        if self.snapshot_positions:
-            self._database.snapshot_position_state(
-                position,
-                position.ts_last,
-                self.calculate_unrealized_pnl(position),
-            )
 
     cpdef void update_actor(self, Actor actor):
         """
@@ -1851,6 +1898,23 @@ cdef class Cache(CacheFacade):
         # Update database
         if self._database is not None:
             self._database.update_actor(actor)
+
+    cpdef void update_strategy(self, Strategy strategy):
+        """
+        Update the given strategy state in the cache.
+
+        Parameters
+        ----------
+        strategy : Strategy
+            The strategy to update.
+        """
+        Condition.not_none(strategy, "strategy")
+
+        self._index_strategies.add(strategy.id)
+
+        # Update database
+        if self._database is not None:
+            self._database.update_strategy(strategy)
 
     cpdef void delete_actor(self, Actor actor):
         """
@@ -1875,24 +1939,7 @@ cdef class Cache(CacheFacade):
         # Update database
         if self._database is not None:
             self._database.delete_actor(actor.id)
-            self._log.debug(f"Deleted Actor(id={actor.id.value}).")
-
-    cpdef void update_strategy(self, Strategy strategy):
-        """
-        Update the given strategy state in the cache.
-
-        Parameters
-        ----------
-        strategy : Strategy
-            The strategy to update.
-        """
-        Condition.not_none(strategy, "strategy")
-
-        self._index_strategies.add(strategy.id)
-
-        # Update database
-        if self._database is not None:
-            self._database.update_strategy(strategy)
+            self._log.debug(f"Deleted Actor(id={actor.id.value})")
 
     cpdef void delete_strategy(self, Strategy strategy):
         """
@@ -1923,13 +1970,13 @@ cdef class Cache(CacheFacade):
         # Update database
         if self._database is not None:
             self._database.delete_strategy(strategy.id)
-            self._log.debug(f"Deleted Strategy(id={strategy.id.value}).")
+            self._log.debug(f"Deleted Strategy(id={strategy.id.value})")
 
 # -- DATA QUERIES ---------------------------------------------------------------------------------
 
     cpdef bytes get(self, str key):
         """
-        Add the given general object to the cache.
+        Return the general object for the given `key`.
 
         The cache is agnostic to what the object actually is (and how it may
         be serialized), offering maximum flexibility.
@@ -1950,7 +1997,7 @@ cdef class Cache(CacheFacade):
 
     cpdef list quote_ticks(self, InstrumentId instrument_id):
         """
-        Return the quote ticks for the given instrument ID.
+        Return the quotes for the given instrument ID.
 
         Parameters
         ----------
@@ -1968,7 +2015,7 @@ cdef class Cache(CacheFacade):
 
     cpdef list trade_ticks(self, InstrumentId instrument_id):
         """
-        Return trade ticks for the given instrument ID.
+        Return trades for the given instrument ID.
 
         Parameters
         ----------
@@ -2025,10 +2072,20 @@ cdef class Cache(CacheFacade):
 
         if price_type == PriceType.LAST:
             trade_tick = self.trade_tick(instrument_id)
-            return trade_tick.price if trade_tick is not None else None
+            if trade_tick is not None:
+                return trade_tick.price
         else:
             quote_tick = self.quote_tick(instrument_id)
-            return quote_tick.extract_price(price_type) if quote_tick is not None else None
+            if quote_tick is not None:
+                return quote_tick.extract_price(price_type)
+
+        # Fallback to bar pricing
+        cdef Bar bar
+        cdef list bar_types = self.bar_types(instrument_id, price_type, AggregationSource.EXTERNAL)
+        if bar_types:
+            bar = self.bar(bar_types[0])  # Bar with smallest timedelta
+            if bar is not None:
+                return bar.close
 
     cpdef OrderBook order_book(self, InstrumentId instrument_id):
         """
@@ -2173,7 +2230,7 @@ cdef class Cache(CacheFacade):
 
     cpdef int quote_tick_count(self, InstrumentId instrument_id):
         """
-        The count of quote ticks for the given instrument ID.
+        The count of quotes for the given instrument ID.
 
         Parameters
         ----------
@@ -2191,7 +2248,7 @@ cdef class Cache(CacheFacade):
 
     cpdef int trade_tick_count(self, InstrumentId instrument_id):
         """
-        The count of trade ticks for the given instrument ID.
+        The count of trades for the given instrument ID.
 
         Parameters
         ----------
@@ -2244,7 +2301,7 @@ cdef class Cache(CacheFacade):
 
     cpdef bint has_quote_ticks(self, InstrumentId instrument_id):
         """
-        Return a value indicating whether the cache has quote ticks for the
+        Return a value indicating whether the cache has quotes for the
         given instrument ID.
 
         Parameters
@@ -2263,7 +2320,7 @@ cdef class Cache(CacheFacade):
 
     cpdef bint has_trade_ticks(self, InstrumentId instrument_id):
         """
-        Return a value indicating whether the cache has trade ticks for the
+        Return a value indicating whether the cache has trades for the
         given instrument ID.
 
         Parameters
@@ -2413,9 +2470,10 @@ cdef class Cache(CacheFacade):
         list[InstrumentId]
 
         """
+        cdef InstrumentId x
         return sorted([x for x in self._instruments.keys() if venue is None or venue == x.venue])
 
-    cpdef list instruments(self, Venue venue = None):
+    cpdef list instruments(self, Venue venue = None, str underlying = None):
         """
         Return all instruments held by the cache.
 
@@ -2423,13 +2481,71 @@ cdef class Cache(CacheFacade):
         ----------
         venue : Venue, optional
             The venue filter for the query.
+        underlying : str, optional
+            The underlying root symbol for the query.
 
         Returns
         -------
         list[Instrument]
 
         """
-        return [x for x in self._instruments.values() if venue is None or venue == x.id.venue]
+        cdef Instrument x
+        return [
+            x for x in self._instruments.values()
+            if (venue is None or venue == x.id.venue) and
+            (underlying is None or (hasattr(x, "underlying") and underlying == x.underlying))
+        ]
+
+    cdef timedelta _get_timedelta(self, BarType bar_type):
+        # Helper method to get the timedelta from a BarType
+        cdef BarSpecification bar_spec = bar_type.spec
+        if bar_spec.aggregation == BarAggregation.MONTH:
+            return timedelta(days=bar_spec.step * 30)  # Reasonable value to fix sorting
+        return bar_spec.timedelta
+
+    cpdef list bar_types(
+        self,
+        InstrumentId instrument_id = None,
+        object price_type = None,
+        aggregation_source = None,
+    ):
+        """
+        Return all bar types with the given query filters.
+
+        If a filter parameter is ``None``, then no filtering occurs for that parameter.
+
+        Parameters
+        ----------
+        instrument_id : InstrumentId, optional
+            The instrument ID query filter.
+        price_type : PriceType, optional
+            The price type query filter.
+        aggregation_source : AggregationSource, optional
+            The aggregation source query filter.
+
+        Returns
+        -------
+        list[BarType]
+
+        """
+        Condition.type_or_none(instrument_id, InstrumentId, "instrument_id")
+        Condition.type_or_none(price_type, PriceType_py, "price_type")
+
+        cdef list[BarType] bar_types = list(self._bars.keys())
+
+        if instrument_id is not None:
+            bar_types = [bar_type for bar_type in bar_types if bar_type.instrument_id == instrument_id]
+
+        if price_type is not None:
+            bar_types = [bar_type for bar_type in bar_types if bar_type.spec.price_type == price_type]
+
+        if aggregation_source is not None:
+            bar_types = [bar_type for bar_type in bar_types if bar_type.spec.price_type == aggregation_source]
+
+        if instrument_id and price_type:
+            bar_types.sort(key=self._get_timedelta)
+
+        return bar_types
 
 # -- SYNTHETIC QUERIES ----------------------------------------------------------------------------
 
@@ -2453,7 +2569,7 @@ cdef class Cache(CacheFacade):
 
         """
         Condition.not_none(instrument_id, "instrument_id")
-        Condition.true(instrument_id.is_synthetic(), "instrument_id was not a synthetic")
+        Condition.is_true(instrument_id.is_synthetic(), "instrument_id was not a synthetic")
 
         return self._synthetics.get(instrument_id)
 
@@ -2957,7 +3073,7 @@ cdef class Cache(CacheFacade):
         """
         Condition.not_none(venue_order_id, "venue_order_id")
 
-        return self._index_order_ids.get(venue_order_id)
+        return self._index_venue_order_ids.get(venue_order_id)
 
     cpdef VenueOrderId venue_order_id(self, ClientOrderId client_order_id):
         """
@@ -2970,10 +3086,7 @@ cdef class Cache(CacheFacade):
         """
         Condition.not_none(client_order_id, "client_order_id")
 
-        cdef Order order = self._orders.get(client_order_id)
-        if order is None:
-            return None
-        return order.venue_order_id
+        return self._index_client_order_ids.get(client_order_id)
 
     cpdef ClientId client_id(self, ClientOrderId client_order_id):
         """
@@ -4022,7 +4135,7 @@ cdef class Cache(CacheFacade):
         Condition.not_none(timestamp, "timestamp")
 
         if self._database is None:
-            self._log.warning(f"Cannot set heartbeat {timestamp} (no database configured).")
+            self._log.warning(f"Cannot set heartbeat {timestamp} (no database configured)")
             return
 
         self._database.heartbeat(timestamp)

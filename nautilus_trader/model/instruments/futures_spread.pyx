@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -63,20 +63,28 @@ cdef class FuturesSpread(Instrument):
     strategy_type : str
         The strategy type for the spread.
     activation_ns : uint64_t
-        The UNIX timestamp (nanoseconds) for contract activation.
+        UNIX timestamp (nanoseconds) for contract activation.
     expiration_ns : uint64_t
-        The UNIX timestamp (nanoseconds) for contract expiration.
+        UNIX timestamp (nanoseconds) for contract expiration.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
+    margin_init : Decimal, optional
+        The initial (order) margin requirement in percentage of order value.
+    margin_maint : Decimal, optional
+        The maintenance (position) margin in percentage of position value.
+    maker_fee : Decimal, optional
+        The fee rate for liquidity makers as a percentage of order value.
+    taker_fee : Decimal, optional
+        The fee rate for liquidity takers as a percentage of order value.
+    exchange : str, optional
+        The exchange ISO 10383 Market Identifier Code (MIC) where the instrument trades.
     info : dict[str, object], optional
         The additional instrument information.
 
     Raises
     ------
-    ValueError
-        If `underlying` is not a valid string.
     ValueError
         If `strategy_type` is not a valid string.
     ValueError
@@ -87,6 +95,13 @@ cdef class FuturesSpread(Instrument):
         If `tick_size` is not positive (> 0).
     ValueError
         If `lot_size` is not positive (> 0).
+    ValueError
+        If `margin_init` is negative (< 0).
+    ValueError
+        If `margin_maint` is negative (< 0).
+    ValueError
+        If `exchange` is not ``None`` and not a valid string.
+
     """
 
     def __init__(
@@ -97,7 +112,7 @@ cdef class FuturesSpread(Instrument):
         Currency currency not None,
         int price_precision,
         Price price_increment not None,
-        Quantity multiplier,
+        Quantity multiplier not None,
         Quantity lot_size not None,
         str underlying,
         str strategy_type,
@@ -105,11 +120,16 @@ cdef class FuturesSpread(Instrument):
         uint64_t expiration_ns,
         uint64_t ts_event,
         uint64_t ts_init,
+        margin_init: Decimal | None = None,
+        margin_maint: Decimal | None = None,
+        maker_fee: Decimal | None = None,
+        taker_fee: Decimal | None = None,
+        str exchange = None,
         dict info = None,
-    ):
-        Condition.valid_string(underlying, "underlying")
+    ) -> None:
         Condition.valid_string(strategy_type, "strategy_type")
-        Condition.positive_int(multiplier, "multiplier")
+        if exchange is not None:
+            Condition.valid_string(exchange, "exchange")
         super().__init__(
             instrument_id=instrument_id,
             raw_symbol=raw_symbol,
@@ -129,14 +149,15 @@ cdef class FuturesSpread(Instrument):
             min_notional=None,
             max_price=None,
             min_price=None,
-            margin_init=Decimal(0),
-            margin_maint=Decimal(0),
-            maker_fee=Decimal(0),
-            taker_fee=Decimal(0),
+            margin_init=margin_init or Decimal(0),
+            margin_maint=margin_maint or Decimal(0),
+            maker_fee=maker_fee or Decimal(0),
+            taker_fee=taker_fee or Decimal(0),
             ts_event=ts_event,
             ts_init=ts_init,
             info=info,
         )
+        self.exchange = exchange
         self.underlying = underlying
         self.strategy_type = strategy_type
         self.activation_ns = activation_ns
@@ -149,6 +170,7 @@ cdef class FuturesSpread(Instrument):
             f"raw_symbol={self.raw_symbol}, "
             f"asset_class={asset_class_to_str(self.asset_class)}, "
             f"instrument_class={instrument_class_to_str(self.instrument_class)}, "
+            f"exchange={self.exchange}, "
             f"quote_currency={self.quote_currency}, "
             f"underlying={self.underlying}, "
             f"strategy_type={self.strategy_type}, "
@@ -209,6 +231,12 @@ cdef class FuturesSpread(Instrument):
             expiration_ns=values["expiration_ns"],
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
+            margin_init=Decimal(values["margin_init"]),
+            margin_maint=Decimal(values["margin_maint"]),
+            maker_fee=Decimal(values["maker_fee"]),
+            taker_fee=Decimal(values["taker_fee"]),
+            exchange=values["exchange"],
+            info=values.get("info"),
         )
 
     @staticmethod
@@ -225,15 +253,23 @@ cdef class FuturesSpread(Instrument):
             "size_precision": obj.size_precision,
             "size_increment": str(obj.size_increment),
             "multiplier": str(obj.multiplier),
+            "max_quantity": str(obj.max_quantity) if obj.max_quantity is not None else None,
+            "min_quantity": str(obj.min_quantity) if obj.min_quantity is not None else None,
+            "max_price": str(obj.max_price) if obj.max_price is not None else None,
+            "min_price": str(obj.min_price) if obj.min_price is not None else None,
             "lot_size": str(obj.lot_size),
             "underlying": obj.underlying,
             "strategy_type": obj.strategy_type,
             "activation_ns": obj.activation_ns,
             "expiration_ns": obj.expiration_ns,
-            "margin_init": str(obj.margin_init),
-            "margin_maint": str(obj.margin_maint),
             "ts_event": obj.ts_event,
             "ts_init": obj.ts_init,
+            "margin_init": str(obj.margin_init),
+            "margin_maint": str(obj.margin_maint),
+            "maker_fee": str(obj.maker_fee),
+            "taker_fee": str(obj.taker_fee),
+            "exchange": obj.exchange,
+            "info": obj.info,
         }
 
     @staticmethod
@@ -245,14 +281,16 @@ cdef class FuturesSpread(Instrument):
             currency=Currency.from_str_c(pyo3_instrument.currency.code),
             price_precision=pyo3_instrument.price_precision,
             price_increment=Price.from_raw_c(pyo3_instrument.price_increment.raw, pyo3_instrument.price_precision),
-            multiplier=Quantity.from_raw_c(pyo3_instrument.multiplier.raw, 0),
-            lot_size=Quantity.from_raw_c(pyo3_instrument.lot_size.raw, 0),
+            multiplier=Quantity.from_raw_c(pyo3_instrument.multiplier.raw, pyo3_instrument.multiplier.precision),
+            lot_size=Quantity.from_raw_c(pyo3_instrument.lot_size.raw, pyo3_instrument.lot_size.precision),
             underlying=pyo3_instrument.underlying,
             strategy_type=pyo3_instrument.strategy_type,
             activation_ns=pyo3_instrument.activation_ns,
             expiration_ns=pyo3_instrument.expiration_ns,
+            info=pyo3_instrument.info,
             ts_event=pyo3_instrument.ts_event,
             ts_init=pyo3_instrument.ts_init,
+            exchange=pyo3_instrument.exchange,
         )
 
     @staticmethod

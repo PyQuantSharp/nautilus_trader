@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -36,9 +36,9 @@ async def test_connect_and_disconnect(websocket_server):
     client = await WebSocketClient.connect(config)
 
     # Act, Assert
-    await eventually(lambda: client.is_alive)
+    await eventually(lambda: client.is_alive())
     await client.disconnect()
-    await eventually(lambda: not client.is_alive)
+    await eventually(lambda: not client.is_alive())
 
 
 @pytest.mark.asyncio()
@@ -47,7 +47,7 @@ async def test_client_send_recv(websocket_server):
     store = []
     config = WebSocketConfig(_server_url(websocket_server), store.append, [])
     client = await WebSocketClient.connect(config)
-    await eventually(lambda: client.is_alive)
+    await eventually(lambda: client.is_alive())
 
     # Act
     num_messages = 3
@@ -58,7 +58,7 @@ async def test_client_send_recv(websocket_server):
 
     await eventually(lambda: store == [b"connected"] + [b"Hello-response"] * 3)
     await client.disconnect()
-    await eventually(lambda: not client.is_alive)
+    await eventually(lambda: not client.is_alive())
 
 
 @pytest.mark.asyncio()
@@ -67,7 +67,7 @@ async def test_client_send_recv_json(websocket_server):
     store = []
     config = WebSocketConfig(_server_url(websocket_server), store.append, [])
     client = await WebSocketClient.connect(config)
-    await eventually(lambda: client.is_alive)
+    await eventually(lambda: client.is_alive())
 
     # Act
     num_messages = 3
@@ -79,7 +79,7 @@ async def test_client_send_recv_json(websocket_server):
     expected = [b"connected"] + [b'{"method":"SUBSCRIBE"}-response'] * 3
     assert store == expected
     await client.disconnect()
-    await eventually(lambda: not client.is_alive)
+    await eventually(lambda: not client.is_alive())
 
 
 @pytest.mark.asyncio()
@@ -88,7 +88,7 @@ async def test_reconnect_after_close(websocket_server):
     store = []
     config = WebSocketConfig(_server_url(websocket_server), store.append, [])
     client = await WebSocketClient.connect(config)
-    await eventually(lambda: client.is_alive)
+    await eventually(lambda: client.is_alive())
 
     # Act
     await client.send(b"close")

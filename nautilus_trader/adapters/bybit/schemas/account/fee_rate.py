@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-import msgspec as msgspec
+import msgspec
 
 from nautilus_trader.adapters.bybit.schemas.common import BybitListResult
 
@@ -22,6 +22,7 @@ class BybitFeeRate(msgspec.Struct):
     symbol: str
     takerFeeRate: str
     makerFeeRate: str
+    baseCoin: str | None = None
 
 
 class BybitFeeRateResponse(msgspec.Struct):

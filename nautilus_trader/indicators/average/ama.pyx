@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -42,7 +42,7 @@ cdef class AdaptiveMovingAverage(MovingAverage):
     period_alpha_slow : int
         The period for the slow smoothing constant (> 0 < alpha_fast).
     price_type : PriceType
-        The specified price type for extracting values from quote ticks.
+        The specified price type for extracting values from quotes.
     """
 
     def __init__(
@@ -55,7 +55,7 @@ cdef class AdaptiveMovingAverage(MovingAverage):
         Condition.positive_int(period_er, "period_er")
         Condition.positive_int(period_alpha_fast, "period_alpha_fast")
         Condition.positive_int(period_alpha_slow, "period_alpha_slow")
-        Condition.true(period_alpha_slow > period_alpha_fast, "period_alpha_slow was <= period_alpha_fast")
+        Condition.is_true(period_alpha_slow > period_alpha_fast, "period_alpha_slow was <= period_alpha_fast")
 
         params = [
             period_er,

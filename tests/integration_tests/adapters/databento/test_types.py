@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -72,7 +72,7 @@
 #
 #     # Act
 #     pickled = pickle.dumps(imbalance)
-#     unpickled = pickle.loads(pickled)  # S301 (pickle is safe here)
+#     unpickled = pickle.loads(pickled)  # (pickle is safe here)
 #
 #     # Assert
 #     assert unpickled == imbalance
@@ -165,7 +165,7 @@
 #
 #     # Act
 #     pickled = pickle.dumps(statistics)
-#     unpickled = pickle.loads(pickled)  # S301 (pickle is safe here)
+#     unpickled = pickle.loads(pickled)  # (pickle is safe here)
 #
 #     # Assert
 #     assert unpickled == statistics

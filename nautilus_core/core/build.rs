@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,20 +13,47 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::env;
+use std::{env, fs, path::PathBuf};
 
-#[allow(clippy::expect_used)] // OK in build script
+use toml::Value;
+
+#[allow(clippy::expect_used)]
 fn main() {
+    // Ensure the build script runs on changes
+    println!("cargo:rerun-if-env-changed=HIGH_PRECISION");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_HIGH_PRECISION");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=cbindgen.toml");
+    println!("cargo:rerun-if-changed=cbindgen_cython.toml");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=../Cargo.toml");
+
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let project_dir = crate_dir
+        .parent()
+        .expect("Failed to get workspace root")
+        .parent()
+        .expect("Failed to get project root");
+
+    let filepath = project_dir.join("pyproject.toml");
+    let data = fs::read_to_string(filepath).expect("Unable to read pyproject.toml");
+    let parsed_toml: Value = toml::from_str(&data).expect("Unable to parse pyproject.toml");
+
+    let nautilus_version = parsed_toml["tool"]["poetry"]["version"]
+        .as_str()
+        .expect("Unable to find version in pyproject.toml")
+        .to_string();
+
+    // Set compile-time environment variables
+    println!("cargo:rustc-env=NAUTILUS_VERSION={nautilus_version}");
+    println!("cargo:rustc-env=NAUTILUS_USER_AGENT=NautilusTrader/{nautilus_version}");
+
     #[cfg(feature = "ffi")]
     if env::var("CARGO_FEATURE_FFI").is_ok() {
-        extern crate cbindgen;
-        use std::{
-            fs::File,
-            io::{Read, Write},
-            path::PathBuf,
-        };
+        use std::io::{Read, Write};
 
-        let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        use cbindgen;
+        use fs::File;
 
         // Generate C headers
         let config_c = cbindgen::Config::from_file("cbindgen.toml")

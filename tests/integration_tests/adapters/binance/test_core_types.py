@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -91,7 +91,7 @@ def test_binance_ticker_pickle():
 
     # Act
     pickled = pickle.dumps(ticker)
-    unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
     # Assert
     assert unpickled == ticker
@@ -253,7 +253,7 @@ def test_binance_bar_pickling():
 
     # Act
     pickled = pickle.dumps(bar)
-    unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
     # Assert
     assert unpickled == bar
@@ -313,7 +313,7 @@ def test_binance_mark_price_pickling():
 
     # Act
     pickled = pickle.dumps(update)
-    unpickled = pickle.loads(pickled)  # noqa S301 (pickle is safe here)
+    unpickled = pickle.loads(pickled)  # noqa: S301 (pickle is safe here)
 
     # Assert
     assert unpickled.to_dict(unpickled) == {

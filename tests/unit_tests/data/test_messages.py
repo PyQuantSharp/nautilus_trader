@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -50,7 +50,7 @@ class TestDataMessage:
                 command_id=UUID4(),
                 ts_init=self.clock.timestamp_ns(),
             )
-        assert e.type == ValueError
+        assert issubclass(e.type, ValueError)
         assert e.match("Both `client_id` and `venue` were None")
 
         with pytest.raises(ValueError) as e:
@@ -61,7 +61,7 @@ class TestDataMessage:
                 command_id=UUID4(),
                 ts_init=self.clock.timestamp_ns(),
             )
-        assert e.type == ValueError
+        assert issubclass(e.type, ValueError)
         assert e.match("Both `client_id` and `venue` were None")
 
         with pytest.raises(ValueError) as e:
@@ -74,7 +74,7 @@ class TestDataMessage:
                 request_id=UUID4(),
                 ts_init=self.clock.timestamp_ns(),
             )
-        assert e.type == ValueError
+        assert issubclass(e.type, ValueError)
         assert e.match("Both `client_id` and `venue` were None")
 
         with pytest.raises(ValueError) as e:
@@ -87,7 +87,7 @@ class TestDataMessage:
                 response_id=UUID4(),
                 ts_init=self.clock.timestamp_ns(),
             )
-        assert e.type == ValueError
+        assert issubclass(e.type, ValueError)
         assert e.match("Both `client_id` and `venue` were None")
 
     def test_data_command_str_and_repr(self):
@@ -98,18 +98,22 @@ class TestDataMessage:
             client_id=None,
             venue=BINANCE,
             data_type=DataType(Data, {"type": "newswire"}),
+            params={"filter": "ABC"},
             command_id=command_id,
             ts_init=self.clock.timestamp_ns(),
         )
 
         # Assert
-        assert str(command) == "Subscribe(Data{'type': 'newswire'})"
+        assert (
+            str(command)
+            == "Subscribe(client_id=None, venue=BINANCE, data_type=Data{'type': 'newswire'}, params={'filter': 'ABC'})"
+        )
         assert repr(command) == (
             f"Subscribe("
             f"client_id=None, "
             f"venue=BINANCE, "
             f"data_type=Data{{'type': 'newswire'}}, "
-            f"id={command_id})"
+            f"id={command_id}, params={{'filter': 'ABC'}})"
         )
 
     def test_venue_data_command_str_and_repr(self):
@@ -125,7 +129,10 @@ class TestDataMessage:
         )
 
         # Assert
-        assert str(command) == "Subscribe(TradeTick{'instrument_id': 'BTCUSDT'})"
+        assert (
+            str(command)
+            == "Subscribe(client_id=BINANCE, venue=BINANCE, data_type=TradeTick{'instrument_id': 'BTCUSDT'})"
+        )
         assert repr(command) == (
             f"Subscribe("
             f"client_id=BINANCE, "
@@ -159,7 +166,7 @@ class TestDataMessage:
         # Assert
         assert (
             str(request)
-            == "DataRequest(Data{'instrument_id': InstrumentId('SOMETHING.RANDOM'), 'start': None, 'end': None, 'limit': 1000})"
+            == "DataRequest(client_id=None, venue=BINANCE, data_type=Data{'instrument_id': InstrumentId('SOMETHING.RANDOM'), 'start': None, 'end': None, 'limit': 1000})"  # noqa
         )
         assert repr(request) == (
             f"DataRequest("
@@ -195,7 +202,7 @@ class TestDataMessage:
         # Assert
         assert (
             str(request)
-            == "DataRequest(TradeTick{'instrument_id': InstrumentId('SOMETHING.RANDOM'), 'start': None, 'end': None, 'limit': 1000})"
+            == "DataRequest(client_id=None, venue=BINANCE, data_type=TradeTick{'instrument_id': InstrumentId('SOMETHING.RANDOM'), 'start': None, 'end': None, 'limit': 1000})"  # noqa
         )
         assert repr(request) == (
             f"DataRequest("
@@ -225,7 +232,7 @@ class TestDataMessage:
         # Assert
         assert (
             str(response)
-            == "DataResponse(QuoteTick{'instrument_id': InstrumentId('AUD/USD.IDEALPRO')})"
+            == "DataResponse(client_id=None, venue=BINANCE, data_type=QuoteTick{'instrument_id': InstrumentId('AUD/USD.IDEALPRO')})"
         )
         assert repr(response) == (
             f"DataResponse("
@@ -255,7 +262,7 @@ class TestDataMessage:
         # Assert
         assert (
             str(response)
-            == "DataResponse(QuoteTick{'instrument_id': InstrumentId('AUD/USD.IDEALPRO')})"
+            == "DataResponse(client_id=IB, venue=IDEALPRO, data_type=QuoteTick{'instrument_id': InstrumentId('AUD/USD.IDEALPRO')})"
         )
         assert repr(response) == (
             f"DataResponse("

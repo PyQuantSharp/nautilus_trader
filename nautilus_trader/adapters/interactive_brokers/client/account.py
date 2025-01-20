@@ -17,7 +17,6 @@ import functools
 from decimal import Decimal
 
 from ibapi.account_summary_tags import AccountSummaryTags
-from ibapi.utils import current_fn_name
 
 from nautilus_trader.adapters.interactive_brokers.client.common import BaseMixin
 from nautilus_trader.adapters.interactive_brokers.client.common import IBPosition
@@ -76,7 +75,7 @@ class InteractiveBrokersClientAccountMixin(BaseMixin):
             )
         # Allow fetching all tags upon request even if already subscribed
         if not subscription:
-            return None
+            return
         subscription.handle()
 
     def unsubscribe_account_summary(self, account_id: str) -> None:
@@ -112,7 +111,7 @@ class InteractiveBrokersClientAccountMixin(BaseMixin):
         list[Position] | ``None``
 
         """
-        self._log.debug(f"Requesting Open Positions for {account_id}")
+        self._log.debug(f"Requesting open positions for {account_id}")
         name = "OpenPositions"
         if not (request := self._requests.get(name=name)):
             request = self._requests.add(
@@ -134,10 +133,9 @@ class InteractiveBrokersClientAccountMixin(BaseMixin):
                 positions.append(position)
         return positions
 
-    # -- EWrapper overrides -----------------------------------------------------------------------
-
-    def accountSummary(
+    async def process_account_summary(
         self,
+        *,
         req_id: int,
         account_id: str,
         tag: str,
@@ -147,26 +145,26 @@ class InteractiveBrokersClientAccountMixin(BaseMixin):
         """
         Receive account information.
         """
-        self.logAnswer(current_fn_name(), vars())
         name = f"accountSummary-{account_id}"
         if handler := self._event_subscriptions.get(name, None):
             handler(tag, value, currency)
 
-    def managedAccounts(self, accounts_list: str) -> None:
+    async def process_managed_accounts(self, *, accounts_list: str) -> None:
         """
         Receive a comma-separated string with the managed account ids.
 
         Occurs automatically on initial API client connection.
 
         """
-        self.logAnswer(current_fn_name(), vars())
         self._account_ids = {a for a in accounts_list.split(",") if a}
-        if self._next_valid_order_id >= 0 and not self._is_ib_ready.is_set():
-            self._log.info("`is_ib_ready` set by managedAccounts", LogColor.BLUE)
-            self._is_ib_ready.set()
+        self._log.debug(f"Managed accounts set: {self._account_ids}")
+        if self._next_valid_order_id >= 0 and not self._is_ib_connected.is_set():
+            self._log.debug("`_is_ib_connected` set by `managedAccounts`", LogColor.BLUE)
+            self._is_ib_connected.set()
 
-    def position(
+    async def process_position(
         self,
+        *,
         account_id: str,
         contract: IBContract,
         position: Decimal,
@@ -175,14 +173,12 @@ class InteractiveBrokersClientAccountMixin(BaseMixin):
         """
         Provide the portfolio's open positions.
         """
-        self.logAnswer(current_fn_name(), vars())
         if request := self._requests.get(name="OpenPositions"):
             request.result.append(IBPosition(account_id, contract, position, avg_cost))
 
-    def positionEnd(self) -> None:
+    async def process_position_end(self) -> None:
         """
         Indicate that all the positions have been transmitted.
         """
-        self.logAnswer(current_fn_name(), vars())
         if request := self._requests.get(name="OpenPositions"):
             self._end_request(request.req_id)

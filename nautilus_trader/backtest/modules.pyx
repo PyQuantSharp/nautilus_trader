@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -118,7 +118,7 @@ cdef class FXRolloverInterestModule(SimulationModule):
         Parameters
         ----------
         ts_now : uint64_t
-            The current UNIX time (nanoseconds) in the simulated exchange.
+            The current UNIX timestamp (nanoseconds) in the simulated exchange.
 
         """
         cdef datetime now = pd.Timestamp(ts_now, tz="UTC")
@@ -209,9 +209,9 @@ cdef class FXRolloverInterestModule(SimulationModule):
             The logger to log to.
 
         """
-        account_balances_starting = ', '.join([b.to_str() for b in self.exchange.starting_balances])
+        account_balances_starting = ', '.join([b.to_formatted_str() for b in self.exchange.starting_balances])
         account_starting_length = len(account_balances_starting)
-        rollover_totals = ', '.join([b.to_str() for b in self._rollover_totals.values()])
+        rollover_totals = ', '.join([b.to_formatted_str() for b in self._rollover_totals.values()])
         logger.info(f"Rollover interest (totals): {rollover_totals}")
 
     cpdef void reset(self):

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,9 +18,8 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use anyhow::Result;
 use nautilus_model::{
-    data::{bar::Bar, quote::QuoteTick, trade::TradeTick},
+    data::{Bar, QuoteTick, TradeTick},
     enums::PriceType,
 };
 
@@ -65,13 +64,13 @@ impl Indicator for AroonOscillator {
         self.initialized
     }
 
-    fn handle_quote_tick(&mut self, tick: &QuoteTick) {
-        let price = tick.extract_price(PriceType::Mid).into();
+    fn handle_quote(&mut self, quote: &QuoteTick) {
+        let price = quote.extract_price(PriceType::Mid).into();
         self.update_raw(price, price);
     }
 
-    fn handle_trade_tick(&mut self, tick: &TradeTick) {
-        let price = tick.price.into();
+    fn handle_trade(&mut self, trade: &TradeTick) {
+        let price = trade.price.into();
         self.update_raw(price, price);
     }
 
@@ -92,8 +91,10 @@ impl Indicator for AroonOscillator {
 }
 
 impl AroonOscillator {
-    pub fn new(period: usize) -> Result<Self> {
-        Ok(Self {
+    /// Creates a new [`AroonOscillator`] instance.
+    #[must_use]
+    pub fn new(period: usize) -> Self {
+        Self {
             period,
             high_inputs: VecDeque::with_capacity(period),
             low_inputs: VecDeque::with_capacity(period),
@@ -103,7 +104,7 @@ impl AroonOscillator {
             count: 0,
             has_inputs: false,
             initialized: false,
-        })
+        }
     }
 
     pub fn update_raw(&mut self, high: f64, low: f64) {
@@ -129,7 +130,7 @@ impl AroonOscillator {
             .high_inputs
             .iter()
             .enumerate()
-            .fold((0, std::f64::MIN), |(max_idx, max_val), (idx, &val)| {
+            .fold((0, f64::MIN), |(max_idx, max_val), (idx, &val)| {
                 if val > max_val {
                     (idx, val)
                 } else {
@@ -142,7 +143,7 @@ impl AroonOscillator {
             .low_inputs
             .iter()
             .enumerate()
-            .fold((0, std::f64::MAX), |(min_idx, min_val), (idx, &val)| {
+            .fold((0, f64::MAX), |(min_idx, min_val), (idx, &val)| {
                 if val < min_val {
                     (idx, val)
                 } else {
@@ -165,5 +166,98 @@ impl AroonOscillator {
                 self.initialized = true;
             }
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Tests
+////////////////////////////////////////////////////////////////////////////////
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+    use crate::indicator::Indicator;
+
+    #[rstest]
+    fn test_name_returns_expected_string() {
+        let aroon = AroonOscillator::new(10);
+        assert_eq!(aroon.name(), "AroonOscillator");
+    }
+
+    #[rstest]
+    fn test_period() {
+        let aroon = AroonOscillator::new(10);
+        assert_eq!(aroon.period, 10);
+    }
+
+    #[rstest]
+    fn test_initialized_without_inputs_returns_false() {
+        let aroon = AroonOscillator::new(10);
+        assert!(!aroon.initialized());
+    }
+
+    #[rstest]
+    fn test_initialized_with_required_inputs_returns_true() {
+        let mut aroon = AroonOscillator::new(10);
+        for _ in 0..20 {
+            aroon.update_raw(110.08, 109.61);
+        }
+        assert!(aroon.initialized());
+    }
+
+    #[rstest]
+    fn test_value_with_one_input() {
+        let mut aroon = AroonOscillator::new(1);
+        aroon.update_raw(110.08, 109.61);
+        assert_eq!(aroon.aroon_up, 100.0);
+        assert_eq!(aroon.aroon_down, 100.0);
+        assert_eq!(aroon.value, 0.0);
+    }
+
+    #[rstest]
+    fn test_value_with_twenty_inputs() {
+        let mut aroon = AroonOscillator::new(20);
+        let inputs = [
+            (110.08, 109.61),
+            (110.15, 109.91),
+            (110.1, 109.73),
+            (110.06, 109.77),
+            (110.29, 109.88),
+            (110.53, 110.29),
+            (110.61, 110.26),
+            (110.28, 110.17),
+            (110.3, 110.0),
+            (110.25, 110.01),
+            (110.25, 109.81),
+            (109.92, 109.71),
+            (110.21, 109.84),
+            (110.08, 109.95),
+            (110.2, 109.96),
+            (110.16, 109.95),
+            (109.99, 109.75),
+            (110.2, 109.73),
+            (110.1, 109.81),
+            (110.04, 109.96),
+        ];
+        for &(high, low) in &inputs {
+            aroon.update_raw(high, low);
+        }
+        assert_eq!(aroon.aroon_up, 35.0);
+        assert_eq!(aroon.aroon_down, 5.0);
+        assert_eq!(aroon.value, 30.0);
+    }
+
+    #[rstest]
+    fn test_reset_successfully_returns_indicator_to_fresh_state() {
+        let mut aroon = AroonOscillator::new(10);
+        for _ in 0..1000 {
+            aroon.update_raw(110.08, 109.61);
+        }
+        aroon.reset();
+        assert!(!aroon.initialized());
+        assert_eq!(aroon.aroon_up, 0.0);
+        assert_eq!(aroon.aroon_down, 0.0);
+        assert_eq!(aroon.value, 0.0);
     }
 }

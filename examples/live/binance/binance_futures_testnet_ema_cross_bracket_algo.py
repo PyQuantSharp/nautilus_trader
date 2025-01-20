@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,6 +30,7 @@ from nautilus_trader.examples.strategies.ema_cross_bracket_algo import EMACrossB
 from nautilus_trader.examples.strategies.ema_cross_bracket_algo import EMACrossBracketAlgoConfig
 from nautilus_trader.live.node import TradingNode
 from nautilus_trader.model.data import BarType
+from nautilus_trader.model.identifiers import ExecAlgorithmId
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import TraderId
 
@@ -68,9 +69,11 @@ config_node = TradingNodeConfig(
             us=False,  # If client is for Binance US
             testnet=True,  # If client uses the testnet
             instrument_provider=InstrumentProviderConfig(load_all=True),
+            max_retries=3,
+            retry_delay=1.0,
         ),
     },
-    timeout_connection=20.0,
+    timeout_connection=30.0,
     timeout_reconciliation=10.0,
     timeout_portfolio=10.0,
     timeout_disconnection=10.0,
@@ -92,7 +95,7 @@ strat_config = EMACrossBracketAlgoConfig(
     bracket_distance_atr=1.0,
     trade_size=Decimal("0.100"),
     emulation_trigger="BID_ASK",
-    entry_exec_algorithm_id="TWAP",
+    entry_exec_algorithm_id=ExecAlgorithmId("TWAP"),
     entry_exec_algorithm_params={"horizon_secs": 5.0, "interval_secs": 0.5},
 )
 
@@ -104,7 +107,7 @@ exec_algorithm = TWAPExecAlgorithm()
 node.trader.add_strategy(strategy)
 node.trader.add_exec_algorithm(exec_algorithm)
 
-# Register your client factories with the node (can take user defined factories)
+# Register your client factories with the node (can take user-defined factories)
 node.add_data_client_factory("BINANCE", BinanceLiveDataClientFactory)
 node.add_exec_client_factory("BINANCE", BinanceLiveExecClientFactory)
 node.build()

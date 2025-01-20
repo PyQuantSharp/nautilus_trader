@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,7 +21,9 @@ import pandas as pd
 import pyarrow.dataset as ds
 import pytest
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.adapters.betfair.constants import BETFAIR_PRICE_PRECISION
+from nautilus_trader.adapters.databento.loaders import DatabentoDataLoader
 from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.core.rust.model import AggressorSide
 from nautilus_trader.core.rust.model import BookAction
@@ -45,7 +47,6 @@ from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.rust.data_pyo3 import TestDataProviderPyo3
 from nautilus_trader.test_kit.stubs.data import TestDataStubs
 from nautilus_trader.test_kit.stubs.persistence import TestPersistenceStubs
-from tests import TEST_DATA_DIR
 
 
 def test_list_data_types(catalog_betfair: ParquetDataCatalog) -> None:
@@ -77,6 +78,9 @@ def test_catalog_query_filtered(
 
     deltas = catalog_betfair.order_book_deltas()
     assert len(deltas) == 2384
+
+    deltas = catalog_betfair.order_book_deltas(batched=True)
+    assert len(deltas) == 2007
 
 
 def test_catalog_query_custom_filtered(
@@ -144,8 +148,23 @@ def test_catalog_instrument_ids_correctly_unmapped(catalog: ParquetDataCatalog) 
     assert trade_tick.instrument_id.value == "AUD/USD.SIM"
 
 
+@pytest.mark.skip("development_only")
+def test_catalog_with_databento_instruments(catalog: ParquetDataCatalog) -> None:
+    # Arrange
+    loader = DatabentoDataLoader()
+    path = TEST_DATA_DIR / "databento" / "temp" / "glbx-mdp3-20241020.definition.dbn.zst"
+    instruments = loader.from_dbn_file(path, as_legacy_cython=True)
+    catalog.write_data(instruments)
+
+    # Act
+    catalog.instruments()
+
+    # Assert
+    assert len(instruments) == 601_633
+
+
 @pytest.mark.skip(reason="Not yet partitioning")
-def test_partioning_min_rows_per_group(
+def test_partitioning_min_rows_per_group(
     catalog_betfair: ParquetDataCatalog,
 ) -> None:
     # Arrange
@@ -241,7 +260,7 @@ def test_catalog_custom_data(catalog: ParquetDataCatalog) -> None:
     assert isinstance(data[0], CustomData)
 
 
-def test_catalog_bars(catalog: ParquetDataCatalog) -> None:
+def test_catalog_bars_querying_by_bar_type(catalog: ParquetDataCatalog) -> None:
     # Arrange
     bar_type = TestDataStubs.bartype_adabtc_binance_1min_last()
     instrument = TestInstrumentProvider.adabtc_binance()
@@ -258,6 +277,44 @@ def test_catalog_bars(catalog: ParquetDataCatalog) -> None:
     bars = catalog.bars(bar_types=[str(bar_type)])
     all_bars = catalog.bars()
     assert len(all_bars) == 10
+    assert len(bars) == len(stub_bars) == 10
+
+
+def test_catalog_append_data(catalog: ParquetDataCatalog) -> None:
+    # Arrange
+    bar_type = TestDataStubs.bartype_adabtc_binance_1min_last()
+    instrument = TestInstrumentProvider.adabtc_binance()
+    stub_bars = TestDataStubs.binance_bars_from_csv(
+        "ADABTC-1m-2021-11-27.csv",
+        bar_type,
+        instrument,
+    )
+    catalog.write_data(stub_bars)
+
+    # Act
+    catalog.write_data(stub_bars, mode="append")
+
+    # Assert
+    bars = catalog.bars(bar_types=[str(bar_type)])
+    all_bars = catalog.bars()
+    assert len(bars) == len(all_bars) == 20
+
+
+def test_catalog_bars_querying_by_instrument_id(catalog: ParquetDataCatalog) -> None:
+    # Arrange
+    bar_type = TestDataStubs.bartype_adabtc_binance_1min_last()
+    instrument = TestInstrumentProvider.adabtc_binance()
+    stub_bars = TestDataStubs.binance_bars_from_csv(
+        "ADABTC-1m-2021-11-27.csv",
+        bar_type,
+        instrument,
+    )
+
+    # Act
+    catalog.write_data(stub_bars)
+
+    # Assert
+    bars = catalog.bars(instrument_ids=[instrument.id.value])
     assert len(bars) == len(stub_bars) == 10
 
 
@@ -339,9 +396,11 @@ def test_catalog_multiple_bar_types(catalog: ParquetDataCatalog) -> None:
     # Assert
     bars1 = catalog.bars(bar_types=[str(bar_type1)])
     bars2 = catalog.bars(bar_types=[str(bar_type2)])
+    bars3 = catalog.bars(instrument_ids=[instrument1.id.value])
     all_bars = catalog.bars()
     assert len(bars1) == 10
     assert len(bars2) == 10
+    assert len(bars3) == 10
     assert len(all_bars) == 20
 
 

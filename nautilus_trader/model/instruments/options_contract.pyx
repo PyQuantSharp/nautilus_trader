@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -21,11 +21,14 @@ import pytz
 from libc.stdint cimport uint64_t
 
 from nautilus_trader.core.correctness cimport Condition
+from nautilus_trader.core.datetime cimport format_iso8601
 from nautilus_trader.core.rust.model cimport AssetClass
 from nautilus_trader.core.rust.model cimport InstrumentClass
 from nautilus_trader.core.rust.model cimport OptionKind
 from nautilus_trader.model.functions cimport asset_class_from_str
 from nautilus_trader.model.functions cimport asset_class_to_str
+from nautilus_trader.model.functions cimport instrument_class_from_str
+from nautilus_trader.model.functions cimport instrument_class_to_str
 from nautilus_trader.model.functions cimport option_kind_from_str
 from nautilus_trader.model.functions cimport option_kind_to_str
 from nautilus_trader.model.identifiers cimport InstrumentId
@@ -65,13 +68,23 @@ cdef class OptionsContract(Instrument):
     strike_price : Price
         The option strike price.
     activation_ns : uint64_t
-        The UNIX timestamp (nanoseconds) for contract activation.
+        UNIX timestamp (nanoseconds) for contract activation.
     expiration_ns : uint64_t
-        The UNIX timestamp (nanoseconds) for contract expiration.
+        UNIX timestamp (nanoseconds) for contract expiration.
     ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
+        UNIX timestamp (nanoseconds) when the data event occurred.
     ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+        UNIX timestamp (nanoseconds) when the data object was initialized.
+    margin_init : Decimal, optional
+        The initial (order) margin requirement in percentage of order value.
+    margin_maint : Decimal, optional
+        The maintenance (position) margin in percentage of position value.
+    maker_fee : Decimal, optional
+        The fee rate for liquidity makers as a percentage of order value.
+    taker_fee : Decimal, optional
+        The fee rate for liquidity takers as a percentage of order value.
+    exchange : str, optional
+        The exchange ISO 10383 Market Identifier Code (MIC) where the instrument trades.
     info : dict[str, object], optional
         The additional instrument information.
 
@@ -85,6 +98,13 @@ cdef class OptionsContract(Instrument):
         If `tick_size` is not positive (> 0).
     ValueError
         If `lot_size` is not positive (> 0).
+    ValueError
+        If `margin_init` is negative (< 0).
+    ValueError
+        If `margin_maint` is negative (< 0).
+    ValueError
+        If `exchange` is not ``None`` and not a valid string.
+
     """
 
     def __init__(
@@ -99,14 +119,21 @@ cdef class OptionsContract(Instrument):
         Quantity lot_size not None,
         str underlying,
         OptionKind option_kind,
+        Price strike_price not None,
         uint64_t activation_ns,
         uint64_t expiration_ns,
-        Price strike_price not None,
         uint64_t ts_event,
         uint64_t ts_init,
+        margin_init: Decimal | None = None,
+        margin_maint: Decimal | None = None,
+        maker_fee: Decimal | None = None,
+        taker_fee: Decimal | None = None,
+        str exchange = None,
         dict info = None,
-    ):
+    ) -> None:
         Condition.positive_int(multiplier, "multiplier")
+        if exchange is not None:
+            Condition.valid_string(exchange, "exchange")
         super().__init__(
             instrument_id=instrument_id,
             raw_symbol=raw_symbol,
@@ -126,19 +153,45 @@ cdef class OptionsContract(Instrument):
             min_notional=None,
             max_price=None,
             min_price=None,
-            margin_init=Decimal(0),
-            margin_maint=Decimal(0),
-            maker_fee=Decimal(0),
-            taker_fee=Decimal(0),
+            margin_init=margin_init or Decimal(0),
+            margin_maint=margin_maint or Decimal(0),
+            maker_fee=maker_fee or Decimal(0),
+            taker_fee=taker_fee or Decimal(0),
             ts_event=ts_event,
             ts_init=ts_init,
             info=info,
         )
+        self.exchange = exchange
         self.underlying = underlying
         self.option_kind = option_kind
+        self.strike_price = strike_price
         self.activation_ns = activation_ns
         self.expiration_ns = expiration_ns
-        self.strike_price = strike_price
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}"
+            f"(id={self.id.to_str()}, "
+            f"raw_symbol={self.raw_symbol}, "
+            f"asset_class={asset_class_to_str(self.asset_class)}, "
+            f"instrument_class={instrument_class_to_str(self.instrument_class)}, "
+            f"exchange={self.exchange}, "
+            f"quote_currency={self.quote_currency}, "
+            f"underlying={self.underlying}, "
+            f"option_kind={option_kind_to_str(self.option_kind)}, "
+            f"strike_price={self.strike_price}, "
+            f"activation={format_iso8601(self.activation_utc)}, "
+            f"expiration={format_iso8601(self.expiration_utc)}, "
+            f"price_precision={self.price_precision}, "
+            f"price_increment={self.price_increment}, "
+            f"multiplier={self.multiplier}, "
+            f"lot_size={self.lot_size}, "
+            f"margin_init={self.margin_init}, "
+            f"margin_maint={self.margin_maint}, "
+            f"maker_fee={self.maker_fee}, "
+            f"taker_fee={self.taker_fee}, "
+            f"info={self.info})"
+        )
 
     @property
     def activation_utc(self) -> pd.Timestamp:
@@ -166,8 +219,6 @@ cdef class OptionsContract(Instrument):
         """
         return pd.Timestamp(self.expiration_ns, tz=pytz.utc)
 
-
-
     @staticmethod
     cdef OptionsContract from_dict_c(dict values):
         Condition.not_none(values, "values")
@@ -187,6 +238,12 @@ cdef class OptionsContract(Instrument):
             strike_price=Price.from_str(values["strike_price"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
+            margin_init=Decimal(values["margin_init"]),
+            margin_maint=Decimal(values["margin_maint"]),
+            maker_fee=Decimal(values["maker_fee"]),
+            taker_fee=Decimal(values["taker_fee"]),
+            exchange=values["exchange"],
+            info=values.get("info"),
         )
 
     @staticmethod
@@ -203,16 +260,24 @@ cdef class OptionsContract(Instrument):
             "size_precision": obj.size_precision,
             "size_increment": str(obj.size_increment),
             "multiplier": str(obj.multiplier),
+            "max_quantity": str(obj.max_quantity) if obj.max_quantity is not None else None,
+            "min_quantity": str(obj.min_quantity) if obj.min_quantity is not None else None,
+            "max_price": str(obj.max_price) if obj.max_price is not None else None,
+            "min_price": str(obj.min_price) if obj.min_price is not None else None,
             "lot_size": str(obj.lot_size),
             "underlying": str(obj.underlying),
             "option_kind": option_kind_to_str(obj.option_kind),
             "activation_ns": obj.activation_ns,
             "expiration_ns": obj.expiration_ns,
             "strike_price": str(obj.strike_price),
-            "margin_init": str(obj.margin_init),
-            "margin_maint": str(obj.margin_maint),
             "ts_event": obj.ts_event,
             "ts_init": obj.ts_init,
+            "margin_init": str(obj.margin_init),
+            "margin_maint": str(obj.margin_maint),
+            "maker_fee": str(obj.maker_fee),
+            "taker_fee": str(obj.taker_fee),
+            "exchange": obj.exchange,
+            "info": obj.info,
         }
 
     @staticmethod
@@ -225,15 +290,17 @@ cdef class OptionsContract(Instrument):
             currency=Currency.from_str_c(pyo3_instrument.currency.code),
             price_precision=pyo3_instrument.price_precision,
             price_increment=Price.from_raw_c(pyo3_instrument.price_increment.raw, pyo3_instrument.price_precision),
-            multiplier=Quantity.from_raw_c(pyo3_instrument.multiplier.raw, 0),
-            lot_size=Quantity.from_raw_c(pyo3_instrument.lot_size.raw, 0),
+            multiplier=Quantity.from_raw_c(pyo3_instrument.multiplier.raw, pyo3_instrument.multiplier.precision),
+            lot_size=Quantity.from_raw_c(pyo3_instrument.lot_size.raw, pyo3_instrument.lot_size.precision),
             underlying=pyo3_instrument.underlying,
             option_kind=option_kind_from_str(str(pyo3_instrument.option_kind)),
             activation_ns=pyo3_instrument.activation_ns,
             expiration_ns=pyo3_instrument.expiration_ns,
             strike_price=Price.from_raw_c(pyo3_instrument.strike_price.raw, pyo3_instrument.strike_price.precision),
+            info=pyo3_instrument.info,
             ts_event=pyo3_instrument.ts_event,
             ts_init=pyo3_instrument.ts_init,
+            exchange=pyo3_instrument.exchange,
         )
 
     @staticmethod

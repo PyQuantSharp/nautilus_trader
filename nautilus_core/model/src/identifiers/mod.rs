@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::str::FromStr;
+//! Identifiers for the trading domain model.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -37,6 +37,14 @@ pub mod venue_order_id;
 
 #[cfg(feature = "stubs")]
 pub mod stubs;
+
+// Re-exports
+pub use crate::identifiers::{
+    account_id::AccountId, client_id::ClientId, client_order_id::ClientOrderId,
+    component_id::ComponentId, exec_algorithm_id::ExecAlgorithmId, instrument_id::InstrumentId,
+    order_list_id::OrderListId, position_id::PositionId, strategy_id::StrategyId, symbol::Symbol,
+    trade_id::TradeId, trader_id::TraderId, venue::Venue, venue_order_id::VenueOrderId,
+};
 
 impl_from_str_for_identifier!(account_id::AccountId);
 impl_from_str_for_identifier!(client_id::ClientId);
@@ -64,6 +72,19 @@ impl_serialization_for_identifier!(symbol::Symbol);
 impl_serialization_for_identifier!(trader_id::TraderId);
 impl_serialization_for_identifier!(venue::Venue);
 impl_serialization_for_identifier!(venue_order_id::VenueOrderId);
+
+impl_as_ref_for_identifier!(account_id::AccountId);
+impl_as_ref_for_identifier!(client_id::ClientId);
+impl_as_ref_for_identifier!(client_order_id::ClientOrderId);
+impl_as_ref_for_identifier!(component_id::ComponentId);
+impl_as_ref_for_identifier!(exec_algorithm_id::ExecAlgorithmId);
+impl_as_ref_for_identifier!(order_list_id::OrderListId);
+impl_as_ref_for_identifier!(position_id::PositionId);
+impl_as_ref_for_identifier!(strategy_id::StrategyId);
+impl_as_ref_for_identifier!(symbol::Symbol);
+impl_as_ref_for_identifier!(trader_id::TraderId);
+impl_as_ref_for_identifier!(venue::Venue);
+impl_as_ref_for_identifier!(venue_order_id::VenueOrderId);
 
 #[no_mangle]
 pub extern "C" fn interned_string_stats() {

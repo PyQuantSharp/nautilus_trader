@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,15 +19,19 @@ import pytest
 
 from nautilus_trader.backtest.matching_engine import OrderMatchingEngine
 from nautilus_trader.backtest.models import FillModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
+from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.enums import AccountType
 from nautilus_trader.model.enums import BookType
-from nautilus_trader.model.enums import MarketStatus
+from nautilus_trader.model.enums import InstrumentCloseType
+from nautilus_trader.model.enums import MarketStatusAction
 from nautilus_trader.model.enums import OmsType
 from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.enums import TimeInForce
 from nautilus_trader.model.events import OrderFilled
+from nautilus_trader.model.objects import Price
 from nautilus_trader.model.orders import MarketOrder
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.test_kit.stubs.component import TestComponentStubs
@@ -59,6 +63,7 @@ class TestOrderMatchingEngine:
             instrument=self.instrument,
             raw_id=0,
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             book_type=BookType.L1_MBP,
             oms_type=OmsType.NETTING,
             account_type=AccountType.MARGIN,
@@ -85,11 +90,11 @@ class TestOrderMatchingEngine:
         # Assert
         assert True
 
-    def test_process_venue_status(self) -> None:
-        self.matching_engine.process_status(MarketStatus.CLOSED)
-        self.matching_engine.process_status(MarketStatus.PRE_OPEN)
-        self.matching_engine.process_status(MarketStatus.PAUSE)
-        self.matching_engine.process_status(MarketStatus.OPEN)
+    def test_process_instrument_status(self) -> None:
+        self.matching_engine.process_status(MarketStatusAction.CLOSE)
+        self.matching_engine.process_status(MarketStatusAction.PRE_OPEN)
+        self.matching_engine.process_status(MarketStatusAction.PAUSE)
+        self.matching_engine.process_status(MarketStatusAction.TRADING)
 
     def test_process_market_on_close_order(self) -> None:
         order: MarketOrder = TestExecStubs.market_order(
@@ -97,6 +102,31 @@ class TestOrderMatchingEngine:
             time_in_force=TimeInForce.AT_THE_CLOSE,
         )
         self.matching_engine.process_order(order, self.account_id)
+
+    def test_instrument_close_expiry_closes_position(self) -> None:
+        # Arrange
+        exec_messages = []
+        self.msgbus.register("ExecEngine.process", lambda x: exec_messages.append(x))
+        tick: QuoteTick = TestDataStubs.quote_tick(
+            instrument=self.instrument,
+        )
+        self.matching_engine.process_quote_tick(tick)
+        order: MarketOrder = TestExecStubs.limit_order(
+            instrument=self.instrument,
+        )
+        self.matching_engine.process_order(order, self.account_id)
+
+        # Act
+        instrument_close = TestDataStubs.instrument_close(
+            instrument_id=self.instrument_id,
+            price=Price(2, 2),
+            close_type=InstrumentCloseType.CONTRACT_EXPIRED,
+            ts_event=2,
+        )
+        self.matching_engine.process_instrument_close(instrument_close)
+
+        # Assert
+        assert exec_messages
 
     @pytest.mark.skip(reason="WIP to introduce flags")
     def test_process_auction_book(self) -> None:
@@ -115,13 +145,13 @@ class TestOrderMatchingEngine:
         )
         self.cache.add_order(client_order)
         self.matching_engine.process_order(client_order, self.account_id)
-        self.matching_engine.process_status(MarketStatus.OPEN)
-        self.matching_engine.process_status(MarketStatus.PRE_OPEN)
+        self.matching_engine.process_status(MarketStatusAction.PRE_OPEN)
+
         messages: list[Any] = []
         self.msgbus.register("ExecEngine.process", messages.append)
 
         # Act
-        self.matching_engine.process_status(MarketStatus.PAUSE)
+        self.matching_engine.process_status(MarketStatusAction.PAUSE)
 
         # Assert
         assert self.matching_engine.msgbus.sent_count == 1

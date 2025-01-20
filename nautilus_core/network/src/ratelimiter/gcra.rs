@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::{cmp, fmt, time::Duration};
+use std::{cmp, fmt::Display, time::Duration};
 
 use super::{clock, nanos::Nanos, quota::Quota, StateStore};
 
@@ -34,8 +34,9 @@ pub struct StateSnapshot {
 }
 
 impl StateSnapshot {
+    /// Creates a new [`StateSnapshot`] instance.
     #[inline]
-    pub(crate) fn new(t: Nanos, tau: Nanos, time_of_measurement: Nanos, tat: Nanos) -> Self {
+    pub(crate) const fn new(t: Nanos, tau: Nanos, time_of_measurement: Nanos, tat: Nanos) -> Self {
         Self {
             t,
             tau,
@@ -76,7 +77,7 @@ pub struct NotUntil<P: clock::Reference> {
 impl<P: clock::Reference> NotUntil<P> {
     /// Create a `NotUntil` as a negative rate-limiting result.
     #[inline]
-    pub(crate) fn new(state: StateSnapshot, start: P) -> Self {
+    pub(crate) const fn new(state: StateSnapshot, start: P) -> Self {
         Self { state, start }
     }
 
@@ -108,8 +109,8 @@ impl<P: clock::Reference> NotUntil<P> {
     }
 }
 
-impl<P: clock::Reference> fmt::Display for NotUntil<P> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+impl<P: clock::Reference> Display for NotUntil<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "rate-limited until {:?}", self.start + self.state.tat)
     }
 }

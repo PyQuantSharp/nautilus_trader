@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -12,15 +12,18 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 
 # fmt: off
 from nautilus_trader.adapters.interactive_brokers.client import InteractiveBrokersClient
 from nautilus_trader.adapters.interactive_brokers.common import IB_VENUE
+from nautilus_trader.adapters.interactive_brokers.config import DockerizedIBGatewayConfig
 from nautilus_trader.adapters.interactive_brokers.config import InteractiveBrokersDataClientConfig
 from nautilus_trader.adapters.interactive_brokers.config import InteractiveBrokersExecClientConfig
-from nautilus_trader.adapters.interactive_brokers.config import InteractiveBrokersGatewayConfig
 from nautilus_trader.adapters.interactive_brokers.config import InteractiveBrokersInstrumentProviderConfig
 from nautilus_trader.adapters.interactive_brokers.factories import InteractiveBrokersLiveDataClientFactory
 from nautilus_trader.adapters.interactive_brokers.factories import InteractiveBrokersLiveExecClientFactory
@@ -29,10 +32,33 @@ from nautilus_trader.model.events import AccountState
 from nautilus_trader.model.identifiers import AccountId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.test_kit.stubs.events import TestEventStubs
+from tests.integration_tests.adapters.interactive_brokers.mock_client import MockInteractiveBrokersClient
 from tests.integration_tests.adapters.interactive_brokers.test_kit import IBTestContractStubs
 
 
 # fmt: on
+
+
+def mocked_ib_client(
+    loop,
+    msgbus,
+    cache,
+    clock,
+    host,
+    port,
+    client_id,
+    **kwargs,
+) -> MockInteractiveBrokersClient:
+    client = MockInteractiveBrokersClient(
+        loop=loop,
+        msgbus=msgbus,
+        cache=cache,
+        clock=clock,
+        host=host,
+        port=port,
+        client_id=client_id,
+    )
+    return client
 
 
 @pytest.fixture()
@@ -47,7 +73,7 @@ def instrument():
 
 @pytest.fixture()
 def gateway_config():
-    return InteractiveBrokersGatewayConfig(
+    return DockerizedIBGatewayConfig(
         username="test",
         password="test",
     )
@@ -73,9 +99,9 @@ def exec_client_config():
 
 
 @pytest.fixture()
-def ib_client(data_client_config, loop, msgbus, cache, clock):
+def ib_client(data_client_config, event_loop, msgbus, cache, clock):
     client = InteractiveBrokersClient(
-        loop=loop,
+        loop=event_loop,
         msgbus=msgbus,
         cache=cache,
         clock=clock,
@@ -84,7 +110,18 @@ def ib_client(data_client_config, loop, msgbus, cache, clock):
         client_id=data_client_config.ibg_client_id,
     )
     yield client
-    client._stop()
+    if client.is_running:
+        client._stop()
+
+
+@pytest.fixture()
+def ib_client_running(ib_client):
+    ib_client._connect = AsyncMock()
+    ib_client._eclient = MagicMock()
+    ib_client._eclient.startApi = MagicMock(side_effect=ib_client._is_ib_connected.set)
+    ib_client._account_ids = {"DU123456,"}
+    ib_client.start()
+    yield ib_client
 
 
 @pytest.fixture()
@@ -96,56 +133,50 @@ def instrument_provider(ib_client):
 
 
 @pytest.fixture()
-def data_client(mocker, data_client_config, venue, loop, msgbus, cache, clock):
-    mocker.patch(
-        "nautilus_trader.adapters.interactive_brokers.factories.get_cached_ib_client",
-        return_value=InteractiveBrokersClient(
-            loop=loop,
-            msgbus=msgbus,
-            cache=cache,
-            clock=clock,
-            host=data_client_config.ibg_host,
-            port=data_client_config.ibg_port,
-            client_id=data_client_config.ibg_client_id,
-        ),
-    )
+@patch(
+    "nautilus_trader.adapters.interactive_brokers.factories.get_cached_ib_client",
+    new=mocked_ib_client,
+)
+@patch(
+    "nautilus_trader.adapters.interactive_brokers.factories.get_cached_interactive_brokers_instrument_provider",
+    new=InteractiveBrokersInstrumentProvider,
+)
+def data_client(data_client_config, venue, event_loop, msgbus, cache, clock):
     client = InteractiveBrokersLiveDataClientFactory.create(
-        loop=loop,
+        loop=event_loop,
         name=venue.value,
         config=data_client_config,
         msgbus=msgbus,
         cache=cache,
         clock=clock,
     )
-    client._client.start()
+    client._client._is_ib_connected.set()
+    client._client._connect = AsyncMock()
+    client._client._account_ids = {"DU123456,"}
     return client
 
 
 @pytest.fixture()
-def exec_client(mocker, exec_client_config, venue, loop, msgbus, cache, clock):
-    mocker.patch(
-        "nautilus_trader.adapters.interactive_brokers.factories.get_cached_ib_client",
-        return_value=InteractiveBrokersClient(
-            loop=loop,
-            msgbus=msgbus,
-            cache=cache,
-            clock=clock,
-            host=exec_client_config.ibg_host,
-            port=exec_client_config.ibg_port,
-            client_id=exec_client_config.ibg_client_id,
-        ),
-    )
+@patch(
+    "nautilus_trader.adapters.interactive_brokers.factories.get_cached_ib_client",
+    new=mocked_ib_client,
+)
+@patch(
+    "nautilus_trader.adapters.interactive_brokers.factories.get_cached_interactive_brokers_instrument_provider",
+    new=InteractiveBrokersInstrumentProvider,
+)
+def exec_client(exec_client_config, venue, event_loop, msgbus, cache, clock):
     client = InteractiveBrokersLiveExecClientFactory.create(
-        loop=loop,
+        loop=event_loop,
         name=venue.value,
         config=exec_client_config,
         msgbus=msgbus,
         cache=cache,
         clock=clock,
     )
-    client._client.start()
-    client._client.managedAccounts("DU123456,")
-    client._client.nextValidId(1)
+    client._client._is_ib_connected.set()
+    client._client._connect = AsyncMock()
+    client._client._account_ids = {"DU123456,"}
     return client
 
 

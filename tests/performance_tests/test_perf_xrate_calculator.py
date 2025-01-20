@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -34,11 +34,4 @@ def test_get_rate(benchmark):
 
     calculator = ExchangeRateCalculator()
 
-    benchmark.pedantic(
-        target=calculator.get_rate,
-        args=(ETH, USDT, PriceType.MID, bid_quotes, ask_quotes),
-        rounds=100_000,
-        iterations=1,
-    )
-    # ~0.0ms / ~8.2μs / 8198ns minimum of 100,000 runs @ 1 iteration each run.
-    # ~0.0ms / ~4.7μs / 4732ns minimum of 100,000 runs @ 1 iteration each run.
+    benchmark(calculator.get_rate, ETH, USDT, PriceType.MID, bid_quotes, ask_quotes)

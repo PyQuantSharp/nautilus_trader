@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,73 +13,129 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents an amount of money in a specified currency denomination.
+
 use std::{
     cmp::Ordering,
-    fmt::{Display, Formatter, Result as FmtResult},
+    fmt::{Debug, Display},
     hash::{Hash, Hasher},
     ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign},
     str::FromStr,
 };
 
-use anyhow::Result;
-use nautilus_core::correctness::check_f64_in_range_inclusive;
+use nautilus_core::correctness::{check_in_range_inclusive_f64, FAILED};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize};
 use thousands::Separable;
 
 use super::fixed::FIXED_PRECISION;
-use crate::types::{
-    currency::Currency,
-    fixed::{f64_to_fixed_i64, fixed_i64_to_f64},
-};
+#[cfg(feature = "high-precision")]
+use super::fixed::{f64_to_fixed_i128, fixed_i128_to_f64};
+#[cfg(not(feature = "high-precision"))]
+use crate::types::fixed::{f64_to_fixed_i64, fixed_i64_to_f64};
+use crate::types::Currency;
 
+/// The maximum valid money amount which can be represented.
+#[cfg(feature = "high-precision")]
+pub const MONEY_MAX: f64 = 17_014_118_346_046.0;
+#[cfg(not(feature = "high-precision"))]
 pub const MONEY_MAX: f64 = 9_223_372_036.0;
+
+/// The minimum valid money amount which can be represented.
+#[cfg(feature = "high-precision")]
+pub const MONEY_MIN: f64 = -17_014_118_346_046.0;
+#[cfg(not(feature = "high-precision"))]
 pub const MONEY_MIN: f64 = -9_223_372_036.0;
 
+#[cfg(feature = "high-precision")]
+pub type MoneyRaw = i128;
+#[cfg(not(feature = "high-precision"))]
+pub type MoneyRaw = i64;
+
+/// Represents an amount of money in a specified currency denomination.
+///
+/// - `MONEY_MAX` = {MONEY_MAX}
+/// - `MONEY_MIN` = {MONEY_MIN}
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq)]
+#[derive(Clone, Copy, Eq)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
 pub struct Money {
-    pub raw: i64,
+    /// Represents the raw fixed-point amount, with `currency.precision` defining the number of decimal places.
+    pub raw: MoneyRaw,
+    /// The currency denomination associated with the monetary amount.
     pub currency: Currency,
 }
 
 impl Money {
-    pub fn new(amount: f64, currency: Currency) -> Result<Self> {
-        check_f64_in_range_inclusive(amount, MONEY_MIN, MONEY_MAX, "`Money` amount")?;
+    /// Creates a new [`Money`] instance with correctness checking.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `amount` is invalid outside the representable range [{MONEY_MIN}, {MONEY_MAX}].
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked(amount: f64, currency: Currency) -> anyhow::Result<Self> {
+        check_in_range_inclusive_f64(amount, MONEY_MIN, MONEY_MAX, "amount")?;
 
-        Ok(Self {
-            raw: f64_to_fixed_i64(amount, currency.precision),
-            currency,
-        })
+        #[cfg(feature = "high-precision")]
+        let raw = f64_to_fixed_i128(amount, currency.precision);
+        #[cfg(not(feature = "high-precision"))]
+        let raw = f64_to_fixed_i64(amount, currency.precision);
+
+        Ok(Self { raw, currency })
     }
 
+    /// Creates a new [`Money`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If a correctness check fails. See [`Money::new_checked`] for more details.
+    pub fn new(amount: f64, currency: Currency) -> Self {
+        Self::new_checked(amount, currency).expect(FAILED)
+    }
+
+    /// Creates a new [`Money`] instance from the given `raw` fixed-point value and the specified `currency`.
     #[must_use]
-    pub fn from_raw(raw: i64, currency: Currency) -> Self {
+    pub fn from_raw(raw: MoneyRaw, currency: Currency) -> Self {
         Self { raw, currency }
     }
 
+    /// Returns `true` if the value of this instance is zero.
     #[must_use]
     pub fn is_zero(&self) -> bool {
         self.raw == 0
     }
 
+    /// Returns the value of this instance as an `f64`.
     #[must_use]
+    #[cfg(not(feature = "high-precision"))]
     pub fn as_f64(&self) -> f64 {
         fixed_i64_to_f64(self.raw)
     }
 
+    #[cfg(feature = "high-precision")]
+    pub fn as_f64(&self) -> f64 {
+        fixed_i128_to_f64(self.raw)
+    }
+
+    /// Returns the value of this instance as a `Decimal`.
     #[must_use]
     pub fn as_decimal(&self) -> Decimal {
         // Scale down the raw value to match the precision
         let precision = self.currency.precision;
-        let rescaled_raw = self.raw / i64::pow(10, u32::from(FIXED_PRECISION - precision));
+        let rescaled_raw = self.raw / MoneyRaw::pow(10, u32::from(FIXED_PRECISION - precision));
+        #[allow(clippy::useless_conversion)] // Required for precision modes
         Decimal::from_i128_with_scale(i128::from(rescaled_raw), u32::from(precision))
     }
 
+    /// Returns a formatted string representation of this instance.
     #[must_use]
     pub fn to_formatted_string(&self) -> String {
         let amount_str = format!("{:.*}", self.currency.precision as usize, self.as_f64())
@@ -91,31 +147,31 @@ impl Money {
 impl FromStr for Money {
     type Err = String;
 
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = input.split_whitespace().collect();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = value.split_whitespace().collect();
 
         // Ensure we have both the amount and currency
         if parts.len() != 2 {
             return Err(format!(
-                "Invalid input format: '{input}'. Expected '<amount> <currency>'"
+                "Error invalid input format '{value}'. Expected '<amount> <currency>'"
             ));
         }
 
         // Parse amount
         let amount = parts[0]
+            .replace('_', "")
             .parse::<f64>()
-            .map_err(|e| format!("Cannot parse amount '{}' as `f64`: {:?}", parts[0], e))?;
+            .map_err(|e| format!("Error parsing amount '{}' as `f64`: {:?}", parts[0], e))?;
 
         // Parse currency
         let currency = Currency::from_str(parts[1]).map_err(|e: anyhow::Error| e.to_string())?;
-
-        Self::new(amount, currency).map_err(|e: anyhow::Error| e.to_string())
+        Self::new_checked(amount, currency).map_err(|e| e.to_string())
     }
 }
 
-impl From<&str> for Money {
-    fn from(input: &str) -> Self {
-        Self::from_str(input).unwrap()
+impl<T: AsRef<str>> From<T> for Money {
+    fn from(value: T) -> Self {
+        Self::from_str(value.as_ref()).expect(FAILED)
     }
 }
 
@@ -190,9 +246,16 @@ impl Neg for Money {
 impl Add for Money {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.currency, rhs.currency);
+        assert_eq!(
+            self.currency, rhs.currency,
+            "Currency mismatch: cannot add {} to {}",
+            rhs.currency.code, self.currency.code
+        );
         Self {
-            raw: self.raw + rhs.raw,
+            raw: self
+                .raw
+                .checked_add(rhs.raw)
+                .expect("Overflow occurred when adding `Money`"),
             currency: self.currency,
         }
     }
@@ -201,9 +264,16 @@ impl Add for Money {
 impl Sub for Money {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
-        assert_eq!(self.currency, rhs.currency);
+        assert_eq!(
+            self.currency, rhs.currency,
+            "Currency mismatch: cannot subtract {} from {}",
+            rhs.currency.code, self.currency.code
+        );
         Self {
-            raw: self.raw - rhs.raw,
+            raw: self
+                .raw
+                .checked_sub(rhs.raw)
+                .expect("Underflow occurred when subtracting `Money`"),
             currency: self.currency,
         }
     }
@@ -211,15 +281,29 @@ impl Sub for Money {
 
 impl AddAssign for Money {
     fn add_assign(&mut self, other: Self) {
-        assert_eq!(self.currency, other.currency);
-        self.raw += other.raw;
+        assert_eq!(
+            self.currency, other.currency,
+            "Currency mismatch: cannot add {} to {}",
+            other.currency.code, self.currency.code
+        );
+        self.raw = self
+            .raw
+            .checked_add(other.raw)
+            .expect("Overflow occurred when adding `Money`");
     }
 }
 
 impl SubAssign for Money {
     fn sub_assign(&mut self, other: Self) {
-        assert_eq!(self.currency, other.currency);
-        self.raw -= other.raw;
+        assert_eq!(
+            self.currency, other.currency,
+            "Currency mismatch: cannot subtract {} from {}",
+            other.currency.code, self.currency.code
+        );
+        self.raw = self
+            .raw
+            .checked_sub(other.raw)
+            .expect("Underflow occurred when subtracting `Money`");
     }
 }
 
@@ -244,7 +328,6 @@ impl Mul<f64> for Money {
     }
 }
 
-// DIVIDE
 impl Div<f64> for Money {
     type Output = f64;
     fn div(self, rhs: f64) -> Self::Output {
@@ -252,14 +335,27 @@ impl Div<f64> for Money {
     }
 }
 
+impl Debug for Money {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}({:.*}, {})",
+            stringify!(Money),
+            self.currency.precision as usize,
+            self.as_f64(),
+            self.currency,
+        )
+    }
+}
+
 impl Display for Money {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{:.*} {}",
             self.currency.precision as usize,
             self.as_f64(),
-            self.currency.code
+            self.currency
         )
     }
 }
@@ -278,24 +374,8 @@ impl<'de> Deserialize<'de> for Money {
     where
         D: Deserializer<'de>,
     {
-        let money_str: &str = Deserialize::deserialize(deserializer)?;
-
-        let parts: Vec<&str> = money_str.splitn(2, ' ').collect();
-        if parts.len() != 2 {
-            return Err(serde::de::Error::custom("Invalid Money format"));
-        }
-
-        let amount_str = parts[0];
-        let currency_str = parts[1];
-
-        let amount = amount_str
-            .parse::<f64>()
-            .map_err(|_| serde::de::Error::custom("Failed to parse Money amount"))?;
-
-        let currency = Currency::from_str(currency_str)
-            .map_err(|_| serde::de::Error::custom("Invalid currency"))?;
-
-        Ok(Self::new(amount, currency).unwrap()) // TODO: Properly handle the error
+        let money_str: String = Deserialize::deserialize(deserializer)?;
+        Ok(Money::from(money_str.as_str()))
     }
 }
 
@@ -311,45 +391,130 @@ mod tests {
     use super::*;
 
     #[rstest]
+    fn test_debug() {
+        let money = Money::new(1010.12, Currency::USD());
+        let result = format!("{:?}", money);
+        let expected = "Money(1010.12, USD)";
+        assert_eq!(result, expected);
+    }
+
+    #[rstest]
+    fn test_display() {
+        let money = Money::new(1010.12, Currency::USD());
+        let result = format!("{money}");
+        let expected = "1010.12 USD";
+        assert_eq!(result, expected);
+    }
+
+    #[rstest]
     #[should_panic]
     fn test_money_different_currency_addition() {
-        let usd = Money::new(1000.0, Currency::USD()).unwrap();
-        let btc = Money::new(1.0, Currency::BTC()).unwrap();
+        let usd = Money::new(1000.0, Currency::USD());
+        let btc = Money::new(1.0, Currency::BTC());
         let _result = usd + btc; // This should panic since currencies are different
     }
 
-    #[rstest]
-    fn test_money_min_max_values() {
-        let min_money = Money::new(MONEY_MIN, Currency::USD()).unwrap();
-        let max_money = Money::new(MONEY_MAX, Currency::USD()).unwrap();
-        assert_eq!(
-            min_money.raw,
-            f64_to_fixed_i64(MONEY_MIN, Currency::USD().precision)
-        );
-        assert_eq!(
-            max_money.raw,
-            f64_to_fixed_i64(MONEY_MAX, Currency::USD().precision)
-        );
+    #[rstest] // Test does not panic rather than exact value
+    fn test_with_maximum_value() {
+        let money = Money::new_checked(MONEY_MAX, Currency::USD());
+        assert!(money.is_ok());
+    }
+
+    #[rstest] // Test does not panic rather than exact value
+    fn test_with_minimum_value() {
+        let money = Money::new_checked(MONEY_MIN, Currency::USD());
+        assert!(money.is_ok());
     }
 
     #[rstest]
-    fn test_money_addition_f64() {
-        let money = Money::new(1000.0, Currency::USD()).unwrap();
-        let result = money + 500.0;
-        assert_eq!(result, 1500.0);
+    fn test_money_is_zero() {
+        let zero_usd = Money::new(0.0, Currency::USD());
+        assert!(zero_usd.is_zero());
+        assert_eq!(zero_usd.as_f64(), 0.0);
+
+        let non_zero_usd = Money::new(100.0, Currency::USD());
+        assert!(!non_zero_usd.is_zero());
+    }
+
+    #[rstest]
+    fn test_money_comparisons() {
+        let usd = Currency::USD();
+        let m1 = Money::new(100.0, usd);
+        let m2 = Money::new(200.0, usd);
+
+        assert!(m1 < m2);
+        assert!(m2 > m1);
+        assert!(m1 <= m2);
+        assert!(m2 >= m1);
+
+        // Equality
+        let m3 = Money::new(100.0, usd);
+        assert!(m1 == m3);
+    }
+
+    #[rstest]
+    fn test_add() {
+        let a = 1000.0;
+        let b = 500.0;
+        let money1 = Money::new(a, Currency::USD());
+        let money2 = Money::new(b, Currency::USD());
+        let money3 = money1 + money2;
+        assert_eq!(money3.raw, Money::new(a + b, Currency::USD()).raw);
+    }
+
+    #[test]
+    fn test_add_assign() {
+        let usd = Currency::USD();
+        let mut money = Money::new(100.0, usd);
+        money += Money::new(50.0, usd);
+        assert!(approx_eq!(f64, money.as_f64(), 150.0, epsilon = 1e-9));
+        assert_eq!(money.currency, usd);
+    }
+
+    #[rstest]
+    fn test_sub() {
+        let usd = Currency::USD();
+        let money1 = Money::new(1000.0, usd);
+        let money2 = Money::new(250.0, usd);
+        let result = money1 - money2;
+        assert!(approx_eq!(f64, result.as_f64(), 750.0, epsilon = 1e-9));
+        assert_eq!(result.currency, usd);
+    }
+
+    #[test]
+    fn test_sub_assign() {
+        let usd = Currency::USD();
+        let mut money = Money::new(100.0, usd);
+        money -= Money::new(25.0, usd);
+        assert!(approx_eq!(f64, money.as_f64(), 75.0, epsilon = 1e-9));
+        assert_eq!(money.currency, usd);
     }
 
     #[rstest]
     fn test_money_negation() {
-        let money = Money::new(100.0, Currency::USD()).unwrap();
+        let money = Money::new(100.0, Currency::USD());
         let result = -money;
         assert_eq!(result.as_f64(), -100.0);
         assert_eq!(result.currency, Currency::USD().clone());
     }
 
     #[rstest]
+    fn test_money_multiplication_by_f64() {
+        let money = Money::new(100.0, Currency::USD());
+        let result = money * 1.5;
+        assert!(approx_eq!(f64, result, 150.0, epsilon = 1e-9));
+    }
+
+    #[rstest]
+    fn test_money_division_by_f64() {
+        let money = Money::new(100.0, Currency::USD());
+        let result = money / 4.0;
+        assert!(approx_eq!(f64, result, 25.0, epsilon = 1e-9));
+    }
+
+    #[rstest]
     fn test_money_new_usd() {
-        let money = Money::new(1000.0, Currency::USD()).unwrap();
+        let money = Money::new(1000.0, Currency::USD());
         assert_eq!(money.currency.code.as_str(), "USD");
         assert_eq!(money.currency.precision, 2);
         assert_eq!(money.to_string(), "1000.00 USD");
@@ -360,7 +525,7 @@ mod tests {
 
     #[rstest]
     fn test_money_new_btc() {
-        let money = Money::new(10.3, Currency::BTC()).unwrap();
+        let money = Money::new(10.3, Currency::BTC());
         assert_eq!(money.currency.code.as_str(), "BTC");
         assert_eq!(money.currency.precision, 8);
         assert_eq!(money.to_string(), "10.30000000 BTC");
@@ -368,34 +533,73 @@ mod tests {
     }
 
     #[rstest]
-    fn test_money_serialization_deserialization() {
-        let money = Money::new(123.45, Currency::USD()).unwrap();
-        let serialized = serde_json::to_string(&money).unwrap();
-        let deserialized: Money = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(money, deserialized);
-    }
-
-    #[rstest]
     #[case("0USD")] // <-- No whitespace separator
     #[case("0x00 USD")] // <-- Invalid float
     #[case("0 US")] // <-- Invalid currency
     #[case("0 USD USD")] // <-- Too many parts
+    #[should_panic]
     fn test_from_str_invalid_input(#[case] input: &str) {
-        let result = Money::from_str(input);
-        assert!(result.is_err());
+        let _ = Money::from(input);
     }
 
     #[rstest]
     #[case("0 USD", Currency::USD(), dec!(0.00))]
     #[case("1.1 AUD", Currency::AUD(), dec!(1.10))]
     #[case("1.12345678 BTC", Currency::BTC(), dec!(1.12345678))]
+    #[case("10_000.10 USD", Currency::USD(), dec!(10000.10))]
     fn test_from_str_valid_input(
         #[case] input: &str,
         #[case] expected_currency: Currency,
         #[case] expected_dec: Decimal,
     ) {
-        let money = Money::from_str(input).unwrap();
+        let money = Money::from(input);
         assert_eq!(money.currency, expected_currency);
         assert_eq!(money.as_decimal(), expected_dec);
+    }
+
+    #[rstest]
+    fn test_money_from_str_negative() {
+        let money = Money::from("-123.45 USD");
+        assert!(approx_eq!(f64, money.as_f64(), -123.45, epsilon = 1e-9));
+        assert_eq!(money.currency, Currency::USD());
+    }
+
+    #[rstest]
+    fn test_money_hash() {
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
+
+        let m1 = Money::new(100.0, Currency::USD());
+        let m2 = Money::new(100.0, Currency::USD());
+        let m3 = Money::new(100.0, Currency::AUD());
+
+        let mut s1 = DefaultHasher::new();
+        let mut s2 = DefaultHasher::new();
+        let mut s3 = DefaultHasher::new();
+
+        m1.hash(&mut s1);
+        m2.hash(&mut s2);
+        m3.hash(&mut s3);
+
+        assert_eq!(
+            s1.finish(),
+            s2.finish(),
+            "Same amount + same currency => same hash"
+        );
+        assert_ne!(
+            s1.finish(),
+            s3.finish(),
+            "Same amount + different currency => different hash"
+        );
+    }
+
+    #[rstest]
+    fn test_money_serialization_deserialization() {
+        let money = Money::new(123.45, Currency::USD());
+        let serialized = serde_json::to_string(&money);
+        let deserialized: Money = serde_json::from_str(&serialized.unwrap()).unwrap();
+        assert_eq!(money, deserialized);
     }
 }

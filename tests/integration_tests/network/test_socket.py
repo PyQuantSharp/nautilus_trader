@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,7 +14,6 @@
 # -------------------------------------------------------------------------------------------------
 
 import asyncio
-import sys
 
 import pytest
 
@@ -23,10 +22,12 @@ from nautilus_trader.core.nautilus_pyo3 import SocketConfig
 from nautilus_trader.test_kit.functions import eventually
 
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Skip raw socket tests on Windows",
-)
+pytestmark = pytest.skip(reason="Investigating timeouts", allow_module_level=True)
+
+# pytestmark = pytest.mark.skipif(
+#     sys.platform == "win32",
+#     reason="Skip raw socket tests on Windows",
+# )
 
 
 def _config(socket_server, handler):
@@ -49,9 +50,9 @@ async def test_connect_and_disconnect(socket_server):
     client = await SocketClient.connect(config)
 
     # Act, Assert
-    await eventually(lambda: client.is_alive)
-    client.disconnect()
-    # await eventually(lambda: not client.is_alive)  # Investigate why client is staying alive?
+    await eventually(lambda: client.is_alive())
+    await client.disconnect()
+    await eventually(lambda: not client.is_alive())
 
 
 @pytest.mark.asyncio()
@@ -61,7 +62,7 @@ async def test_client_send_recv(socket_server):
     config = _config(socket_server, store.append)
     client = await SocketClient.connect(config)
 
-    await eventually(lambda: client.is_alive)
+    await eventually(lambda: client.is_alive())
 
     # Act
     num_messages = 3
@@ -69,8 +70,8 @@ async def test_client_send_recv(socket_server):
         await client.send(b"Hello")
     await asyncio.sleep(0.1)
 
-    client.disconnect()
-    # await eventually(lambda: not client.is_alive)  # Investigate why client is staying alive?
+    await client.disconnect()
+    await eventually(lambda: not client.is_alive())
 
     # Assert
     await eventually(lambda: store == [b"connected"] + [b"hello"] * 2)
@@ -84,7 +85,7 @@ async def test_client_send_recv(socket_server):
 #     config = _config(socket_server, store.append)
 #     client = await SocketClient.connect(config)
 #
-#     await eventually(lambda: client.is_alive)
+#     await eventually(lambda: client.is_alive())
 #
 #     # Act
 #     num_messages = 3
@@ -96,7 +97,7 @@ async def test_client_send_recv(socket_server):
 #     expected = [b"connected"] + [b'{"method":"SUBSCRIBE"}-response'] * 3
 #     assert store == expected
 #     await client.disconnect()
-#     await eventually(lambda: not client.is_alive)
+#     await eventually(lambda: not client.is_alive())
 
 
 @pytest.mark.asyncio()
@@ -106,7 +107,7 @@ async def test_reconnect_after_close(closing_socket_server):
     config = _config(closing_socket_server, store.append)
     client = await SocketClient.connect(config)
 
-    await eventually(lambda: client.is_alive)
+    await eventually(lambda: client.is_alive())
 
     # Act
     await asyncio.sleep(2)

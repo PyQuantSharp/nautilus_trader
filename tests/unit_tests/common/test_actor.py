@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -23,9 +23,12 @@ from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
 from nautilus_trader.common.enums import ComponentState
 from nautilus_trader.common.executor import TaskId
+from nautilus_trader.common.messages import ShutdownSystem
+from nautilus_trader.common.signal import generate_signal_class
 from nautilus_trader.config import ActorConfig
 from nautilus_trader.config import ImportableActorConfig
 from nautilus_trader.core.data import Data
+from nautilus_trader.core.message import Command
 from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.data.engine import DataEngine
 from nautilus_trader.data.messages import DataResponse
@@ -33,7 +36,9 @@ from nautilus_trader.execution.engine import ExecutionEngine
 from nautilus_trader.model.currencies import EUR
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
 from nautilus_trader.model.data import DataType
+from nautilus_trader.model.data import OrderBookDeltas
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.enums import BookType
@@ -130,7 +135,11 @@ class TestActor:
         assert isinstance(result, ImportableActorConfig)
         assert result.actor_path == "nautilus_trader.common.actor:Actor"
         assert result.config_path == "nautilus_trader.common.config:ActorConfig"
-        assert result.config == {"component_id": "ALPHA-01"}
+        assert result.config == {
+            "component_id": "ALPHA-01",
+            "log_events": True,
+            "log_commands": True,
+        }
 
     def test_id(self) -> None:
         # Arrange, Act
@@ -180,11 +189,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.register_warning_event(OrderDenied)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_deregister_warning_event(self) -> None:
         # Arrange
@@ -198,11 +204,8 @@ class TestActor:
 
         actor.register_warning_event(OrderDenied)
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.deregister_warning_event(OrderDenied)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_handle_event(self) -> None:
         # Arrange
@@ -216,11 +219,8 @@ class TestActor:
 
         event = TestEventStubs.cash_account_state()
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.handle_event(event)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_start_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -232,11 +232,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_start()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_stop_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -248,11 +245,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_stop()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_resume_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -264,11 +258,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_resume()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_reset_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -280,11 +271,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_reset()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_dispose_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -296,11 +284,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_dispose()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_degrade_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -312,11 +297,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_degrade()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_fault_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -328,11 +310,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_fault()
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_instrument_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -344,11 +323,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_instrument(TestInstrumentProvider.btcusdt_binance())
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_order_book_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -360,11 +336,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_order_book(TestDataStubs.order_book())
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_order_book_delta_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -376,27 +349,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_order_book_deltas(TestDataStubs.order_book_snapshot())
-
-        # Assert
-        assert True  # Exception not raised
-
-    def test_on_venue_status_when_not_overridden_does_nothing(self) -> None:
-        # Arrange
-        actor = Actor(config=ActorConfig(component_id=self.component_id))
-        actor.register_base(
-            portfolio=self.portfolio,
-            msgbus=self.msgbus,
-            cache=self.cache,
-            clock=self.clock,
-        )
-
-        # Act
-        actor.on_venue_status(TestDataStubs.venue_status())
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_instrument_status_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -408,11 +362,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_instrument_status(TestDataStubs.instrument_status())
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_event_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -424,11 +375,8 @@ class TestActor:
             clock=self.clock,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_event(TestEventStubs.cash_account_state())
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_quote_tick_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -442,11 +390,8 @@ class TestActor:
 
         tick = TestDataStubs.quote_tick()
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_quote_tick(tick)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_trade_tick_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -460,11 +405,8 @@ class TestActor:
 
         tick = TestDataStubs.trade_tick()
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_trade_tick(tick)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_bar_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -478,11 +420,8 @@ class TestActor:
 
         bar = TestDataStubs.bar_5decimal()
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_bar(bar)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_historical_data_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -496,11 +435,8 @@ class TestActor:
 
         bar = TestDataStubs.bar_5decimal()
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_historical_data(bar)
-
-        # Assert
-        assert True  # Exception not raised
 
     def test_on_data_when_not_overridden_does_nothing(self) -> None:
         # Arrange
@@ -520,11 +456,24 @@ class TestActor:
             ts_init=0,
         )
 
-        # Act
+        # Act, Assert (exception not raised)
         actor.on_data(news_event)
 
-        # Assert
-        assert True  # Exception not raised
+    def test_on_signal_when_not_overridden_does_nothing(self) -> None:
+        # Arrange
+        actor = Actor(config=ActorConfig(component_id=self.component_id))
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        signal_cls = generate_signal_class("example", value_type=float)
+        signal = signal_cls(1.0, 0, 0)
+
+        # Act, Assert (exception not raised)
+        actor.on_signal(signal)
 
     def test_start_when_invalid_state_does_not_start(self) -> None:
         # Arrange
@@ -987,6 +936,29 @@ class TestActor:
         assert "on_fault" in actor.calls
         assert actor.state == ComponentState.FAULTED
 
+    def test_shutdown_system(self) -> None:
+        # Arrange
+        handler: list[Command] = []
+        self.msgbus.subscribe("commands.system.shutdown", handler.append)
+
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        actor.start()
+
+        # Act
+        actor.shutdown_system("test")
+
+        # Assert
+        assert len(handler) == 1
+        assert isinstance(handler[0], ShutdownSystem)
+        assert handler[0].reason == "test"
+
     def test_handle_instrument_with_blow_up_logs_exception(self) -> None:
         # Arrange
         actor = KaboomActor()
@@ -1289,6 +1261,48 @@ class TestActor:
         assert actor.calls == ["on_start", "on_data"]
         assert actor.store[0] == data
 
+    def test_handle_signal_when_not_running_does_not_send_to_on_signal(self) -> None:
+        # Arrange
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        signal_cls = generate_signal_class("example", value_type=float)
+        signal = signal_cls(1.0, 0, 0)
+
+        # Act
+        actor.handle_signal(signal)
+
+        # Assert
+        assert actor.calls == []
+        assert actor.store == []
+
+    def test_handle_signal_when_running_sends_to_on_signal(self) -> None:
+        # Arrange
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        actor.start()
+
+        signal_cls = generate_signal_class("example", value_type=float)
+        signal = signal_cls(1.0, 0, 0)
+
+        # Act
+        actor.handle_signal(signal)
+
+        # Assert
+        assert actor.calls == ["on_start", "on_signal"]
+        assert actor.store[0] == signal
+
     def test_add_synthetic_instrument_when_already_exists(self) -> None:
         # Arrange
         actor = MockActor()
@@ -1575,7 +1589,7 @@ class TestActor:
         assert self.data_engine.command_count == 2
         assert len(actor.msgbus.subscriptions()) == 4  # Portfolio subscriptions only
 
-    def test_subscribe_order_book(self) -> None:
+    def test_subscribe_order_book_at_interval(self) -> None:
         # Arrange
         actor = MockActor()
         actor.register_base(
@@ -1586,12 +1600,12 @@ class TestActor:
         )
 
         # Act
-        actor.subscribe_order_book_snapshots(AUDUSD_SIM.id, book_type=BookType.L2_MBP)
+        actor.subscribe_order_book_at_interval(AUDUSD_SIM.id, book_type=BookType.L2_MBP)
 
         # Assert
         assert self.data_engine.command_count == 1
 
-    def test_unsubscribe_order_book(self) -> None:
+    def test_unsubscribe_order_book_at_interval(self) -> None:
         # Arrange
         actor = MockActor()
         actor.register_base(
@@ -1601,10 +1615,10 @@ class TestActor:
             clock=self.clock,
         )
 
-        actor.subscribe_order_book_snapshots(AUDUSD_SIM.id, book_type=BookType.L2_MBP)
+        actor.subscribe_order_book_at_interval(AUDUSD_SIM.id, book_type=BookType.L2_MBP)
 
         # Act
-        actor.unsubscribe_order_book_snapshots(AUDUSD_SIM.id)
+        actor.unsubscribe_order_book_at_interval(AUDUSD_SIM.id)
 
         # Assert
         assert self.data_engine.command_count == 2
@@ -1855,9 +1869,45 @@ class TestActor:
         # Assert
         msg = handler[0]
         assert isinstance(msg, Data)
+        assert msg.is_signal()
+        assert msg.is_signal("test")
         assert msg.ts_event == 0
         assert msg.ts_init == 0
         assert msg.value == value
+
+    def test_subscribe_signal(self) -> None:
+        # Arrange
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        # Act
+        actor.subscribe_signal("test")
+
+        # Assert
+        assert self.data_engine.command_count == 0
+        assert actor.msgbus.subscriptions()[4].topic == "data.SignalTest*"
+
+    def test_subscribe_all_signals(self) -> None:
+        # Arrange
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        # Act
+        actor.subscribe_signal()
+
+        # Assert
+        assert self.data_engine.command_count == 0
+        assert actor.msgbus.subscriptions()[4].topic == "data.Signal*"
 
     def test_publish_data_persist(self) -> None:
         # Arrange
@@ -1868,10 +1918,14 @@ class TestActor:
             cache=self.cache,
             clock=self.clock,
         )
+
+        self.clock.set_time(1704067205000000000)
         catalog = setup_catalog(protocol="memory", path="/catalog")
 
         writer = StreamingFeatherWriter(
             path=catalog.path,
+            cache=self.cache,
+            clock=self.clock,
             fs_protocol=catalog.fs_protocol,
             replace=True,
         )
@@ -1881,7 +1935,7 @@ class TestActor:
         actor.publish_signal(name="Test", value=5.0, ts_event=0)
 
         # Assert
-        assert catalog.fs.exists(f"{catalog.path}/custom_signal_test.feather")
+        assert catalog.fs.exists(f"{catalog.path}/custom_signal_test_1704067205000000000.feather")
 
     def test_subscribe_bars(self) -> None:
         # Arrange
@@ -1923,21 +1977,6 @@ class TestActor:
         assert self.data_engine.subscribed_bars() == []
         assert self.data_engine.command_count == 2
 
-    def test_subscribe_venue_status(self) -> None:
-        # Arrange
-        actor = MockActor()
-        actor.register_base(
-            portfolio=self.portfolio,
-            msgbus=self.msgbus,
-            cache=self.cache,
-            clock=self.clock,
-        )
-
-        actor.subscribe_venue_status(Venue("NYMEX"))
-
-        # Assert
-        # TODO(cs): DataEngine.subscribed_venue_status()
-
     def test_request_data_sends_request_to_data_engine(self) -> None:
         # Arrange
         handler: list[NewsEvent] = []
@@ -1950,6 +1989,38 @@ class TestActor:
         )
 
         data_type = DataType(NewsEvent, {"type": "NEWS_WIRE", "topic": "Earthquakes"})
+
+        # Act
+        request_id = actor.request_data(
+            data_type,
+            ClientId("BLOOMBERG-01"),
+            callback=handler.append,
+        )
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert actor.has_pending_requests()
+        assert actor.is_pending_request(request_id)
+        assert request_id in actor.pending_requests()
+
+    def test_request_order_book_snapshots_sends_request_to_data_engine(self) -> None:
+        # Arrange
+        handler: list[OrderBookDeltas] = []
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        data_type = DataType(
+            OrderBookDeltas,
+            metadata={
+                "instrument_id": AUDUSD_SIM.id,
+                "limit": 5,
+            },
+        )
 
         # Act
         request_id = actor.request_data(
@@ -2114,6 +2185,42 @@ class TestActor:
             venue=Venue("SIM"),
             data_type=DataType(Bar),
             data=[bar],
+            correlation_id=request_id,
+            response_id=UUID4(),
+            ts_init=self.clock.timestamp_ns(),
+        )
+
+        self.msgbus.response(response)
+
+        # Assert
+        assert self.data_engine.request_count == 1
+        assert not actor.has_pending_requests()
+        assert not actor.is_pending_request(request_id)
+        assert request_id not in actor.pending_requests()
+        assert request_id in handler
+
+    def test_request_aggregated_bars_with_registered_callback(self) -> None:
+        # Arrange
+        handler: list[Bar] = []
+        actor = MockActor()
+        actor.register_base(
+            portfolio=self.portfolio,
+            msgbus=self.msgbus,
+            cache=self.cache,
+            clock=self.clock,
+        )
+
+        bar_type = BarType.from_str("AUDUSD.SIM-1-MINUTE-BID-INTERNAL")
+        bar = TestDataStubs.bar_5decimal()
+
+        # Act
+        request_id = actor.request_aggregated_bars([bar_type], callback=handler.append)
+
+        response = DataResponse(
+            client_id=ClientId("SIM"),
+            venue=Venue("SIM"),
+            data_type=DataType(Bar),
+            data={"bars": {bar_type: [bar]}, "quote_ticks": [], "trade_ticks": []},
             correlation_id=request_id,
             response_id=UUID4(),
             ts_init=self.clock.timestamp_ns(),

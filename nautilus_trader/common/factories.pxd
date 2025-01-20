@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -76,7 +76,8 @@ cdef class OrderFactory:
         bint quote_quantity=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef LimitOrder limit(
@@ -95,7 +96,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef StopMarketOrder stop_market(
@@ -113,7 +115,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef StopLimitOrder stop_limit(
@@ -134,7 +137,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef MarketToLimitOrder market_to_limit(
@@ -149,7 +153,8 @@ cdef class OrderFactory:
         Quantity display_qty=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef MarketIfTouchedOrder market_if_touched(
@@ -167,7 +172,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef LimitIfTouchedOrder limit_if_touched(
@@ -188,7 +194,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef TrailingStopMarketOrder trailing_stop_market(
@@ -208,7 +215,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef TrailingStopLimitOrder trailing_stop_limit(
@@ -232,7 +240,8 @@ cdef class OrderFactory:
         InstrumentId trigger_instrument_id=*,
         ExecAlgorithmId exec_algorithm_id=*,
         dict exec_algorithm_params=*,
-        str tags=*,
+        list[str] tags=*,
+        ClientOrderId client_order_id=*,
     )
 
     cpdef OrderList bracket(
@@ -248,6 +257,8 @@ cdef class OrderFactory:
         OrderType entry_order_type=*,
         OrderType tp_order_type=*,
         TimeInForce time_in_force=*,
+        TimeInForce sl_time_in_force=*,
+        TimeInForce tp_time_in_force=*,
         datetime expire_time=*,
         bint entry_post_only=*,
         bint tp_post_only=*,
@@ -259,9 +270,12 @@ cdef class OrderFactory:
         ExecAlgorithmId sl_exec_algorithm_id=*,
         ExecAlgorithmId tp_exec_algorithm_id=*,
         dict entry_exec_algorithm_params=*,
-        dict tp_exec_algorithm_params=*,
         dict sl_exec_algorithm_params=*,
-        str entry_tags=*,
-        str tp_tags=*,
-        str sl_tags=*,
+        dict tp_exec_algorithm_params=*,
+        list[str] entry_tags=*,
+        list[str] sl_tags=*,
+        list[str] tp_tags=*,
+        ClientOrderId entry_client_order_id=*,
+        ClientOrderId sl_client_order_id=*,
+        ClientOrderId tp_client_order_id=*,
     )

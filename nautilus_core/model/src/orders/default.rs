@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::uuid::UUID4;
+use nautilus_core::{UnixNanos, UUID4};
+use rust_decimal_macros::dec;
 
 use super::{
     limit::LimitOrder, limit_if_touched::LimitIfTouchedOrder, market::MarketOrder,
@@ -23,15 +24,12 @@ use super::{
 };
 use crate::{
     enums::{OrderSide, TimeInForce, TrailingOffsetType, TriggerType},
-    identifiers::{
-        client_order_id::ClientOrderId, instrument_id::InstrumentId, strategy_id::StrategyId,
-        trader_id::TraderId,
-    },
-    types::{price::Price, quantity::Quantity},
+    identifiers::{ClientOrderId, InstrumentId, StrategyId, TraderId},
+    types::{Price, Quantity},
 };
 
-/// Provides a default [`LimitOrder`] used for testing.
 impl Default for LimitOrder {
+    /// Creates a new default [`LimitOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -58,13 +56,14 @@ impl Default for LimitOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
+        .unwrap() // SAFETY: Valid default values are used
     }
 }
 
-/// Provides a default [`LimitIfTouchedOrder`] used for testing.
 impl Default for LimitIfTouchedOrder {
+    /// Creates a new default [`LimitIfTouchedOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -93,13 +92,13 @@ impl Default for LimitIfTouchedOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }
 
-/// Provides a default [`MarketOrder`] used for testing.
 impl Default for MarketOrder {
+    /// Creates a new default [`MarketOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -110,7 +109,7 @@ impl Default for MarketOrder {
             Quantity::from(100_000),
             TimeInForce::Day,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
             false,
             false,
             None,
@@ -122,12 +121,11 @@ impl Default for MarketOrder {
             None,
             None,
         )
-        .unwrap()
     }
 }
 
-/// Provides a default [`MarketIfTouchedOrder`] used for testing.
 impl Default for MarketIfTouchedOrder {
+    /// Creates a new default [`MarketIfTouchedOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -154,13 +152,13 @@ impl Default for MarketIfTouchedOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }
 
-/// Provides a default [`MarketToLimitOrder`] used for testing.
 impl Default for MarketToLimitOrder {
+    /// Creates a new default [`MarketToLimitOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -184,13 +182,13 @@ impl Default for MarketToLimitOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }
 
-/// Provides a default [`StopLimitOrder`] used for testing.
 impl Default for StopLimitOrder {
+    /// Creates a new default [`StopLimitOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -219,13 +217,13 @@ impl Default for StopLimitOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }
 
-/// Provides a default [`StopMarketOrder`] used for testing.
 impl Default for StopMarketOrder {
+    /// Creates a new default [`StopMarketOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -252,13 +250,13 @@ impl Default for StopMarketOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }
 
-/// Provides a default [`TrailingStopLimitOrder`] used for testing.
 impl Default for TrailingStopLimitOrder {
+    /// Creates a new default [`TrailingStopLimitOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -270,8 +268,8 @@ impl Default for TrailingStopLimitOrder {
             Price::from("1.00000"),
             Price::from("1.00000"),
             TriggerType::BidAsk,
-            Price::from("0.00100"),
-            Price::from("0.00100"),
+            dec!(0.001),
+            dec!(0.001),
             TrailingOffsetType::Price,
             TimeInForce::Gtc,
             None,
@@ -290,13 +288,13 @@ impl Default for TrailingStopLimitOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }
 
-/// Provides a default [`TrailingStopMarketOrder`] used for testing.
 impl Default for TrailingStopMarketOrder {
+    /// Creates a new default [`TrailingStopMarketOrder`] instance for testing.
     fn default() -> Self {
         Self::new(
             TraderId::default(),
@@ -307,7 +305,7 @@ impl Default for TrailingStopMarketOrder {
             Quantity::from(100_000),
             Price::from("1.00000"),
             TriggerType::BidAsk,
-            Price::from("0.00100"),
+            dec!(0.001),
             TrailingOffsetType::Price,
             TimeInForce::Gtc,
             None,
@@ -325,7 +323,7 @@ impl Default for TrailingStopMarketOrder {
             None,
             None,
             UUID4::default(),
-            0,
+            UnixNanos::default(),
         )
     }
 }

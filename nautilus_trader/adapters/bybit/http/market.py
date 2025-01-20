@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,31 +13,46 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
-from nautilus_trader.adapters.bybit.common.enums import BybitInstrumentType
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from nautilus_trader.adapters.bybit.common.enums import BybitKlineInterval
+from nautilus_trader.adapters.bybit.common.enums import BybitProductType
+from nautilus_trader.adapters.bybit.common.symbol import BybitSymbol
 
 # fmt: off
 from nautilus_trader.adapters.bybit.endpoints.market.instruments_info import BybitInstrumentsInfoEndpoint
-from nautilus_trader.adapters.bybit.endpoints.market.instruments_info import BybitInstrumentsInfoGetParameters
+from nautilus_trader.adapters.bybit.endpoints.market.instruments_info import BybitInstrumentsInfoGetParams
 
 # fmt: on
 from nautilus_trader.adapters.bybit.endpoints.market.klines import BybitKlinesEndpoint
-from nautilus_trader.adapters.bybit.endpoints.market.klines import BybitKlinesGetParameters
+from nautilus_trader.adapters.bybit.endpoints.market.klines import BybitKlinesGetParams
 from nautilus_trader.adapters.bybit.endpoints.market.server_time import BybitServerTimeEndpoint
 from nautilus_trader.adapters.bybit.endpoints.market.tickers import BybitTickersEndpoint
-from nautilus_trader.adapters.bybit.endpoints.market.tickers import BybitTickersGetParameters
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+from nautilus_trader.adapters.bybit.endpoints.market.tickers import BybitTickersGetParams
+from nautilus_trader.adapters.bybit.endpoints.market.trades import BybitTradesEndpoint
+from nautilus_trader.adapters.bybit.endpoints.market.trades import BybitTradesGetParams
 from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrument
+from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentInverse
+from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentLinear
 from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentList
-from nautilus_trader.adapters.bybit.schemas.market.kline import BybitKline
-from nautilus_trader.adapters.bybit.schemas.market.server_time import BybitServerTime
-from nautilus_trader.adapters.bybit.schemas.market.ticker import BybitTickerList
-from nautilus_trader.adapters.bybit.schemas.symbol import BybitSymbol
-from nautilus_trader.adapters.bybit.utils import get_category_from_instrument_type
-from nautilus_trader.common.component import LiveClock
+from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentOption
+from nautilus_trader.adapters.bybit.schemas.instrument import BybitInstrumentSpot
 from nautilus_trader.core.correctness import PyCondition
-from nautilus_trader.model.data import Bar
-from nautilus_trader.model.data import BarType
+
+
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+    from nautilus_trader.adapters.bybit.schemas.market.kline import BybitKline
+    from nautilus_trader.adapters.bybit.schemas.market.server_time import BybitServerTime
+    from nautilus_trader.adapters.bybit.schemas.market.ticker import BybitTickerList
+    from nautilus_trader.adapters.bybit.schemas.market.trades import BybitTrade
+    from nautilus_trader.common.component import LiveClock
+    from nautilus_trader.model.data import Bar
+    from nautilus_trader.model.data import BarType
+    from nautilus_trader.model.data import TradeTick
+    from nautilus_trader.model.identifiers import InstrumentId
 
 
 class BybitMarketHttpAPI:
@@ -51,27 +66,24 @@ class BybitMarketHttpAPI:
         self._clock = clock
         self.base_endpoint = "/v5/market/"
 
-        # endpoints
-        self._endpoint_instruments = BybitInstrumentsInfoEndpoint(
-            client,
-            self.base_endpoint,
-        )
+        self._endpoint_instruments = BybitInstrumentsInfoEndpoint(client, self.base_endpoint)
         self._endpoint_server_time = BybitServerTimeEndpoint(client, self.base_endpoint)
         self._endpoint_klines = BybitKlinesEndpoint(client, self.base_endpoint)
         self._endpoint_tickers = BybitTickersEndpoint(client, self.base_endpoint)
+        self._endpoint_trades = BybitTradesEndpoint(client, self.base_endpoint)
 
     def _get_url(self, url: str) -> str:
         return self.base_endpoint + url
 
     async def fetch_tickers(
         self,
-        instrument_type: BybitInstrumentType,
+        product_type: BybitProductType,
         symbol: str | None = None,
         base_coin: str | None = None,
     ) -> BybitTickerList:
         response = await self._endpoint_tickers.get(
-            BybitTickersGetParameters(
-                category=instrument_type,
+            BybitTickersGetParams(
+                category=product_type,
                 symbol=symbol,
                 baseCoin=base_coin,
             ),
@@ -84,23 +96,74 @@ class BybitMarketHttpAPI:
 
     async def fetch_instruments(
         self,
-        instrument_type: BybitInstrumentType,
+        product_type: BybitProductType,
+        symbol: str | None = None,
+        status: str | None = None,
+        base_coin: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
     ) -> BybitInstrumentList:
         response = await self._endpoint_instruments.get(
-            BybitInstrumentsInfoGetParameters(
-                category=instrument_type,
+            BybitInstrumentsInfoGetParams(
+                category=product_type,
+                symbol=symbol,
+                status=status,
+                baseCoin=base_coin,
+                limit=limit,
+                cursor=cursor,
             ),
         )
         return response.result.list
 
+    async def fetch_all_instruments(
+        self,
+        product_type: BybitProductType,
+        symbol: str | None = None,
+        status: str | None = None,
+        base_coin: str | None = None,
+    ) -> BybitInstrumentList:
+        """
+        Fetch all instruments with pagination from Bybit.
+        """
+        all_instruments: list[BybitInstrument] = []
+        current_cursor = None
+
+        while True:
+            response = await self._endpoint_instruments.get(
+                BybitInstrumentsInfoGetParams(
+                    category=product_type,
+                    symbol=symbol,
+                    status=status,
+                    baseCoin=base_coin,
+                    limit=1000,
+                    cursor=current_cursor,
+                ),
+            )
+            all_instruments.extend(response.result.list)
+            current_cursor = response.result.nextPageCursor
+
+            if not current_cursor or current_cursor == "":
+                break
+
+        if product_type == BybitProductType.SPOT:
+            return [x for x in all_instruments if isinstance(x, BybitInstrumentSpot)]
+        elif product_type == BybitProductType.LINEAR:
+            return [x for x in all_instruments if isinstance(x, BybitInstrumentLinear)]
+        elif product_type == BybitProductType.INVERSE:
+            return [x for x in all_instruments if isinstance(x, BybitInstrumentInverse)]
+        elif product_type == BybitProductType.OPTION:
+            return [x for x in all_instruments if isinstance(x, BybitInstrumentOption)]
+        else:
+            raise ValueError(f"Unsupported product type: {product_type}")
+
     async def fetch_instrument(
         self,
-        instrument_type: BybitInstrumentType,
+        product_type: BybitProductType,
         symbol: str,
     ) -> BybitInstrument:
         response = await self._endpoint_instruments.get(
-            BybitInstrumentsInfoGetParameters(
-                category=instrument_type,
+            BybitInstrumentsInfoGetParams(
+                category=product_type,
                 symbol=symbol,
             ),
         )
@@ -108,7 +171,7 @@ class BybitMarketHttpAPI:
 
     async def fetch_klines(
         self,
-        instrument_type: BybitInstrumentType,
+        product_type: BybitProductType,
         symbol: str,
         interval: BybitKlineInterval,
         limit: int | None = None,
@@ -116,8 +179,8 @@ class BybitMarketHttpAPI:
         end: int | None = None,
     ) -> list[BybitKline]:
         response = await self._endpoint_klines.get(
-            parameters=BybitKlinesGetParameters(
-                category=get_category_from_instrument_type(instrument_type),
+            params=BybitKlinesGetParams(
+                category=product_type.value,
                 symbol=symbol,
                 interval=interval,
                 limit=limit,
@@ -127,22 +190,51 @@ class BybitMarketHttpAPI:
         )
         return response.result.list
 
+    async def fetch_public_trades(
+        self,
+        product_type: BybitProductType,
+        symbol: str,
+        limit: int | None = None,
+    ) -> list[BybitTrade]:
+        response = await self._endpoint_trades.get(
+            params=BybitTradesGetParams(
+                category=product_type.value,
+                symbol=symbol,
+                limit=limit,
+            ),
+        )
+        return response.result.list
+
+    async def request_bybit_trades(
+        self,
+        instrument_id: InstrumentId,
+        ts_init: int,
+        limit: int = 1000,
+    ) -> list[Bar]:
+        bybit_symbol = BybitSymbol(instrument_id.symbol.value)
+        trades = await self.fetch_public_trades(
+            symbol=bybit_symbol.raw_symbol,
+            product_type=bybit_symbol.product_type,
+            limit=limit,
+        )
+        trade_ticks: list[TradeTick] = [t.parse_to_trade(instrument_id, ts_init) for t in trades]
+        return trade_ticks
+
     async def request_bybit_bars(
         self,
-        instrument_type: BybitInstrumentType,
         bar_type: BarType,
         interval: BybitKlineInterval,
         ts_init: int,
-        limit: int = 100,
+        limit: int = 1000,
         start: int | None = None,
         end: int | None = None,
     ) -> list[Bar]:
         all_bars = []
         while True:
-            bybit_symbol: BybitSymbol = BybitSymbol(bar_type.instrument_id.symbol.value)
+            bybit_symbol = BybitSymbol(bar_type.instrument_id.symbol.value)
             klines = await self.fetch_klines(
-                symbol=bybit_symbol,
-                instrument_type=instrument_type,
+                symbol=bybit_symbol.raw_symbol,
+                product_type=bybit_symbol.product_type,
                 interval=interval,
                 limit=limit,
                 start=start,
@@ -158,16 +250,3 @@ class BybitMarketHttpAPI:
                 break
             start = next_start_time
         return all_bars
-
-    # async def get_risk_limits(self):
-    #     params = {"category": "linear"}
-    #     try:
-    #         raw: bytes = await self.client.send_request(
-    #             http_method=HttpMethod.GET,
-    #             url_path=self._get_url("risk-limit"),
-    #             payload=params,
-    #         )
-    #         decoded = self._decoder_risk_limit.decode(raw)
-    #         return decoded.result.list
-    #     except Exception as e:
-    #         print(e)

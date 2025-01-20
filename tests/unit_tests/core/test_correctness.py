@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,25 +24,25 @@ class TestCondition:
     def test_raises_custom_exception(self):
         # Arrange, Act, Assert
         with pytest.raises(RuntimeError):
-            PyCondition.true(False, "predicate", RuntimeError)
+            PyCondition.is_true(False, "predicate", RuntimeError)
 
     def test_true_when_predicate_false_raises_value_error(self):
         # Arrange, Act, Assert
         with pytest.raises(ValueError):
-            PyCondition.true(False, "predicate")
+            PyCondition.is_true(False, "predicate")
 
     def test_true_when_predicate_true_does_nothing(self):
         # Arrange, Act, Assert: ValueError not raised
-        PyCondition.true(True, "this should be True")
+        PyCondition.is_true(True, "this should be True")
 
     def test_false_when_predicate_true_raises_value_error(self):
         # Arrange, Act, Assert
         with pytest.raises(ValueError):
-            PyCondition.false(True, "predicate")
+            PyCondition.is_false(True, "predicate")
 
     def test_false_when_predicate_false_does_nothing(self):
         # Arrange, Act, Assert: ValueError not raised
-        PyCondition.false(False, "this should be False")
+        PyCondition.is_false(False, "this should be False")
 
     def test_is_none_when_arg_not_none_raises_type_error(self):
         # Arrange, Act, Assert
@@ -274,7 +274,10 @@ class TestCondition:
 
     @pytest.mark.parametrize(
         ("value", "start", "end"),
-        [[-1e-22, 0.0, 1.0], [1.0000001, 0.0, 1.0]],
+        [
+            [-1e16, 0.0, 1.0],
+            [1 + 1e16, 0.0, 1.0],
+        ],
     )
     def test_in_range_when_arg_out_of_range_raises_value_error(self, value, start, end):
         # Arrange, Act, Assert

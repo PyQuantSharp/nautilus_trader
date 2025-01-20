@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,19 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Moving average type indicators.
+
+pub mod ama;
+pub mod dema;
+pub mod ema;
+pub mod hma;
+pub mod lr;
+pub mod rma;
+pub mod sma;
+pub mod vidya;
+pub mod vwap;
+pub mod wma;
+
 use nautilus_model::enums::PriceType;
 use strum::{AsRefStr, Display, EnumIter, EnumString, FromRepr};
 
@@ -23,15 +36,6 @@ use crate::{
     },
     indicator::MovingAverage,
 };
-
-pub mod ama;
-pub mod dema;
-pub mod ema;
-pub mod hma;
-pub mod rma;
-pub mod sma;
-pub mod vidya;
-pub mod wma;
 
 #[repr(C)]
 #[derive(
@@ -53,7 +57,7 @@ pub mod wma;
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[cfg_attr(
     feature = "python",
-    pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.indicators")
+    pyo3::pyclass(eq, eq_int, module = "nautilus_trader.core.nautilus_pyo3.indicators")
 )]
 pub enum MovingAverageType {
     Simple,
@@ -74,21 +78,15 @@ impl MovingAverageFactory {
         let price_type = Some(PriceType::Last);
 
         match moving_average_type {
-            MovingAverageType::Simple => {
-                Box::new(SimpleMovingAverage::new(period, price_type).unwrap())
-            }
+            MovingAverageType::Simple => Box::new(SimpleMovingAverage::new(period, price_type)),
             MovingAverageType::Exponential => {
-                Box::new(ExponentialMovingAverage::new(period, price_type).unwrap())
+                Box::new(ExponentialMovingAverage::new(period, price_type))
             }
             MovingAverageType::DoubleExponential => {
-                Box::new(DoubleExponentialMovingAverage::new(period, price_type).unwrap())
+                Box::new(DoubleExponentialMovingAverage::new(period, price_type))
             }
-            MovingAverageType::Wilder => {
-                Box::new(WilderMovingAverage::new(period, price_type).unwrap())
-            }
-            MovingAverageType::Hull => {
-                Box::new(HullMovingAverage::new(period, price_type).unwrap())
-            }
+            MovingAverageType::Wilder => Box::new(WilderMovingAverage::new(period, price_type)),
+            MovingAverageType::Hull => Box::new(HullMovingAverage::new(period, price_type)),
         }
     }
 }

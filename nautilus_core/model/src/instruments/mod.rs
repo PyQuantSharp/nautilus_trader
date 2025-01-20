@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,7 +13,11 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use std::any::Any;
+//! Instrument definitions for the trading domain model.
+
+pub mod any;
+pub mod betting;
+pub mod binary_option;
 pub mod crypto_future;
 pub mod crypto_perpetual;
 pub mod currency_pair;
@@ -27,35 +31,27 @@ pub mod synthetic;
 #[cfg(feature = "stubs")]
 pub mod stubs;
 
-use anyhow::Result;
-use nautilus_core::time::UnixNanos;
+use nautilus_core::UnixNanos;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use ustr::Ustr;
 
-use self::{
+// Re-exports
+pub use crate::instruments::{
+    any::InstrumentAny, betting::BettingInstrument, binary_option::BinaryOption,
     crypto_future::CryptoFuture, crypto_perpetual::CryptoPerpetual, currency_pair::CurrencyPair,
     equity::Equity, futures_contract::FuturesContract, futures_spread::FuturesSpread,
     options_contract::OptionsContract, options_spread::OptionsSpread,
+    synthetic::SyntheticInstrument,
 };
 use crate::{
-    enums::{AssetClass, InstrumentClass},
-    identifiers::{instrument_id::InstrumentId, symbol::Symbol, venue::Venue},
-    types::{currency::Currency, money::Money, price::Price, quantity::Quantity},
+    enums::{AssetClass, InstrumentClass, OptionKind},
+    identifiers::{InstrumentId, Symbol, Venue},
+    types::{Currency, Money, Price, Quantity},
 };
 
-#[derive(Debug)]
-pub enum InstrumentType {
-    CryptoFuture(CryptoFuture),
-    CryptoPerpetual(CryptoPerpetual),
-    CurrencyPair(CurrencyPair),
-    Equity(Equity),
-    FuturesContract(FuturesContract),
-    FuturesSpread(FuturesSpread),
-    OptionsContract(OptionsContract),
-    OptionsSpread(OptionsSpread),
-}
-
-pub trait Instrument: Any + 'static + Send {
+pub trait Instrument: 'static + Send {
+    fn into_any(self) -> InstrumentAny;
     fn id(&self) -> InstrumentId;
     fn symbol(&self) -> Symbol {
         self.id().symbol
@@ -66,9 +62,16 @@ pub trait Instrument: Any + 'static + Send {
     fn raw_symbol(&self) -> Symbol;
     fn asset_class(&self) -> AssetClass;
     fn instrument_class(&self) -> InstrumentClass;
+    fn underlying(&self) -> Option<Ustr>;
     fn base_currency(&self) -> Option<Currency>;
     fn quote_currency(&self) -> Currency;
     fn settlement_currency(&self) -> Currency;
+    fn isin(&self) -> Option<Ustr>;
+    fn option_kind(&self) -> Option<OptionKind>;
+    fn exchange(&self) -> Option<Ustr>;
+    fn strike_price(&self) -> Option<Price>;
+    fn activation_ns(&self) -> Option<UnixNanos>;
+    fn expiration_ns(&self) -> Option<UnixNanos>;
     fn is_inverse(&self) -> bool;
     fn price_precision(&self) -> u8;
     fn size_precision(&self) -> u8;
@@ -78,6 +81,8 @@ pub trait Instrument: Any + 'static + Send {
     fn lot_size(&self) -> Option<Quantity>;
     fn max_quantity(&self) -> Option<Quantity>;
     fn min_quantity(&self) -> Option<Quantity>;
+    fn max_notional(&self) -> Option<Money>;
+    fn min_notional(&self) -> Option<Money>;
     fn max_price(&self) -> Option<Price>;
     fn min_price(&self) -> Option<Price>;
     fn margin_init(&self) -> Decimal {
@@ -98,13 +103,13 @@ pub trait Instrument: Any + 'static + Send {
     fn ts_event(&self) -> UnixNanos;
     fn ts_init(&self) -> UnixNanos;
 
-    /// Creates a new price from the given `value` with the correct price precision for the instrument.
-    fn make_price(&self, value: f64) -> Result<Price> {
+    /// Creates a new `Price` from the given `value` with the correct price precision for the instrument.
+    fn make_price(&self, value: f64) -> Price {
         Price::new(value, self.price_precision())
     }
 
-    /// Creates a new quantity from the given `value` with the correct size precision for the instrument.
-    fn make_qty(&self, value: f64) -> Result<Quantity> {
+    /// Creates a new `Quantity` from the given `value` with the correct size precision for the instrument.
+    fn make_qty(&self, value: f64) -> Quantity {
         Quantity::new(value, self.size_precision())
     }
 
@@ -113,7 +118,8 @@ pub trait Instrument: Any + 'static + Send {
     ///
     /// # Panics
     ///
-    /// If instrument is inverse and not `use_quote_for_inverse`, with no base currency.
+    /// This function panics:
+    /// - If instrument is inverse and not `use_quote_for_inverse`, with no base currency.
     fn calculate_notional_value(
         &self,
         quantity: Quantity,
@@ -138,14 +144,19 @@ pub trait Instrument: Any + 'static + Send {
             (amount, currency)
         };
 
-        Money::new(amount, currency).unwrap() // TODO: Handle error properly
+        Money::new(amount, currency)
     }
 
     /// Returns the equivalent quantity of the base asset.
     fn calculate_base_quantity(&self, quantity: Quantity, last_px: Price) -> Quantity {
         let value = quantity.as_f64() * (1.0 / last_px.as_f64());
-        Quantity::new(value, self.size_precision()).unwrap() // TODO: Handle error properly
+        Quantity::new(value, self.size_precision())
     }
-
-    fn as_any(&self) -> &dyn Any;
 }
+
+pub const EXPIRING_INSTRUMENT_TYPES: [InstrumentClass; 4] = [
+    InstrumentClass::Future,
+    InstrumentClass::FutureSpread,
+    InstrumentClass::Option,
+    InstrumentClass::OptionSpread,
+];

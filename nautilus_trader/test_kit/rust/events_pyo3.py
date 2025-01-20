@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -60,7 +60,7 @@ from nautilus_trader.test_kit.rust.identifiers_pyo3 import TestIdProviderPyo3
 from nautilus_trader.test_kit.rust.types_pyo3 import TestTypesProviderPyo3
 
 
-_STUB_UUID4 = UUID4("91762096-b188-49ea-8562-8d8a4cc22ff2")
+_STUB_UUID4 = UUID4.from_str("91762096-b188-49ea-8562-8d8a4cc22ff2")
 
 
 class TestEventsProviderPyo3:
@@ -75,7 +75,7 @@ class TestEventsProviderPyo3:
             ],
             margins=[],
             is_reported=True,
-            event_id=UUID4("91762096-b188-49ea-8562-8d8a4cc22ff2"),
+            event_id=UUID4.from_str("91762096-b188-49ea-8562-8d8a4cc22ff2"),
             ts_init=0,
             ts_event=0,
         )
@@ -95,7 +95,7 @@ class TestEventsProviderPyo3:
             ],
             margins=[],
             is_reported=True,
-            event_id=UUID4("91762096-b188-49ea-8562-8d8a4cc22ff2"),
+            event_id=UUID4.from_str("91762096-b188-49ea-8562-8d8a4cc22ff2"),
             ts_init=0,
             ts_event=0,
         )
@@ -120,7 +120,7 @@ class TestEventsProviderPyo3:
             ],
             margins=[],
             is_reported=True,
-            event_id=UUID4("91762096-b188-49ea-8562-8d8a4cc22ff2"),
+            event_id=UUID4.from_str("91762096-b188-49ea-8562-8d8a4cc22ff2"),
             ts_init=0,
             ts_event=0,
         )
@@ -145,7 +145,7 @@ class TestEventsProviderPyo3:
             ],
             margins=[],
             is_reported=True,
-            event_id=UUID4("91762096-b188-49ea-8562-8d8a4cc22ff2"),
+            event_id=UUID4.from_str("91762096-b188-49ea-8562-8d8a4cc22ff2"),
             ts_init=0,
             ts_event=0,
         )
@@ -163,7 +163,7 @@ class TestEventsProviderPyo3:
                 TestTypesProviderPyo3.margin_balance(),
             ],
             is_reported=True,
-            event_id=UUID4("91762096-b188-49ea-8562-8d8a4cc22ff2"),
+            event_id=UUID4.from_str("91762096-b188-49ea-8562-8d8a4cc22ff2"),
             ts_init=0,
             ts_event=0,
         )
@@ -246,7 +246,7 @@ class TestEventsProviderPyo3:
             exec_algorithm_id=None,
             exec_algorithm_params=None,
             exec_spawn_id=None,
-            tags="ENTRY",
+            tags=["ENTRY"],
             ts_init=0,
             ts_event=0,
         )
@@ -483,7 +483,7 @@ class TestEventsProviderPyo3:
             order_side=order.side,
             order_type=order.order_type,
             last_qty=last_qty,
-            last_px=last_px or order.price,
+            last_px=last_px or order.price or Price.from_str("1.00000"),
             currency=instrument.quote_currency,
             commission=commission,
             liquidity_side=liquidity_side,

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,10 +14,21 @@
 # -------------------------------------------------------------------------------------------------
 
 from nautilus_trader.adapters.databento.enums import DatabentoSchema
+from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.core.correctness import PyCondition
 from nautilus_trader.model.data import BarType
 from nautilus_trader.model.enums import BarAggregation
 from nautilus_trader.model.enums import PriceType
+from nautilus_trader.model.identifiers import InstrumentId
+
+
+def instrument_id_to_pyo3(
+    instrument_id: InstrumentId | nautilus_pyo3.InstrumentId,
+) -> nautilus_pyo3.InstrumentId:
+    if isinstance(instrument_id, nautilus_pyo3.InstrumentId):
+        return instrument_id
+
+    return nautilus_pyo3.InstrumentId.from_str(instrument_id.value)
 
 
 def databento_schema_from_nautilus_bar_type(bar_type: BarType) -> DatabentoSchema:
@@ -39,7 +50,7 @@ def databento_schema_from_nautilus_bar_type(bar_type: BarType) -> DatabentoSchem
         If any property of `bar_type` is invalid to map to a Databento schema.
 
     """
-    PyCondition.true(bar_type.is_externally_aggregated(), "aggregation_source is not EXTERNAL")
+    PyCondition.is_true(bar_type.is_externally_aggregated(), "aggregation_source is not EXTERNAL")
 
     if not bar_type.spec.is_time_aggregated():
         raise ValueError(

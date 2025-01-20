@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -46,7 +46,7 @@ class LiveDataClientFactory:
         loop : asyncio.AbstractEventLoop
             The event loop for the client.
         name : str
-            The client name.
+            The custom client ID.
         config : dict[str, object]
             The configuration for the client.
         msgbus : MessageBus
@@ -88,7 +88,7 @@ class LiveExecClientFactory:
         loop : asyncio.AbstractEventLoop
             The event loop for the client.
         name : str
-            The client name.
+            The custom client ID.
         config : dict[str, object]
             The configuration for the client.
         msgbus : MessageBus

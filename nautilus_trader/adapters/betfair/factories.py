@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -33,10 +33,6 @@ from nautilus_trader.live.factories import LiveExecClientFactory
 from nautilus_trader.model.objects import Currency
 
 
-CLIENTS: dict[str, BetfairHttpClient] = {}
-INSTRUMENT_PROVIDER = None
-
-
 @lru_cache(1)
 def get_cached_betfair_client(
     username: str | None = None,
@@ -66,23 +62,17 @@ def get_cached_betfair_client(
     BetfairHttpClient
 
     """
-    global CLIENTS
-
     username = username or os.environ["BETFAIR_USERNAME"]
     password = password or os.environ["BETFAIR_PASSWORD"]
     app_key = app_key or os.environ["BETFAIR_APP_KEY"]
 
-    key: str = "|".join((username, password, app_key))
-    if key not in CLIENTS:
-        Logger("BetfairFactory").warning("Creating new instance of BetfairHttpClient")
+    Logger("BetfairFactory").debug("Creating new instance of `BetfairHttpClient`")
 
-        client = BetfairHttpClient(
-            username=username,
-            password=password,
-            app_key=app_key,
-        )
-        CLIENTS[key] = client
-    return CLIENTS[key]
+    return BetfairHttpClient(
+        username=username,
+        password=password,
+        app_key=app_key,
+    )
 
 
 @lru_cache(1)
@@ -107,20 +97,17 @@ def get_cached_betfair_instrument_provider(
     BetfairInstrumentProvider
 
     """
-    global INSTRUMENT_PROVIDER
-    if INSTRUMENT_PROVIDER is None:
-        Logger("BetfairFactory").warning("Creating new instance of BetfairInstrumentProvider")
+    Logger("BetfairFactory").debug("Creating new instance of `BetfairInstrumentProvider`")
 
-        INSTRUMENT_PROVIDER = BetfairInstrumentProvider(
-            client=client,
-            config=config,
-        )
-    return INSTRUMENT_PROVIDER
+    return BetfairInstrumentProvider(
+        client=client,
+        config=config,
+    )
 
 
 class BetfairLiveDataClientFactory(LiveDataClientFactory):
     """
-    Provides a `Betfair` live data client factory.
+    Provides a Betfair live data client factory.
     """
 
     @staticmethod
@@ -140,7 +127,7 @@ class BetfairLiveDataClientFactory(LiveDataClientFactory):
         loop : asyncio.AbstractEventLoop
             The event loop for the client.
         name : str
-            The client name.
+            The custom client ID.
         config : dict[str, Any]
             The configuration dictionary.
         msgbus : MessageBus
@@ -201,7 +188,7 @@ class BetfairLiveExecClientFactory(LiveExecClientFactory):
         loop : asyncio.AbstractEventLoop
             The event loop for the client.
         name : str
-            The client name.
+            The custom client ID.
         config : dict[str, Any]
             The configuration for the client.
         msgbus : MessageBus

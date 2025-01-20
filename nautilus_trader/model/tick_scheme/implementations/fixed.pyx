@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -22,7 +22,7 @@ from nautilus_trader.model.tick_scheme.base cimport round_up
 
 cdef class FixedTickScheme(TickScheme):
     """
-    Represents a Fixed precision tick scheme such as for Forex or Crypto.
+    Represents a fixed precision tick scheme such as for Forex or Crypto.
 
     Parameters
     ----------

@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -18,29 +18,38 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use anyhow::{anyhow, Result};
-use evalexpr::{ContextWithMutableVariables, HashMapContext, Node, Value};
-use nautilus_core::time::UnixNanos;
+use derive_builder::Builder;
+use evalexpr::{ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Node, Value};
+use nautilus_core::{correctness::FAILED, UnixNanos};
 
 use crate::{
-    identifiers::{instrument_id::InstrumentId, symbol::Symbol, venue::Venue},
-    types::price::Price,
+    identifiers::{InstrumentId, Symbol, Venue},
+    types::Price,
 };
 
 /// Represents a synthetic instrument with prices derived from component instruments using a
 /// formula.
-#[derive(Clone, Debug)]
+///
+/// The `id` for the synthetic will become `{symbol}.{SYNTH}`.
+#[derive(Clone, Debug, Builder)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
 pub struct SyntheticInstrument {
+    /// The unique identifier for the synthetic instrument.
     pub id: InstrumentId,
+    /// The price precision for the synthetic instrument.
     pub price_precision: u8,
+    /// The minimum price increment.
     pub price_increment: Price,
+    /// The component instruments for the synthetic instrument.
     pub components: Vec<InstrumentId>,
+    /// The derivation formula for the synthetic instrument.
     pub formula: String,
+    /// UNIX timestamp (nanoseconds) when the data event occurred.
     pub ts_event: UnixNanos,
+    /// UNIX timestamp (nanoseconds) when the data object was initialized.
     pub ts_init: UnixNanos,
     context: HashMapContext,
     variables: Vec<String>,
@@ -48,15 +57,20 @@ pub struct SyntheticInstrument {
 }
 
 impl SyntheticInstrument {
-    pub fn new(
+    /// Creates a new [`SyntheticInstrument`] instance with correctness checking.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked(
         symbol: Symbol,
         price_precision: u8,
         components: Vec<InstrumentId>,
         formula: String,
         ts_event: UnixNanos,
         ts_init: UnixNanos,
-    ) -> Result<Self, anyhow::Error> {
-        let price_increment = Price::new(10f64.powi(-i32::from(price_precision)), price_precision)?;
+    ) -> anyhow::Result<Self> {
+        let price_increment = Price::new(10f64.powi(-i32::from(price_precision)), price_precision);
 
         // Extract variables from the component instruments
         let variables: Vec<String> = components
@@ -80,13 +94,33 @@ impl SyntheticInstrument {
         })
     }
 
-    #[must_use]
-    pub fn is_valid_formula(&self, formula: &str) -> bool {
-        evalexpr::build_operator_tree(formula).is_ok()
+    /// Creates a new [`SyntheticInstrument`] instance
+    pub fn new(
+        symbol: Symbol,
+        price_precision: u8,
+        components: Vec<InstrumentId>,
+        formula: String,
+        ts_event: UnixNanos,
+        ts_init: UnixNanos,
+    ) -> Self {
+        Self::new_checked(
+            symbol,
+            price_precision,
+            components,
+            formula,
+            ts_event,
+            ts_init,
+        )
+        .expect(FAILED)
     }
 
-    pub fn change_formula(&mut self, formula: String) -> Result<(), anyhow::Error> {
-        let operator_tree = evalexpr::build_operator_tree(&formula)?;
+    #[must_use]
+    pub fn is_valid_formula(&self, formula: &str) -> bool {
+        evalexpr::build_operator_tree::<DefaultNumericTypes>(formula).is_ok()
+    }
+
+    pub fn change_formula(&mut self, formula: String) -> anyhow::Result<()> {
+        let operator_tree = evalexpr::build_operator_tree::<DefaultNumericTypes>(&formula)?;
         self.formula = formula;
         self.operator_tree = operator_tree;
         Ok(())
@@ -95,14 +129,15 @@ impl SyntheticInstrument {
     /// Calculates the price of the synthetic instrument based on the given component input prices
     /// provided as a map.
     #[allow(dead_code)]
-    pub fn calculate_from_map(&mut self, inputs: &HashMap<String, f64>) -> Result<Price> {
+    pub fn calculate_from_map(&mut self, inputs: &HashMap<String, f64>) -> anyhow::Result<Price> {
         let mut input_values = Vec::new();
 
         for variable in &self.variables {
             if let Some(&value) = inputs.get(variable) {
                 input_values.push(value);
                 self.context
-                    .set_value(variable.clone(), Value::from(value))?;
+                    .set_value(variable.clone(), Value::Float(value))
+                    .expect("TODO: Unable to set value");
             } else {
                 panic!("Missing price for component: {variable}");
             }
@@ -113,21 +148,21 @@ impl SyntheticInstrument {
 
     /// Calculates the price of the synthetic instrument based on the given component input prices
     /// provided as an array of `f64` values.
-    pub fn calculate(&mut self, inputs: &[f64]) -> Result<Price> {
+    pub fn calculate(&mut self, inputs: &[f64]) -> anyhow::Result<Price> {
         if inputs.len() != self.variables.len() {
-            return Err(anyhow!("Invalid number of input values"));
+            return Err(anyhow::anyhow!("Invalid number of input values"));
         }
 
         for (variable, input) in self.variables.iter().zip(inputs) {
             self.context
-                .set_value(variable.clone(), Value::from(*input))?;
+                .set_value(variable.clone(), Value::Float(*input))?;
         }
 
         let result: Value = self.operator_tree.eval_with_context(&self.context)?;
 
         match result {
-            Value::Float(price) => Price::new(price, self.price_precision),
-            _ => Err(anyhow!(
+            Value::Float(price) => Ok(Price::new(price, self.price_precision)),
+            _ => Err(anyhow::anyhow!(
                 "Failed to evaluate formula to a floating point number"
             )),
         }
@@ -148,82 +183,47 @@ impl Hash for SyntheticInstrument {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Tests
+///////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::identifiers::{instrument_id::InstrumentId, symbol::Symbol};
 
     #[rstest]
     fn test_calculate_from_map() {
-        let btc_binance = InstrumentId::from("BTC.BINANCE");
-        let ltc_binance = InstrumentId::from("LTC.BINANCE");
-        let formula = "(BTC.BINANCE + LTC.BINANCE) / 2".to_string();
-        let mut synth = SyntheticInstrument::new(
-            Symbol::new("BTC-LTC").unwrap(),
-            2,
-            vec![btc_binance, ltc_binance],
-            formula.clone(),
-            0,
-            0,
-        )
-        .unwrap();
-
+        let mut synth = SyntheticInstrument::default();
         let mut inputs = HashMap::new();
         inputs.insert("BTC.BINANCE".to_string(), 100.0);
         inputs.insert("LTC.BINANCE".to_string(), 200.0);
-
         let price = synth.calculate_from_map(&inputs).unwrap();
 
         assert_eq!(price.as_f64(), 150.0);
-        assert_eq!(synth.formula, formula);
+        assert_eq!(
+            synth.formula,
+            "(BTC.BINANCE + LTC.BINANCE) / 2.0".to_string()
+        );
     }
 
     #[rstest]
     fn test_calculate() {
-        let btc_binance = InstrumentId::from("BTC.BINANCE");
-        let ltc_binance = InstrumentId::from("LTC.BINANCE");
-        let formula = "(BTC.BINANCE + LTC.BINANCE) / 2.0".to_string();
-        let mut synth = SyntheticInstrument::new(
-            Symbol::new("BTC-LTC").unwrap(),
-            2,
-            vec![btc_binance, ltc_binance],
-            formula.clone(),
-            0,
-            0,
-        )
-        .unwrap();
-
+        let mut synth = SyntheticInstrument::default();
         let inputs = vec![100.0, 200.0];
         let price = synth.calculate(&inputs).unwrap();
-
         assert_eq!(price.as_f64(), 150.0);
-        assert_eq!(synth.formula, formula);
     }
 
     #[rstest]
     fn test_change_formula() {
-        let btc_binance = InstrumentId::from("BTC.BINANCE");
-        let ltc_binance = InstrumentId::from("LTC.BINANCE");
-        let formula = "(BTC.BINANCE + LTC.BINANCE) / 2".to_string();
-        let mut synth = SyntheticInstrument::new(
-            Symbol::new("BTC-LTC").unwrap(),
-            2,
-            vec![btc_binance, ltc_binance],
-            formula,
-            0,
-            0,
-        )
-        .unwrap();
-
+        let mut synth = SyntheticInstrument::default();
         let new_formula = "(BTC.BINANCE + LTC.BINANCE) / 4".to_string();
         synth.change_formula(new_formula.clone()).unwrap();
 
         let mut inputs = HashMap::new();
         inputs.insert("BTC.BINANCE".to_string(), 100.0);
         inputs.insert("LTC.BINANCE".to_string(), 200.0);
-
         let price = synth.calculate_from_map(&inputs).unwrap();
 
         assert_eq!(price.as_f64(), 75.0);

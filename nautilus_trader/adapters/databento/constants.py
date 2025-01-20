@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -24,4 +24,4 @@ DATABENTO_CLIENT_ID: Final[ClientId] = ClientId(DATABENTO)
 
 ALL_SYMBOLS: Final[str] = "ALL_SYMBOLS"
 
-PUBLISHERS_PATH: Final[Path] = (Path(__file__).resolve().parent / "publishers.json").resolve()
+PUBLISHERS_FILEPATH: Final[Path] = (Path(__file__).resolve().parent / "publishers.json").resolve()

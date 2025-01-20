@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,16 +13,18 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid instrument ID.
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
     str::FromStr,
 };
 
-use anyhow::{anyhow, bail, Result};
+use nautilus_core::correctness::check_valid_string;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::identifiers::{symbol::Symbol, venue::Venue};
+use crate::identifiers::{Symbol, Venue};
 
 /// Represents a valid instrument ID.
 ///
@@ -41,6 +43,7 @@ pub struct InstrumentId {
 }
 
 impl InstrumentId {
+    /// Creates a new [`InstrumentId`] instance.
     #[must_use]
     pub fn new(symbol: Symbol, venue: Venue) -> Self {
         Self { symbol, venue }
@@ -52,21 +55,29 @@ impl InstrumentId {
     }
 }
 
+impl InstrumentId {
+    pub fn from_as_ref<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        Self::from_str(value.as_ref())
+    }
+}
+
 impl FromStr for InstrumentId {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self> {
+    fn from_str(s: &str) -> anyhow::Result<Self> {
         match s.rsplit_once('.') {
-            Some((symbol_part, venue_part)) => Ok(Self {
-                symbol: Symbol::new(symbol_part)
-                    .map_err(|e| anyhow!(err_message(s, e.to_string())))?,
-                venue: Venue::new(venue_part)
-                    .map_err(|e| anyhow!(err_message(s, e.to_string())))?,
-            }),
+            Some((symbol_part, venue_part)) => {
+                check_valid_string(symbol_part, stringify!(value))?;
+                check_valid_string(venue_part, stringify!(value))?;
+                Ok(Self {
+                    symbol: Symbol::new(symbol_part),
+                    venue: Venue::new(venue_part),
+                })
+            }
             None => {
-                bail!(err_message(
+                anyhow::bail!(err_message(
                     s,
-                    "Missing '.' separator between symbol and venue components".to_string()
+                    "missing '.' separator between symbol and venue components".to_string()
                 ))
             }
         }
@@ -74,8 +85,26 @@ impl FromStr for InstrumentId {
 }
 
 impl From<&str> for InstrumentId {
-    fn from(input: &str) -> Self {
-        Self::from_str(input).unwrap()
+    /// Creates a [`InstrumentId`] from a string slice.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If the `value` string is not valid.
+    fn from(value: &str) -> Self {
+        Self::from_str(value).unwrap()
+    }
+}
+
+impl From<String> for InstrumentId {
+    /// Creates a [`InstrumentId`] from a string.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If the `value` string is not valid.
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -106,7 +135,7 @@ impl<'de> Deserialize<'de> for InstrumentId {
         D: Deserializer<'de>,
     {
         let instrument_id_str = String::deserialize(deserializer)?;
-        Self::from_str(&instrument_id_str).map_err(|err| serde::de::Error::custom(err.to_string()))
+        Ok(Self::from(instrument_id_str.as_str()))
     }
 }
 
@@ -119,7 +148,6 @@ fn err_message(s: &str, e: String) -> String {
 ////////////////////////////////////////////////////////////////////////////////
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use rstest::rstest;
 
@@ -133,15 +161,11 @@ mod tests {
     }
 
     #[rstest]
+    #[should_panic(
+        expected = "Error parsing `InstrumentId` from 'ETHUSDT-BINANCE': missing '.' separator between symbol and venue components"
+    )]
     fn test_instrument_id_parse_failure_no_dot() {
-        let result = InstrumentId::from_str("ETHUSDT-BINANCE");
-        assert!(result.is_err());
-
-        let error = result.unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "Error parsing `InstrumentId` from 'ETHUSDT-BINANCE': Missing '.' separator between symbol and venue components"
-        );
+        let _ = InstrumentId::from("ETHUSDT-BINANCE");
     }
 
     #[rstest]

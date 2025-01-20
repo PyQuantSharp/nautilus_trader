@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,18 +13,21 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use pyo3::prelude::*;
+//! Python bindings from `pyo3`.
 
 pub mod backend;
+pub mod catalog;
 pub mod wranglers;
+
+use pyo3::prelude::*;
 
 /// Loaded as nautilus_pyo3.persistence
 #[pymodule]
-pub fn persistence(_: Python<'_>, m: &PyModule) -> PyResult<()> {
+pub fn persistence(_: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::backend::session::DataBackendSession>()?;
     m.add_class::<crate::backend::session::DataQueryResult>()?;
     m.add_class::<backend::session::NautilusDataType>()?;
-    m.add_class::<backend::transformer::DataTransformer>()?;
+    m.add_class::<catalog::PyParquetDataCatalogV2>()?;
     m.add_class::<wranglers::bar::BarDataWrangler>()?;
     m.add_class::<wranglers::delta::OrderBookDeltaDataWrangler>()?;
     m.add_class::<wranglers::quote::QuoteTickDataWrangler>()?;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -44,6 +44,9 @@ config_node = TradingNodeConfig(
     exec_engine=LiveExecEngineConfig(
         reconciliation=True,
         reconciliation_lookback_mins=1440,
+        # snapshot_orders=True,
+        # snapshot_positions=True,
+        # snapshot_positions_interval_secs=5.0,
     ),
     # cache=CacheConfig(
     #     database=DatabaseConfig(),
@@ -57,11 +60,8 @@ config_node = TradingNodeConfig(
     #     timestamps_as_iso8601=True,
     #     # types_filter=[QuoteTick],
     #     autotrim_mins=1,
+    #     heartbeat_interval_secs=1,
     # ),
-    # heartbeat_interval=1.0,
-    # snapshot_orders=True,
-    # snapshot_positions=True,
-    # snapshot_positions_interval=5.0,
     data_clients={
         "BINANCE": BinanceDataClientConfig(
             api_key=None,  # 'BINANCE_API_KEY' env var
@@ -84,9 +84,11 @@ config_node = TradingNodeConfig(
             us=False,  # If client is for Binance US
             testnet=False,  # If client uses the testnet
             instrument_provider=InstrumentProviderConfig(load_all=True),
+            max_retries=3,
+            retry_delay=1.0,
         ),
     },
-    timeout_connection=20.0,
+    timeout_connection=30.0,
     timeout_reconciliation=10.0,
     timeout_portfolio=10.0,
     timeout_disconnection=10.0,
@@ -112,7 +114,7 @@ strategy = EMACross(config=strat_config)
 # Add your strategies and modules
 node.trader.add_strategy(strategy)
 
-# Register your client factories with the node (can take user defined factories)
+# Register your client factories with the node (can take user-defined factories)
 node.add_data_client_factory("BINANCE", BinanceLiveDataClientFactory)
 node.add_exec_client_factory("BINANCE", BinanceLiveExecClientFactory)
 node.build()

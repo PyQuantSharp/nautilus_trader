@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -14,16 +14,14 @@
 // -------------------------------------------------------------------------------------------------
 
 use nautilus_core::{ffi::cvec::CVec, python::to_pyruntime_err};
-use nautilus_model::data::{
-    bar::Bar, delta::OrderBookDelta, depth::OrderBookDepth10, quote::QuoteTick, trade::TradeTick,
-};
+use nautilus_model::data::{Bar, OrderBookDelta, OrderBookDepth10, QuoteTick, TradeTick};
 use pyo3::{prelude::*, types::PyCapsule};
 
 use crate::backend::session::{DataBackendSession, DataQueryResult};
 
 #[repr(C)]
-#[pyclass]
-#[derive(Clone, Copy, Debug)]
+#[pyclass(eq, eq_int)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NautilusDataType {
     // Custom = 0,  # First slot reserved for custom data
     OrderBookDelta = 1,
@@ -36,7 +34,7 @@ pub enum NautilusDataType {
 #[pymethods]
 impl DataBackendSession {
     #[new]
-    #[pyo3(signature=(chunk_size=5_000))]
+    #[pyo3(signature=(chunk_size=10_000))]
     fn new_session(chunk_size: usize) -> Self {
         Self::new(chunk_size)
     }
@@ -55,6 +53,7 @@ impl DataBackendSession {
     /// The file data must be ordered by the ts_init in ascending order for this
     /// to work correctly.
     #[pyo3(name = "add_file")]
+    #[pyo3(signature = (data_type, table_name, file_path, sql_query=None))]
     fn add_file_py(
         mut slf: PyRefMut<'_, Self>,
         data_type: NautilusDataType,
@@ -92,7 +91,7 @@ impl DataBackendSession {
 #[pymethods]
 impl DataQueryResult {
     /// The reader implements an iterator.
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+    const fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
 
@@ -101,9 +100,9 @@ impl DataQueryResult {
         match slf.next() {
             Some(acc) if !acc.is_empty() => {
                 let cvec = slf.set_chunk(acc);
-                Python::with_gil(|py| match PyCapsule::new::<CVec>(py, cvec, None) {
+                Python::with_gil(|py| match PyCapsule::new_bound::<CVec>(py, cvec, None) {
                     Ok(capsule) => Ok(Some(capsule.into_py(py))),
-                    Err(err) => Err(to_pyruntime_err(err)),
+                    Err(e) => Err(to_pyruntime_err(e)),
                 })
             }
             _ => Ok(None),

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -37,7 +37,7 @@ cdef class WeightedMovingAverage(MovingAverage):
     weights : iterable
         The weights for the moving average calculation (if not ``None`` then = period).
     price_type : PriceType
-        The specified price type for extracting values from quote ticks.
+        The specified price type for extracting values from quotes.
 
     Raises
     ------
@@ -60,11 +60,11 @@ cdef class WeightedMovingAverage(MovingAverage):
             if weights.ndim != 1:
                 raise ValueError("weights must be iterable with ndim == 1.")
             else:
-                Condition.true(weights.dtype == np.float64, "weights ndarray.dtype must be 'float64'")
-                Condition.true(weights.ndim == 1, "weights ndarray.ndim must be 1")
+                Condition.is_true(weights.dtype == np.float64, "weights ndarray.dtype must be 'float64'")
+                Condition.is_true(weights.ndim == 1, "weights ndarray.ndim must be 1")
             Condition.equal(len(weights), period, "len(weights)", "period")
             eps = np.finfo(np.float64).eps
-            Condition.true(eps < weights.sum(), f"sum of weights must be positive > {eps}")
+            Condition.is_true(eps < weights.sum(), f"sum of weights must be positive > {eps}")
         super().__init__(period, params=[period, weights], price_type=price_type)
 
         self._inputs = deque(maxlen=period)

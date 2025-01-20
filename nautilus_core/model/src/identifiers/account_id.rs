@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,67 +13,102 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid account ID.
+
 use std::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
 };
 
-use anyhow::Result;
-use nautilus_core::correctness::{check_string_contains, check_valid_string};
+use nautilus_core::correctness::{check_string_contains, check_valid_string, FAILED};
 use ustr::Ustr;
 
+use super::Venue;
+
 /// Represents a valid account ID.
-///
-/// Must be correctly formatted with two valid strings either side of a hyphen '-'.
-/// It is expected an account ID is the name of the issuer with an account number
-/// separated by a hyphen.
-///
-/// Example: "IB-D02851908".
 #[repr(C)]
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct AccountId {
-    /// The account ID value.
-    pub value: Ustr,
-}
+pub struct AccountId(Ustr);
 
 impl AccountId {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`accountid` value")?;
-        check_string_contains(s, "-", "`AccountId` value")?;
-
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`AccountId`] instance with correctness checking.
+    ///
+    /// Must be correctly formatted with two valid strings either side of a hyphen '-'.
+    ///
+    /// It is expected an account ID is the name of the issuer with an account number
+    /// separated by a hyphen.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `value` is not a valid string.
+    /// - If `value` length is greater than 36.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        check_string_contains(value, "-", stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
     }
-}
 
-impl Default for AccountId {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("SIM-001"),
-        }
+    /// Creates a new [`AccountId`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string, or value length is greater than 36.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Returns the account issuer for this identifier.
+    #[must_use]
+    pub fn get_issuer(&self) -> Venue {
+        // SAFETY: Account ID is guaranteed to have chars either side of a hyphen
+        Venue::from_str_unchecked(self.0.split('-').collect::<Vec<&str>>().first().unwrap())
+    }
+
+    /// Returns the account ID assigned by the issuer.
+    #[must_use]
+    pub fn get_issuers_id(&self) -> &str {
+        // SAFETY: Account ID is guaranteed to have chars either side of a hyphen
+        self.0.split('-').collect::<Vec<&str>>().last().unwrap()
     }
 }
 
 impl Debug for AccountId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for AccountId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl From<&str> for AccountId {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+        write!(f, "{}", self.0)
     }
 }
 
@@ -88,29 +123,37 @@ mod tests {
     use crate::identifiers::stubs::*;
 
     #[rstest]
+    #[should_panic]
     fn test_account_id_new_invalid_string() {
-        let s = "";
-        let result = AccountId::new(s);
-        assert!(result.is_err());
+        AccountId::new("");
     }
 
     #[rstest]
+    #[should_panic]
     fn test_account_id_new_missing_hyphen() {
-        let s = "123456789";
-        let result = AccountId::new(s);
-        assert!(result.is_err());
+        AccountId::new("123456789");
     }
 
     #[rstest]
     fn test_account_id_fmt() {
         let s = "IB-U123456789";
-        let account_id = AccountId::new(s).unwrap();
+        let account_id = AccountId::new(s);
         let formatted = format!("{account_id}");
         assert_eq!(formatted, s);
     }
 
     #[rstest]
     fn test_string_reprs(account_ib: AccountId) {
-        assert_eq!(account_ib.to_string(), "IB-1234567890");
+        assert_eq!(account_ib.as_str(), "IB-1234567890");
+    }
+
+    #[rstest]
+    fn test_get_issuer(account_ib: AccountId) {
+        assert_eq!(account_ib.get_issuer(), Venue::new("IB"));
+    }
+
+    #[rstest]
+    fn test_get_issuers_id(account_ib: AccountId) {
+        assert_eq!(account_ib.get_issuers_id(), "1234567890");
     }
 }

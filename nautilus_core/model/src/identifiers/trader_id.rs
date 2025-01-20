@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,73 +13,92 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Represents a valid trader ID.
+
 use std::fmt::{Debug, Display, Formatter};
 
-use anyhow::Result;
-use nautilus_core::correctness::{check_string_contains, check_valid_string};
+use nautilus_core::correctness::{check_string_contains, check_valid_string, FAILED};
 use ustr::Ustr;
 
 /// Represents a valid trader ID.
-///
-/// Must be correctly formatted with two valid strings either side of a hyphen.
-/// It is expected a trader ID is the abbreviated name of the trader
-/// with an order ID tag number separated by a hyphen.
-///
-/// Example: "TESTER-001".
-
-/// The reason for the numerical component of the ID is so that order and position IDs
-/// do not collide with those from another node instance.
 #[repr(C)]
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(
     feature = "python",
     pyo3::pyclass(module = "nautilus_trader.core.nautilus_pyo3.model")
 )]
-pub struct TraderId {
-    /// The trader ID value.
-    pub value: Ustr,
-}
+pub struct TraderId(Ustr);
 
 impl TraderId {
-    pub fn new(s: &str) -> Result<Self> {
-        check_valid_string(s, "`TraderId` value")?;
-        check_string_contains(s, "-", "`TraderId` value")?;
+    /// Creates a new [`TraderId`] instance.
+    ///
+    /// Must be correctly formatted with two valid strings either side of a hyphen.
+    /// It is expected a trader ID is the abbreviated name of the trader
+    /// with an order ID tag number separated by a hyphen.
+    ///
+    /// Example: "TESTER-001".
+    ///
+    /// The reason for the numerical component of the ID is so that order and position IDs
+    /// do not collide with those from another node instance.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error:
+    /// - If `value` is not a valid string, or does not contain a hyphen '-' separator.
+    ///
+    /// # Notes
+    ///
+    /// PyO3 requires a `Result` type for proper error handling and stacktrace printing in Python.
+    pub fn new_checked<T: AsRef<str>>(value: T) -> anyhow::Result<Self> {
+        let value = value.as_ref();
+        check_valid_string(value, stringify!(value))?;
+        check_string_contains(value, "-", stringify!(value))?;
+        Ok(Self(Ustr::from(value)))
+    }
 
-        Ok(Self {
-            value: Ustr::from(s),
-        })
+    /// Creates a new [`TraderId`] instance.
+    ///
+    /// # Panics
+    ///
+    /// This function panics:
+    /// - If `value` is not a valid string, or does not contain a hyphen '-' separator.
+    pub fn new<T: AsRef<str>>(value: T) -> Self {
+        Self::new_checked(value).expect(FAILED)
+    }
+
+    /// Sets the inner identifier value.
+    pub(crate) fn set_inner(&mut self, value: &str) {
+        self.0 = Ustr::from(value);
+    }
+
+    /// Returns the inner identifier value.
+    #[must_use]
+    pub fn inner(&self) -> Ustr {
+        self.0
+    }
+
+    /// Returns the inner identifier value as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 
     #[must_use]
     pub fn get_tag(&self) -> &str {
         // SAFETY: Unwrap safe as value previously validated
-        self.value.split('-').last().unwrap()
-    }
-}
-
-impl Default for TraderId {
-    fn default() -> Self {
-        Self {
-            value: Ustr::from("TRADER-000"),
-        }
+        self.0.split('-').last().unwrap()
     }
 }
 
 impl Debug for TraderId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.value)
+        write!(f, "{:?}", self.0)
     }
 }
 
 impl Display for TraderId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl From<&str> for TraderId {
-    fn from(input: &str) -> Self {
-        Self::new(input).unwrap()
+        write!(f, "{}", self.0)
     }
 }
 
@@ -94,7 +113,7 @@ mod tests {
 
     #[rstest]
     fn test_string_reprs(trader_id: TraderId) {
-        assert_eq!(trader_id.to_string(), "TRADER-001");
+        assert_eq!(trader_id.as_str(), "TRADER-001");
         assert_eq!(format!("{trader_id}"), "TRADER-001");
     }
 

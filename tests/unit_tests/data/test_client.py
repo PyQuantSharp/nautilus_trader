@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -82,7 +82,7 @@ class TestDataClient:
         self.client.subscribe(data_type)
 
         # Assert
-        # TODO(cs): Determine better way of asserting this than parsing logs
+        # TODO: Determine better way of asserting this than parsing logs
 
     def test_unsubscribe_when_not_implemented_logs_error(self):
         # Arrange
@@ -92,7 +92,7 @@ class TestDataClient:
         self.client.subscribe(data_type)
 
         # Assert
-        # TODO(cs): Determine better way of asserting this than parsing logs
+        # TODO: Determine better way of asserting this than parsing logs
 
     def test_request_when_not_implemented_logs_error(self):
         # Arrange
@@ -102,7 +102,7 @@ class TestDataClient:
         self.client.request(data_type, UUID4())
 
         # Assert
-        # TODO(cs): Determine better way of asserting this than parsing logs
+        # TODO: Determine better way of asserting this than parsing logs
 
     def test_handle_data_sends_to_data_engine(self):
         # Arrange
@@ -134,7 +134,7 @@ class TestDataClient:
         )
 
         # Act
-        self.client._handle_data_response_py(data_type, data, UUID4())
+        self.client._handle_data_response_py(data_type, data, UUID4(), None)
 
         # Assert
         assert self.data_engine.response_count == 1
@@ -234,14 +234,14 @@ class TestMarketDataClient:
 
     def test_handle_quote_ticks_sends_to_data_engine(self):
         # Arrange, Act
-        self.client._handle_quote_ticks_py(AUDUSD_SIM.id, [], UUID4())
+        self.client._handle_quote_ticks_py(AUDUSD_SIM.id, [], UUID4(), None)
 
         # Assert
         assert self.data_engine.response_count == 1
 
     def test_handle_trade_ticks_sends_to_data_engine(self):
         # Arrange, Act
-        self.client._handle_trade_ticks_py(AUDUSD_SIM.id, [], UUID4())
+        self.client._handle_trade_ticks_py(AUDUSD_SIM.id, [], UUID4(), None)
 
         # Assert
         assert self.data_engine.response_count == 1
@@ -253,6 +253,7 @@ class TestMarketDataClient:
             [],
             None,
             UUID4(),
+            None,
         )
 
         # Assert

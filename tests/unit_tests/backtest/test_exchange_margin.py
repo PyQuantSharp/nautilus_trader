@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -16,12 +16,14 @@
 from datetime import timedelta
 from decimal import Decimal
 
+import numpy as np
 import pytest
 
 from nautilus_trader.backtest.exchange import SimulatedExchange
 from nautilus_trader.backtest.execution_client import BacktestExecClient
 from nautilus_trader.backtest.models import FillModel
 from nautilus_trader.backtest.models import LatencyModel
+from nautilus_trader.backtest.models import MakerTakerFeeModel
 from nautilus_trader.backtest.modules import SimulationModule
 from nautilus_trader.common.component import MessageBus
 from nautilus_trader.common.component import TestClock
@@ -36,6 +38,8 @@ from nautilus_trader.execution.messages import CancelOrder
 from nautilus_trader.execution.messages import ModifyOrder
 from nautilus_trader.model.currencies import JPY
 from nautilus_trader.model.currencies import USD
+from nautilus_trader.model.data import Bar
+from nautilus_trader.model.data import BarType
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.enums import AccountType
 from nautilus_trader.model.enums import AggressorSide
@@ -73,12 +77,13 @@ from nautilus_trader.test_kit.stubs.data import TestDataStubs
 from nautilus_trader.test_kit.stubs.identifiers import TestIdStubs
 
 
+NANOSECONDS_IN_SECOND = 1_000_000_000
 _AUDUSD_SIM = TestInstrumentProvider.default_fx_ccy("AUD/USD")
 _USDJPY_SIM = TestInstrumentProvider.default_fx_ccy("USD/JPY")
 
 
 class TestSimulatedExchangeMarginAccount:
-    def setup(self) -> None:
+    def setup(self, bar_adaptive_high_low_ordering=False) -> None:
         # Fixture Setup
         self.clock = TestClock()
         self.trader_id = TestIdStubs.trader_id()
@@ -125,15 +130,17 @@ class TestSimulatedExchangeMarginAccount:
             starting_balances=[Money(1_000_000, USD)],
             default_leverage=Decimal(50),
             leverages={_AUDUSD_SIM.id: Decimal(10)},
-            instruments=[_USDJPY_SIM],
             modules=[],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
             latency_model=LatencyModel(0),
+            bar_adaptive_high_low_ordering=bar_adaptive_high_low_ordering,
         )
+        self.exchange.add_instrument(_USDJPY_SIM)
 
         self.exec_client = BacktestExecClient(
             exchange=self.exchange,
@@ -347,6 +354,31 @@ class TestSimulatedExchangeMarginAccount:
         assert isinstance(self.strategy.store[3], OrderAccepted)
         assert isinstance(self.strategy.store[4], OrderUpdated)
 
+    def test_submit_multiple_limit_orders_then_accepts_both(self) -> None:
+        # Arrange
+        order1 = self.strategy.order_factory.limit(
+            _USDJPY_SIM.id,
+            OrderSide.BUY,
+            Quantity.from_int(100_000),
+            Price.from_str("110.010"),
+        )
+
+        order2 = self.strategy.order_factory.limit(
+            _USDJPY_SIM.id,
+            OrderSide.SELL,
+            Quantity.from_int(100_000),
+            Price.from_str("110.011"),
+        )
+
+        # Act
+        self.strategy.submit_order(order1)
+        self.strategy.submit_order(order2)
+        self.exchange.process(0)
+
+        # Assert
+        assert order1.status == OrderStatus.ACCEPTED
+        assert order2.status == OrderStatus.ACCEPTED
+
     @pytest.mark.parametrize(
         ("side", "price"),
         [
@@ -517,6 +549,137 @@ class TestSimulatedExchangeMarginAccount:
         # Assert
         assert order.status == OrderStatus.FILLED
         assert order.avg_px == 90.005  # No slippage
+
+    def test_submit_market_order_with_bar(self) -> None:
+        # Arrange: Prepare market
+        bar = Bar(
+            bar_type=BarType.from_str(f"{_USDJPY_SIM.id.value}-1-MINUTE-LAST-EXTERNAL"),
+            open=Price.from_str("90.020"),
+            high=Price.from_str("90.030"),
+            low=Price.from_str("90.010"),
+            close=Price.from_str("90.015"),
+            volume=Quantity.from_int(20_000),
+            ts_event=0,
+            ts_init=0,
+        )
+        self.data_engine.process(bar)
+        self.exchange.process_bar(bar)
+
+        # Create order
+        order = self.strategy.order_factory.market(
+            _USDJPY_SIM.id,
+            OrderSide.BUY,
+            Quantity.from_int(10_000),
+        )
+
+        # Act
+        self.strategy.submit_order(order)
+        self.exchange.process(0)
+
+        # Assert
+        fill_events = [msg for msg in self.strategy.store if isinstance(msg, OrderFilled)]
+        fill_prices = [str(event.last_px) for event in fill_events]
+
+        assert fill_prices == ["90.015", "90.016"]
+        assert order.status == OrderStatus.FILLED
+        assert np.round(order.avg_px, 4) == 90.0153
+
+    def test_submit_limit_order_with_bar(self) -> None:
+        # Arrange
+        order = self.strategy.order_factory.limit(
+            _USDJPY_SIM.id,
+            OrderSide.BUY,
+            Quantity.from_int(10_000),
+            Price.from_str("90.012"),
+        )
+        self.strategy.submit_order(order)
+        self.exchange.process(0)
+
+        bar = Bar(
+            bar_type=BarType.from_str(f"{_USDJPY_SIM.id.value}-1-MINUTE-LAST-EXTERNAL"),
+            open=Price.from_str("90.020"),
+            high=Price.from_str("90.030"),
+            low=Price.from_str("90.010"),
+            close=Price.from_str("90.015"),
+            volume=Quantity.from_int(20_000),
+            ts_event=60 * NANOSECONDS_IN_SECOND,
+            ts_init=60 * NANOSECONDS_IN_SECOND,
+        )
+        self.clock.advance_time(60 * NANOSECONDS_IN_SECOND)
+        self.data_engine.process(bar)
+
+        # Act
+        self.exchange.process_bar(bar)
+        self.exchange.process(60 * NANOSECONDS_IN_SECOND)
+
+        # Assert
+        fill_events = [msg for msg in self.strategy.store if isinstance(msg, OrderFilled)]
+
+        assert str(fill_events[0].last_px) == "90.012"
+        assert str(fill_events[0].last_qty) == "5000"
+        assert order.status == OrderStatus.PARTIALLY_FILLED
+
+    @pytest.mark.parametrize(
+        ("bar_adaptive_high_low_ordering", "expected_fill_prices"),
+        [
+            [
+                False,
+                ["90.030", "90.010"],
+            ],
+            [
+                True,
+                ["90.010", "90.030"],
+            ],
+        ],
+    )
+    def test_submit_two_limit_orders_with_bar(
+        self,
+        bar_adaptive_high_low_ordering,
+        expected_fill_prices,
+    ) -> None:
+        # Arrange
+        self.setup(bar_adaptive_high_low_ordering=bar_adaptive_high_low_ordering)
+
+        order = self.strategy.order_factory.limit(
+            _USDJPY_SIM.id,
+            OrderSide.SELL,
+            Quantity.from_int(5_000),
+            Price.from_str("90.030"),
+        )
+        self.strategy.submit_order(order)
+
+        order_2 = self.strategy.order_factory.limit(
+            _USDJPY_SIM.id,
+            OrderSide.BUY,
+            Quantity.from_int(5_000),
+            Price.from_str("90.010"),
+        )
+        self.strategy.submit_order(order_2)
+
+        self.exchange.process(0)
+
+        bar = Bar(
+            bar_type=BarType.from_str(f"{_USDJPY_SIM.id.value}-1-MINUTE-LAST-EXTERNAL"),
+            open=Price.from_str("90.012"),
+            high=Price.from_str("90.030"),
+            low=Price.from_str("90.010"),
+            close=Price.from_str("90.015"),
+            volume=Quantity.from_int(20_000),
+            ts_event=60 * NANOSECONDS_IN_SECOND,
+            ts_init=60 * NANOSECONDS_IN_SECOND,
+        )
+        self.clock.advance_time(60 * NANOSECONDS_IN_SECOND)
+        self.data_engine.process(bar)
+
+        # Act
+        self.exchange.process_bar(bar)
+        self.exchange.process(60 * NANOSECONDS_IN_SECOND)
+
+        # Assert
+        fill_events = [msg for msg in self.strategy.store if isinstance(msg, OrderFilled)]
+        fill_prices = [str(event.last_px) for event in fill_events]
+
+        assert fill_prices == expected_fill_prices
 
     def test_submit_market_order_then_immediately_cancel_submits_and_fills(self) -> None:
         # Arrange: Prepare market
@@ -1085,7 +1248,7 @@ class TestSimulatedExchangeMarginAccount:
             _USDJPY_SIM.id,
             OrderSide.BUY,
             Quantity.from_int(100_000),
-            _USDJPY_SIM.make_price(90.000),  # <-- Limit price above the ask
+            _USDJPY_SIM.make_price(90.000),  # <-- Limit price below the ask
             post_only=False,  # <-- Can be liquidity TAKER
         )
 
@@ -1104,7 +1267,7 @@ class TestSimulatedExchangeMarginAccount:
 
         # Assert
         assert order.status == OrderStatus.FILLED
-        assert order.avg_px == 90.000
+        assert order.avg_px == 90.000  # <-- Fills at limit price
 
     def test_submit_limit_order_fills_at_most_book_volume(self) -> None:
         # Arrange: Prepare market
@@ -2502,11 +2665,13 @@ class TestSimulatedExchangeMarginAccount:
         self.data_engine.process(tick1)
         self.exchange.process_quote_tick(tick1)
 
+        limit_price = Price.from_str("90.001")
         order = self.strategy.order_factory.limit(
             _USDJPY_SIM.id,
             OrderSide.BUY,
             Quantity.from_int(100_000),
-            Price.from_str("90.001"),
+            limit_price,
+            post_only=True,
         )
 
         self.strategy.submit_order(order)
@@ -2526,6 +2691,7 @@ class TestSimulatedExchangeMarginAccount:
         # Assert
         assert order.status == OrderStatus.FILLED
         assert len(self.exchange.get_open_orders()) == 0
+        assert order.last_event.last_px == limit_price
         assert order.avg_px == 90.001
         assert self.exchange.get_account().balance_total(USD) == Money(999998.00, USD)
 
@@ -2609,11 +2775,13 @@ class TestSimulatedExchangeMarginAccount:
         self.data_engine.process(tick)
         self.exchange.process_quote_tick(tick)
 
+        limit_price = Price.from_str("90.100")
         order = self.strategy.order_factory.limit(
             _USDJPY_SIM.id,
             OrderSide.SELL,
             Quantity.from_int(100_000),
-            Price.from_str("90.100"),
+            limit_price,
+            post_only=True,
         )
 
         self.strategy.submit_order(order)
@@ -2630,6 +2798,7 @@ class TestSimulatedExchangeMarginAccount:
         # Assert
         assert order.status == OrderStatus.FILLED
         assert len(self.exchange.get_open_orders()) == 0
+        assert order.last_event.last_px == limit_price
         assert order.avg_px == 90.100
         assert self.exchange.get_account().balance_total(USD) == Money(999998.00, USD)
 
@@ -2726,15 +2895,16 @@ class TestSimulatedExchangeMarginAccount:
             starting_balances=[Money(1_000_000, USD)],
             default_leverage=Decimal(50),
             leverages={},
-            instruments=[_USDJPY_SIM],
             modules=[],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
             frozen_account=True,  # <-- Freezing account
         )
+        exchange.add_instrument(_USDJPY_SIM)
         exchange.register_client(self.exec_client)
         exchange.reset()
 
@@ -2793,7 +2963,7 @@ class TestSimulatedExchangeMarginAccount:
         self.exchange.process(0)
 
         # Assert
-        # TODO(cs): Current behavior erases previous position from cache
+        # TODO: Current behavior erases previous position from cache
         position_open = self.cache.positions_open()[0]
         position_closed = self.cache.positions_closed()[0]
         assert position_open.side == PositionSide.SHORT
@@ -2953,7 +3123,7 @@ class TestSimulatedExchangeMarginAccount:
         assert entry.quantity == 200_000
 
 
-class TestSimulatedExchangeL2:
+class TestSimulatedExchangeL1:
     def setup(self) -> None:
         # Fixture Setup
         self.clock = TestClock()
@@ -3024,16 +3194,17 @@ class TestSimulatedExchangeL2:
             starting_balances=[Money(1_000_000, USD)],
             default_leverage=Decimal(50),
             leverages={_AUDUSD_SIM.id: Decimal(10)},
-            instruments=[_USDJPY_SIM],
             modules=[self.module],
             fill_model=FillModel(),
+            fee_model=MakerTakerFeeModel(),
             portfolio=self.portfolio,
             msgbus=self.msgbus,
             cache=self.cache,
             clock=self.clock,
             latency_model=LatencyModel(0),
-            book_type=BookType.L2_MBP,
+            book_type=BookType.L1_MBP,
         )
+        self.exchange.add_instrument(_USDJPY_SIM)
 
         self.exec_client = BacktestExecClient(
             exchange=self.exchange,

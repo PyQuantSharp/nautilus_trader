@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -30,7 +30,7 @@ from nautilus_trader.model.objects cimport Quantity
 
 cdef class Equity(Instrument):
     """
-    Represents a generic Equity instrument.
+    Represents a generic equity instrument.
 
     Parameters
     ----------
@@ -46,8 +46,10 @@ cdef class Equity(Instrument):
         The minimum price increment (tick size).
     lot_size : Quantity
         The rounded lot unit size (standard/board).
-    isin : str, optional
-        The International Securities Identification Number (ISIN).
+    ts_event : uint64_t
+        UNIX timestamp (nanoseconds) when the data event occurred.
+    ts_init : uint64_t
+        UNIX timestamp (nanoseconds) when the data object was initialized.
     margin_init : Decimal, optional
         The initial (order) margin requirement in percentage of order value.
     margin_maint : Decimal, optional
@@ -56,10 +58,8 @@ cdef class Equity(Instrument):
         The fee rate for liquidity makers as a percentage of order value.
     taker_fee : Decimal, optional
         The fee rate for liquidity takers as a percentage of order value.
-    ts_event : uint64_t
-        The UNIX timestamp (nanoseconds) when the data event occurred.
-    ts_init : uint64_t
-        The UNIX timestamp (nanoseconds) when the data object was initialized.
+    isin : str, optional
+        The instruments International Securities Identification Number (ISIN).
     info : dict[str, object], optional
         The additional instrument information.
 
@@ -71,6 +71,13 @@ cdef class Equity(Instrument):
         If `price_increment` is not positive (> 0).
     ValueError
         If `lot_size` is not positive (> 0).
+    ValueError
+        If `margin_init` is negative (< 0).
+    ValueError
+        If `margin_maint` is negative (< 0).
+    ValueError
+        If `isin` is not ``None`` and not a valid string.
+
     """
 
     def __init__(
@@ -83,13 +90,17 @@ cdef class Equity(Instrument):
         Quantity lot_size not None,
         uint64_t ts_event,
         uint64_t ts_init,
-        str isin: str | None = None,
+        max_quantity: Quantity | None = None,
+        min_quantity: Quantity | None = None,
         margin_init: Decimal | None = None,
         margin_maint: Decimal | None = None,
         maker_fee: Decimal | None = None,
         taker_fee: Decimal | None = None,
+        str isin: str | None = None,
         dict info = None,
-    ):
+    ) -> None:
+        if isin is not None:
+            Condition.valid_string(isin, "isin")
         super().__init__(
             instrument_id=instrument_id,
             raw_symbol=raw_symbol,
@@ -103,16 +114,16 @@ cdef class Equity(Instrument):
             size_increment=Quantity.from_int_c(1),
             multiplier=Quantity.from_int_c(1),
             lot_size=lot_size,
-            max_quantity=None,
-            min_quantity=Quantity.from_int_c(1),
+            max_quantity=max_quantity,
+            min_quantity=min_quantity,
             max_notional=None,
             min_notional=None,
             max_price=None,
             min_price=None,
-            margin_init=margin_init if margin_init else Decimal(0),
-            margin_maint=margin_maint if margin_maint else Decimal(0),
-            maker_fee=maker_fee if maker_fee else Decimal(0),
-            taker_fee=taker_fee if taker_fee else Decimal(0),
+            margin_init=margin_init or Decimal(0),
+            margin_maint=margin_maint or Decimal(0),
+            maker_fee=maker_fee or Decimal(0),
+            taker_fee=taker_fee or Decimal(0),
             ts_event=ts_event,
             ts_init=ts_init,
             info=info,
@@ -130,12 +141,13 @@ cdef class Equity(Instrument):
             price_increment=Price.from_str(values["price_increment"]),
             lot_size=Quantity.from_str(values["lot_size"]),
             isin=values.get("isin"),  # Can be None,
-            margin_init=Decimal(values.get("margin_init", 0)),  # Can be None,
-            margin_maint=Decimal(values.get("margin_maint", 0)),  # Can be None,
-            maker_fee=Decimal(values.get("maker_fee", 0)),  # Can be None,
-            taker_fee=Decimal(values.get("taker_fee", 0)),  # Can be None,
+            margin_init=Decimal(values.get("margin_init", 0)) if values.get("margin_init") is not None else None,
+            margin_maint=Decimal(values.get("margin_maint", 0)) if values.get("margin_maint") is not None else None,
+            maker_fee=Decimal(values.get("maker_fee", 0)) if values.get("maker_fee") is not None else None,
+            taker_fee=Decimal(values.get("taker_fee", 0))  if values.get("taker_fee") is not None else None,
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
+            info=values["info"],
         )
 
     @staticmethod
@@ -154,15 +166,20 @@ cdef class Equity(Instrument):
             "margin_maint": str(obj.margin_maint),
             "maker_fee": str(obj.maker_fee),
             "taker_fee": str(obj.taker_fee),
+            "min_price": str(obj.min_price) if obj.min_price is not None else None,
+            "max_price": str(obj.max_price) if obj.max_price is not None else None,
+            "max_quantity": str(obj.max_quantity) if obj.max_quantity is not None else None,
+            "min_quantity": str(obj.min_quantity) if obj.min_quantity is not None else None,
             "ts_event": obj.ts_event,
             "ts_init": obj.ts_init,
+            "info": obj.info,
         }
 
     @staticmethod
     cdef Equity from_pyo3_c(pyo3_instrument):
         return Equity(
             instrument_id=InstrumentId.from_str_c(pyo3_instrument.id.value),
-            raw_symbol=Symbol(pyo3_instrument.id.symbol.value),
+            raw_symbol=Symbol(pyo3_instrument.raw_symbol.value),
             currency=Currency.from_str_c(pyo3_instrument.quote_currency.code),
             price_precision=pyo3_instrument.price_precision,
             price_increment=Price.from_raw_c(pyo3_instrument.price_increment.raw, pyo3_instrument.price_precision),
@@ -174,6 +191,7 @@ cdef class Equity(Instrument):
             taker_fee=None,  # None for now
             ts_event=pyo3_instrument.ts_event,
             ts_init=pyo3_instrument.ts_init,
+            info=pyo3_instrument.info,
         )
 
     @staticmethod

@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -19,6 +19,7 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 
+from nautilus_trader import TEST_DATA_DIR
 from nautilus_trader.accounting.calculators import ExchangeRateCalculator
 from nautilus_trader.accounting.calculators import RolloverInterestCalculator
 from nautilus_trader.model.currencies import AUD
@@ -28,7 +29,6 @@ from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.enums import PriceType
 from nautilus_trader.test_kit.stubs.data import UNIX_EPOCH
 from nautilus_trader.test_kit.stubs.identifiers import TestIdStubs
-from tests import TEST_DATA_DIR
 
 
 AUDUSD_SIM = TestIdStubs.audusd_id()

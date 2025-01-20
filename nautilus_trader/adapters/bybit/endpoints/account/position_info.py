@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,20 +13,29 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import msgspec
 
 from nautilus_trader.adapters.bybit.common.enums import BybitEndpointType
 from nautilus_trader.adapters.bybit.endpoints.endpoint import BybitHttpEndpoint
-from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
 from nautilus_trader.adapters.bybit.schemas.position import BybitPositionResponseStruct
-from nautilus_trader.adapters.bybit.schemas.symbol import BybitSymbol
 from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 
-class PositionInfoGetParameters(msgspec.Struct, omit_defaults=True, frozen=False):
+if TYPE_CHECKING:
+    from nautilus_trader.adapters.bybit.http.client import BybitHttpClient
+
+
+class PositionInfoGetParams(msgspec.Struct, omit_defaults=True, frozen=True):
     category: str | None = None
-    symbol: BybitSymbol | None = None
+    symbol: str | None = None
+    baseCoin: str | None = None
     settleCoin: str | None = None
+    limit: int | None = None
+    cursor: str | None = None
 
 
 class BybitPositionInfoEndpoint(BybitHttpEndpoint):
@@ -43,13 +52,12 @@ class BybitPositionInfoEndpoint(BybitHttpEndpoint):
         )
         self._get_resp_decoder = msgspec.json.Decoder(BybitPositionResponseStruct)
 
-    async def get(self, parameters: PositionInfoGetParameters) -> BybitPositionResponseStruct:
+    async def get(self, params: PositionInfoGetParams) -> BybitPositionResponseStruct:
         method_type = HttpMethod.GET
-        raw = await self._method(method_type, parameters)
+        raw = await self._method(method_type, params)
         try:
             return self._get_resp_decoder.decode(raw)
         except Exception as e:
-            decoded_raw = raw.decode("utf-8")
             raise RuntimeError(
-                f"Failed to decode response position info response: {decoded_raw}",
+                f"Failed to decode response from {self.url_path}: {raw.decode()}",
             ) from e

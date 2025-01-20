@@ -12,6 +12,10 @@ install:
 install-debug:
 	BUILD_MODE=debug poetry install --with dev,test --all-extras --sync
 
+.PHONY: install-docs
+install-docs:
+	BUILD_MODE=debug poetry install --with docs --all-extras
+
 .PHONY: install-just-deps
 install-just-deps:
 	poetry install --with dev,test --all-extras --no-root
@@ -38,7 +42,7 @@ build-wheel-debug:
 
 .PHONY: clean
 clean:
-	git clean -fxd
+	git clean -fxd -e tests/test_data/large/
 
 .PHONY: format
 format:
@@ -52,6 +56,7 @@ pre-commit:
 ruff:
 	ruff check . --fix
 
+# Requires cargo-outdated v0.16.0+
 .PHONY: outdated
 outdated:
 	(cd nautilus_core && cargo outdated && poetry show --outdated)
@@ -65,12 +70,12 @@ update: cargo-update
 docs: docs-python docs-rust
 
 .PHONY: docs-python
-docs-python: install-just-deps-all
-	poetry run sphinx-build docs docs/build/html -b html
+docs-python: install-docs
+	poetry run sphinx-build -M markdown ./docs/api_reference ./api_reference
 
 .PHONY: docs-rust
 docs-rust:
-	(cd nautilus_core && RUSTDOCFLAGS="--enable-index-page -Zunstable-options --deny warnings" cargo +nightly doc --no-deps)
+	(cd nautilus_core && RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --all-features --no-deps --workspace)
 
 .PHONY: clippy
 clippy:
@@ -89,12 +94,24 @@ cargo-update:
 	(cd nautilus_core && cargo update && cargo install cargo-nextest && cargo install cargo-llvm-cov)
 
 .PHONY: cargo-test
+cargo-test: RUST_BACKTRACE=1
+cargo-test: HIGH_PRECISION=true
 cargo-test:
 	@if ! cargo nextest --version >/dev/null 2>&1; then \
 		echo "cargo-nextest is not installed. You can install it using 'cargo install cargo-nextest'"; \
 		exit 1; \
 	fi
-	RUST_BACKTRACE=1 && (cd nautilus_core && cargo nextest run --workspace --exclude tokio-tungstenite)
+	(cd nautilus_core && RUST_BACKTRACE=$(RUST_BACKTRACE) HIGH_PRECISION=$(HIGH_PRECISION) cargo nextest run --workspace --features "python,ffi,high-precision")
+
+.PHONY: cargo-test-standard-precision
+cargo-test-standard-precision: RUST_BACKTRACE=1
+cargo-test-standard-precision: HIGH_PRECISION=false
+cargo-test-standard-precision:
+	@if ! cargo nextest --version >/dev/null 2>&1; then \
+    echo "cargo-nextest is not installed. You can install it using 'cargo install cargo-nextest'"; \
+    exit 1; \
+	fi
+	(cd nautilus_core && RUST_BACKTRACE=$(RUST_BACKTRACE) HIGH_PRECISION=$(HIGH_PRECISION) cargo nextest run --workspace --features "python,ffi")
 
 .PHONY: cargo-test-coverage
 cargo-test-coverage:
@@ -106,7 +123,7 @@ cargo-test-coverage:
 		echo "cargo-llvm-cov is not installed. You can install it using 'cargo install cargo-llvm-cov'"; \
 		exit 1; \
 	fi
-	RUST_BACKTRACE=1 && (cd nautilus_core && cargo llvm-cov nextest run --workspace --exclude tokio-tungstenite)
+	(cd nautilus_core && cargo llvm-cov nextest run --workspace)
 
 .PHONY: cargo-bench
 cargo-bench:
@@ -137,6 +154,14 @@ docker-build-jupyter:
 docker-push-jupyter:
 	docker push ${IMAGE}:jupyter
 
+.PHONY: start-services
+start-services:
+	docker-compose -f .docker/docker-compose.yml up -d
+
+.PHONY: stop-services
+stop-services:
+	docker-compose -f .docker/docker-compose.yml down
+
 .PHONY: pytest
 pytest:
 	bash scripts/test.sh
@@ -145,19 +170,18 @@ pytest:
 pytest-coverage:
 	bash scripts/test-coverage.sh
 
+.PHONY: test-performance
+test-performance:
+	bash scripts/test-performance.sh
+
 .PHONY: test-examples
 test-examples:
 	bash scripts/test-examples.sh
 
+.PHONY: install-cli
+install-cli:
+	(cd nautilus_core && cargo install --path cli --bin nautilus --force)
+
 .PHONY: install-talib
 install-talib:
 	bash scripts/install-talib.sh
-
-.PHONY: init-db
-init-db:
-	(cd nautilus_core && cargo run --bin init-db)
-
-.PHONY: drop-db
-drop-db:
-	(cd nautilus_core && cargo run --bin drop-db)
-

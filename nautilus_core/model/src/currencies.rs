@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,8 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! Common `Currency` constants.
+
 use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock},
@@ -21,7 +23,7 @@ use std::{
 use once_cell::sync::Lazy;
 use ustr::Ustr;
 
-use crate::{enums::CurrencyType, types::currency::Currency};
+use crate::{enums::CurrencyType, types::Currency};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Fiat currencies
@@ -104,6 +106,7 @@ static XMR_LOCK: OnceLock<Currency> = OnceLock::new();
 static XRP_LOCK: OnceLock<Currency> = OnceLock::new();
 static XTZ_LOCK: OnceLock<Currency> = OnceLock::new();
 static USDC_LOCK: OnceLock<Currency> = OnceLock::new();
+static USDC_POS_LOCK: OnceLock<Currency> = OnceLock::new();
 static USDP_LOCK: OnceLock<Currency> = OnceLock::new();
 static USDT_LOCK: OnceLock<Currency> = OnceLock::new();
 static ZEC_LOCK: OnceLock<Currency> = OnceLock::new();
@@ -949,14 +952,26 @@ impl Currency {
         })
     }
 
-    #[allow(non_snake_case)]
     #[must_use]
+    #[allow(non_snake_case)]
     pub fn USDC() -> Self {
         *USDC_LOCK.get_or_init(|| Self {
             code: Ustr::from("USDC"),
             precision: 8,
             iso4217: 0,
             name: Ustr::from("USD Coin"),
+            currency_type: CurrencyType::Crypto,
+        })
+    }
+
+    #[must_use]
+    #[allow(non_snake_case)]
+    pub fn USDC_POS() -> Self {
+        *USDC_POS_LOCK.get_or_init(|| Self {
+            code: Ustr::from("USDC.e"),
+            precision: 6,
+            iso4217: 0,
+            name: Ustr::from("USD Coin (PoS)"),
             currency_type: CurrencyType::Crypto,
         })
     }
@@ -986,6 +1001,7 @@ impl Currency {
     }
 }
 
+/// A map of built-in `Currency` constants.
 pub static CURRENCY_MAP: Lazy<Mutex<HashMap<String, Currency>>> = Lazy::new(|| {
     let mut map = HashMap::new();
     ///////////////////////////////////////////////////////////////////////////
@@ -1060,6 +1076,7 @@ pub static CURRENCY_MAP: Lazy<Mutex<HashMap<String, Currency>>> = Lazy::new(|| {
     map.insert(Currency::XRP().code.to_string(), Currency::XRP());
     map.insert(Currency::XTZ().code.to_string(), Currency::XTZ());
     map.insert(Currency::USDC().code.to_string(), Currency::USDC());
+    map.insert(Currency::USDC_POS().code.to_string(), Currency::USDC_POS());
     map.insert(Currency::USDP().code.to_string(), Currency::USDP());
     map.insert(Currency::USDT().code.to_string(), Currency::USDT());
     map.insert(Currency::ZEC().code.to_string(), Currency::ZEC());

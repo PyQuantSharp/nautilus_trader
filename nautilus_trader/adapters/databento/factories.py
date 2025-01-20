@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -17,7 +17,7 @@ import asyncio
 from functools import lru_cache
 
 from nautilus_trader.adapters.databento.config import DatabentoDataClientConfig
-from nautilus_trader.adapters.databento.constants import PUBLISHERS_PATH
+from nautilus_trader.adapters.databento.constants import PUBLISHERS_FILEPATH
 from nautilus_trader.adapters.databento.data import DatabentoDataClient
 from nautilus_trader.adapters.databento.loaders import DatabentoDataLoader
 from nautilus_trader.adapters.databento.providers import DatabentoInstrumentProvider
@@ -30,9 +30,6 @@ from nautilus_trader.core import nautilus_pyo3
 from nautilus_trader.live.factories import LiveDataClientFactory
 
 
-DATABENTO_HTTP_CLIENTS: dict[str, nautilus_pyo3.DatabentoHistoricalClient] = {}
-
-
 @lru_cache(1)
 def get_cached_databento_http_client(
     key: str | None = None,
@@ -41,8 +38,7 @@ def get_cached_databento_http_client(
     """
     Cache and return a Databento historical HTTP client with the given key and gateway.
 
-    If a cached client with matching key and gateway already exists, then that
-    cached client will be returned.
+    If a cached client with matching parameters already exists, the cached client will be returned.
 
     Parameters
     ----------
@@ -56,18 +52,10 @@ def get_cached_databento_http_client(
     nautilus_pyo3.DatabentoHistoricalClient
 
     """
-    global BINANCE_HTTP_CLIENTS
-
-    key = key or get_env_key("DATABENTO_API_KEY")
-
-    client_key: str = "|".join((key, gateway or ""))
-    if client_key not in DATABENTO_HTTP_CLIENTS:
-        client = nautilus_pyo3.DatabentoHistoricalClient(
-            key=key,
-            publishers_path=str(PUBLISHERS_PATH),
-        )
-        DATABENTO_HTTP_CLIENTS[client_key] = client
-    return DATABENTO_HTTP_CLIENTS[client_key]
+    return nautilus_pyo3.DatabentoHistoricalClient(
+        key=key or get_env_key("DATABENTO_API_KEY"),
+        publishers_filepath=str(PUBLISHERS_FILEPATH),
+    )
 
 
 @lru_cache(1)
@@ -117,7 +105,7 @@ def get_cached_databento_instrument_provider(
 
 class DatabentoLiveDataClientFactory(LiveDataClientFactory):
     """
-    Provides a `Binance` live data client factory.
+    Provides a Binance live data client factory.
     """
 
     @staticmethod
@@ -177,4 +165,5 @@ class DatabentoLiveDataClientFactory(LiveDataClientFactory):
             instrument_provider=provider,
             loader=loader,
             config=config,
+            name=name,
         )

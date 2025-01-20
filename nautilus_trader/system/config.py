@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -59,8 +59,9 @@ class NautilusKernelConfig(NautilusConfig, frozen=True):
         The order emulator configuration.
     streaming : StreamingConfig, optional
         The configuration for streaming to feather files.
-    catalog : DataCatalogConfig, optional
-        The data catalog config.
+    catalogs : list[DataCatalogConfig], optional
+        The list of data catalog configs.
+        We assume that catalogs have no duplicate data.
     actors : list[ImportableActorConfig]
         The actor configurations for the kernel.
     strategies : list[ImportableStrategyConfig]
@@ -77,29 +78,16 @@ class NautilusKernelConfig(NautilusConfig, frozen=True):
         If the asyncio event loop should be in debug mode.
     logging : LoggingConfig, optional
         The logging config for the kernel.
-    snapshot_orders : bool, default False
-        If order state snapshot lists should be persisted.
-        Snapshots will be taken at every order state update (when events are applied).
-    snapshot_positions : bool, default False
-        If position state snapshot lists should be persisted.
-        Snapshots will be taken at position opened, changed and closed (when events are applied).
-        To include the unrealized PnL in the snapshot then quotes for the positions instrument must
-        be available in the cache.
-    snapshot_positions_interval : PositiveFloat, optional
-        The interval (seconds) at which additional position state snapshots are persisted.
-        If ``None`` then no additional snapshots will be taken.
-        To include the unrealized PnL in the snapshot then quotes for the positions instrument must
-        be available in the cache.
-    timeout_connection : PositiveFloat (seconds)
-        The timeout for all clients to connect and initialize.
-    timeout_reconciliation : PositiveFloat (seconds)
-        The timeout for execution state to reconcile.
-    timeout_portfolio : PositiveFloat (seconds)
-        The timeout for portfolio to initialize margins and unrealized PnLs.
-    timeout_disconnection : PositiveFloat (seconds)
-        The timeout for all engine clients to disconnect.
-    timeout_post_stop : PositiveFloat (seconds)
-        The timeout after stopping the node to await residual events before final shutdown.
+    timeout_connection : PositiveFloat
+        The timeout (seconds) for all clients to connect and initialize.
+    timeout_reconciliation : PositiveFloat
+        The timeout (seconds) for execution state to reconcile.
+    timeout_portfolio : PositiveFloat
+        The timeout (seconds) for portfolio to initialize margins and unrealized PnLs.
+    timeout_disconnection : PositiveFloat
+        The timeout (seconds) for all engine clients to disconnect.
+    timeout_post_stop : PositiveFloat
+        The timeout (seconds) after stopping the node to await residual events before final shutdown.
 
     """
 
@@ -113,7 +101,7 @@ class NautilusKernelConfig(NautilusConfig, frozen=True):
     exec_engine: ExecEngineConfig | None = None
     emulator: OrderEmulatorConfig | None = None
     streaming: StreamingConfig | None = None
-    catalog: DataCatalogConfig | None = None
+    catalogs: list[DataCatalogConfig] = []
     actors: list[ImportableActorConfig] = []
     strategies: list[ImportableStrategyConfig] = []
     exec_algorithms: list[ImportableExecAlgorithmConfig] = []
@@ -122,9 +110,7 @@ class NautilusKernelConfig(NautilusConfig, frozen=True):
     save_state: bool = False
     loop_debug: bool = False
     logging: LoggingConfig | None = None
-    snapshot_orders: bool = False
-    snapshot_positions: bool = False
-    snapshot_positions_interval: PositiveFloat | None = None
+
     timeout_connection: PositiveFloat = 10.0
     timeout_reconciliation: PositiveFloat = 10.0
     timeout_portfolio: PositiveFloat = 10.0

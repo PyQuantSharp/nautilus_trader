@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,29 +13,24 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_core::{
-    python::{serialization::from_dict_pyo3, to_pyvalue_err},
-    time::UnixNanos,
-    uuid::UUID4,
-};
+use nautilus_core::{python::serialization::from_dict_pyo3, UUID4};
 use pyo3::{basic::CompareOp, prelude::*, types::PyDict};
-use rust_decimal::prelude::ToPrimitive;
 
 use crate::{
     enums::{LiquiditySide, OrderSide, OrderType},
-    events::order::filled::OrderFilled,
+    events::OrderFilled,
     identifiers::{
-        account_id::AccountId, client_order_id::ClientOrderId, instrument_id::InstrumentId,
-        position_id::PositionId, strategy_id::StrategyId, trade_id::TradeId, trader_id::TraderId,
-        venue_order_id::VenueOrderId,
+        AccountId, ClientOrderId, InstrumentId, PositionId, StrategyId, TradeId, TraderId,
+        VenueOrderId,
     },
-    types::{currency::Currency, money::Money, price::Price, quantity::Quantity},
+    types::{Currency, Money, Price, Quantity},
 };
 
 #[pymethods]
 impl OrderFilled {
     #[allow(clippy::too_many_arguments)]
     #[new]
+    #[pyo3(signature = (trader_id, strategy_id, instrument_id, client_order_id, venue_order_id, account_id, trade_id, order_side, order_type, last_qty, last_px, currency, liquidity_side, event_id, ts_event, ts_init, reconciliation, position_id=None, commission=None))]
     fn py_new(
         trader_id: TraderId,
         strategy_id: StrategyId,
@@ -51,12 +46,12 @@ impl OrderFilled {
         currency: Currency,
         liquidity_side: LiquiditySide,
         event_id: UUID4,
-        ts_event: UnixNanos,
-        ts_init: UnixNanos,
+        ts_event: u64,
+        ts_init: u64,
         reconciliation: bool,
         position_id: Option<PositionId>,
         commission: Option<Money>,
-    ) -> PyResult<Self> {
+    ) -> Self {
         Self::new(
             trader_id,
             strategy_id,
@@ -72,105 +67,28 @@ impl OrderFilled {
             currency,
             liquidity_side,
             event_id,
-            ts_event,
-            ts_init,
+            ts_event.into(),
+            ts_init.into(),
             reconciliation,
             position_id,
             commission,
         )
-        .map_err(to_pyvalue_err)
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
+        match op {
+            CompareOp::Eq => self.eq(other).into_py(py),
+            CompareOp::Ne => self.ne(other).into_py(py),
+            _ => py.NotImplemented(),
+        }
     }
 
     fn __repr__(&self) -> String {
-        let position_id_str = match self.position_id {
-            Some(position_id) => position_id.to_string(),
-            None => "None".to_string(),
-        };
-        let commission_str = match self.commission {
-            Some(commission) => commission.to_string(),
-            None => "None".to_string(),
-        };
-        format!(
-            "{}(\
-            trader_id={}, \
-            strategy_id={}, \
-            instrument_id={}, \
-            client_order_id={}, \
-            venue_order_id={}, \
-            account_id={}, \
-            trade_id={}, \
-            position_id={}, \
-            order_side={}, \
-            order_type={}, \
-            last_qty={}, \
-            last_px={} {}, \
-            commission={}, \
-            liquidity_side={}, \
-            event_id={}, \
-            ts_event={}, \
-            ts_init={})",
-            stringify!(OrderFilled),
-            self.trader_id,
-            self.strategy_id,
-            self.instrument_id,
-            self.client_order_id,
-            self.venue_order_id,
-            self.account_id,
-            self.trade_id,
-            position_id_str,
-            self.order_side,
-            self.order_type,
-            self.last_qty,
-            self.last_px,
-            self.currency.code,
-            commission_str,
-            self.liquidity_side,
-            self.event_id,
-            self.ts_event,
-            self.ts_init
-        )
+        format!("{:?}", self)
     }
 
     fn __str__(&self) -> String {
-        let position_id_str = match self.position_id {
-            Some(position_id) => position_id.to_string(),
-            None => "None".to_string(),
-        };
-        let commission_str = match self.commission {
-            Some(commission) => commission.to_string(),
-            None => "None".to_string(),
-        };
-        format!(
-            "{}(\
-            instrument_id={}, \
-            client_order_id={}, \
-            venue_order_id={}, \
-            account_id={}, \
-            trade_id={}, \
-            position_id={}, \
-            order_side={}, \
-            order_type={}, \
-            last_qty={}, \
-            last_px={} {}, \
-            commission={}, \
-            liquidity_side={}, \
-            ts_event={})",
-            stringify!(OrderFilled),
-            self.instrument_id,
-            self.client_order_id,
-            self.venue_order_id,
-            self.account_id,
-            self.trade_id,
-            position_id_str,
-            self.order_side,
-            self.order_type,
-            self.last_qty,
-            self.last_px,
-            self.currency.code,
-            commission_str,
-            self.liquidity_side,
-            self.ts_event
-        )
+        self.to_string()
     }
 
     #[getter]
@@ -183,14 +101,6 @@ impl OrderFilled {
     #[pyo3(name = "is_sell")]
     fn py_is_sell(&self) -> bool {
         self.is_sell()
-    }
-
-    fn __richcmp__(&self, other: &Self, op: CompareOp, py: Python<'_>) -> Py<PyAny> {
-        match op {
-            CompareOp::Eq => self.eq(other).into_py(py),
-            CompareOp::Ne => self.ne(other).into_py(py),
-            _ => py.NotImplemented(),
-        }
     }
 
     #[getter]
@@ -273,14 +183,14 @@ impl OrderFilled {
 
     #[getter]
     #[pyo3(name = "ts_event")]
-    fn py_ts_event(&self) -> UnixNanos {
-        self.ts_event
+    fn py_ts_event(&self) -> u64 {
+        self.ts_event.as_u64()
     }
 
     #[getter]
     #[pyo3(name = "ts_init")]
-    fn py_ts_init(&self) -> UnixNanos {
-        self.ts_init
+    fn py_ts_init(&self) -> u64 {
+        self.ts_init.as_u64()
     }
 
     #[getter]
@@ -315,7 +225,8 @@ impl OrderFilled {
 
     #[pyo3(name = "to_dict")]
     pub fn py_to_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
+        let dict = PyDict::new_bound(py);
+        dict.set_item("type", stringify!(OrderFilled))?;
         dict.set_item("trader_id", self.trader_id.to_string())?;
         dict.set_item("strategy_id", self.strategy_id.to_string())?;
         dict.set_item("instrument_id", self.instrument_id.to_string())?;
@@ -330,9 +241,10 @@ impl OrderFilled {
         dict.set_item("currency", self.currency.code.to_string())?;
         dict.set_item("liquidity_side", self.liquidity_side.to_string())?;
         dict.set_item("event_id", self.event_id.to_string())?;
-        dict.set_item("ts_event", self.ts_event.to_u64())?;
-        dict.set_item("ts_init", self.ts_init.to_u64())?;
+        dict.set_item("ts_event", self.ts_event.as_u64())?;
+        dict.set_item("ts_init", self.ts_init.as_u64())?;
         dict.set_item("reconciliation", self.reconciliation)?;
+        dict.set_item("info", PyDict::new_bound(py))?;
         match self.position_id {
             Some(position_id) => dict.set_item("position_id", position_id.to_string())?,
             None => dict.set_item("position_id", py.None())?,

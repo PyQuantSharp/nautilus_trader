@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,18 +13,35 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use crate::events::position::{
-    changed::PositionChanged, closed::PositionClosed, opened::PositionOpened,
+use crate::{
+    events::{PositionChanged, PositionClosed, PositionOpened},
+    identifiers::{AccountId, InstrumentId},
 };
-
 pub mod changed;
 pub mod closed;
 pub mod opened;
-
-pub mod state;
+pub mod snapshot;
 
 pub enum PositionEvent {
     PositionOpened(PositionOpened),
     PositionChanged(PositionChanged),
     PositionClosed(PositionClosed),
+}
+
+impl PositionEvent {
+    pub fn instrument_id(&self) -> InstrumentId {
+        match self {
+            PositionEvent::PositionOpened(position) => position.instrument_id,
+            PositionEvent::PositionChanged(position) => position.instrument_id,
+            PositionEvent::PositionClosed(position) => position.instrument_id,
+        }
+    }
+
+    pub fn account_id(&self) -> AccountId {
+        match self {
+            PositionEvent::PositionOpened(position) => position.account_id,
+            PositionEvent::PositionChanged(position) => position.account_id,
+            PositionEvent::PositionClosed(position) => position.account_id,
+        }
+    }
 }

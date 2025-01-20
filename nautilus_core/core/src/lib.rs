@@ -1,5 +1,5 @@
 // -------------------------------------------------------------------------------------------------
-//  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+//  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 //  https://nautechsystems.io
 //
 //  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,15 +13,39 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
+//! [NautilusTrader](http://nautilustrader.io) is an open-source, high-performance, production-grade
+//! algorithmic trading platform, providing quantitative traders with the ability to backtest
+//! portfolios of automated trading strategies on historical data with an event-driven engine,
+//! and also deploy those same strategies live, with no code changes.
+//!
+//! # Feature flags
+//!
+//! This crate provides feature flags to control source code inclusion during compilation,
+//! depending on the intended use case, i.e. whether to provide Python bindings
+//! for the main `nautilus_trader` Python package, or as part of a Rust only build.
+//!
+//! - `ffi`: Enables the C foreign function interface (FFI) from `cbindgen`.
+//! - `python`: Enables Python bindings from `pyo3`.
+
+pub mod consts;
 pub mod correctness;
 pub mod datetime;
 pub mod message;
+pub mod nanos;
 pub mod parsing;
+pub mod paths;
 pub mod serialization;
 pub mod time;
 pub mod uuid;
 
 #[cfg(feature = "ffi")]
 pub mod ffi;
+
 #[cfg(feature = "python")]
 pub mod python;
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+compile_error!("Unsupported platform: Nautilus supports only Linux, macOS, and Windows");
+
+// Re-exports
+pub use crate::{nanos::UnixNanos, time::AtomicTime, uuid::UUID4};

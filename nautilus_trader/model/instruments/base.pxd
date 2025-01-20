@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-#  Copyright (C) 2015-2024 Nautech Systems Pty Ltd. All rights reserved.
+#  Copyright (C) 2015-2025 Nautech Systems Pty Ltd. All rights reserved.
 #  https://nautechsystems.io
 #
 #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
@@ -13,6 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+from libc.stdint cimport uint8_t
 from libc.stdint cimport uint64_t
 
 from nautilus_trader.core.data cimport Data
@@ -27,8 +28,13 @@ from nautilus_trader.model.objects cimport Quantity
 from nautilus_trader.model.tick_scheme.base cimport TickScheme
 
 
+cdef set[InstrumentClass] EXPIRING_INSTRUMENT_TYPES
+
+
 cdef class Instrument(Data):
     cdef TickScheme _tick_scheme
+    cdef uint8_t _min_price_increment_precision
+    cdef uint8_t _min_size_increment_precision
 
     cdef readonly InstrumentId id
     """The instrument ID.\n\n:returns: `InstrumentId`"""
@@ -79,9 +85,9 @@ cdef class Instrument(Data):
     cdef readonly dict info
     """The raw info for the instrument.\n\n:returns: `dict[str, object]`"""
     cdef readonly uint64_t ts_event
-    """The UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the data event occurred.\n\n:returns: `uint64_t`"""
     cdef readonly uint64_t ts_init
-    """The UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
+    """UNIX timestamp (nanoseconds) when the object was initialized.\n\n:returns: `uint64_t`"""
 
     @staticmethod
     cdef Instrument base_from_dict_c(dict values)
