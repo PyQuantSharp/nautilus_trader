@@ -15,6 +15,7 @@ None
 ### Internal Improvements
 - Untangled `ratelimiter` quota from `python` flag (#2595), thanks @twitu
 - Improved fill behavior for limit orders in `L1_MBP` books, will now fill entire size when marketable as `TAKER` or market moves through limit as `MAKER`
+- Improved validations for `LimitOrder` in Rust (#2613), thanks @nicolad
 - Improved validations for `LimitIfTouchedOrder` in Rust (#2533), thanks @nicolad
 - Improved validations for `MarketIfTouchedOrder` in Rust (#2577), thanks @nicolad
 - Improved validations for `MarketToLimitOrder` in Rust (#2584), thanks @nicolad
@@ -29,6 +30,7 @@ None
 ### Fixes
 - Fixed position snapshot cache access for `ExecutionEngine`
 - Fixed trailing stop market fill behavior when top-level exhausted to align with market orders (#2540), thanks for reporting @stastnypremysl
+- Fixed stop limit fill behavior on initial trigger where the limit order was continuing to fill as a taker beyond available liquidity, thanks for reporting @hope2see
 - Fixed terminating backtest on `AccountError` when streaming, the exception needed to be reraised to interrupt the streaming of chunks (#2546), thanks for reporting @stastnypremysl
 - Updated `BinanceFuturesEventType` enum with additional variants, thanks for reporting @miller-moore
 
